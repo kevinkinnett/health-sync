@@ -3,6 +3,8 @@ import { fileURLToPath } from "node:url";
 import express, { type Express } from "express";
 import cors from "cors";
 import { loadConfig } from "./config.js";
+import { logger } from "./logger.js";
+import { requestLogger } from "./middleware/requestLogger.js";
 import { createPool } from "./db.js";
 import { ActivityRepository } from "./repositories/activityRepo.js";
 import { SleepRepository } from "./repositories/sleepRepo.js";
@@ -20,6 +22,10 @@ import { createIngestRoutes } from "./routes/ingest.js";
 
 const config = loadConfig();
 const pool = createPool(config.db);
+
+pool.on("error", (err) => {
+  logger.error({ err }, "Database pool error");
+});
 
 // Repositories
 const activityRepo = new ActivityRepository(pool);
@@ -49,6 +55,7 @@ const ingestController = new IngestController(ingestService);
 const app: Express = express();
 app.use(cors());
 app.use(express.json());
+app.use(requestLogger);
 
 // Health check
 app.get("/api/health-check", async (_req, res) => {
@@ -78,7 +85,7 @@ app.get("/{*splat}", (_req, res, next) => {
 });
 
 app.listen(config.port, () => {
-  console.log(`Server running on port ${config.port}`);
+  logger.info({ port: config.port }, "Server started");
 });
 
 export { app };

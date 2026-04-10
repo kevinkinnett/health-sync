@@ -8,6 +8,7 @@ import type {
   IngestOverview,
 } from "@health-dashboard/shared";
 import type { IngestRepository } from "../repositories/ingestRepo.js";
+import { logger } from "../logger.js";
 
 interface WindmillConfig {
   baseUrl: string;
@@ -35,6 +36,20 @@ export class IngestService {
     };
   }
 
+  private async wmFetch(label: string, url: string, init?: RequestInit): Promise<Response> {
+    const start = Date.now();
+    const resp = await fetch(url, { ...init, headers: this.wmHeaders() });
+    const duration = Date.now() - start;
+
+    if (!resp.ok) {
+      logger.warn({ url, status: resp.status, duration }, `Windmill API error: ${label}`);
+    } else {
+      logger.debug({ url, status: resp.status, duration }, `Windmill API: ${label}`);
+    }
+
+    return resp;
+  }
+
   async getState(): Promise<IngestState[]> {
     return this.ingestRepo.getState();
   }
@@ -60,16 +75,14 @@ export class IngestService {
       const url = this.wmUrl(
         `/jobs/list?script_path_exact=${SCRIPT_PATH}&running=true&per_page=10`,
       );
-      const resp = await fetch(url, { headers: this.wmHeaders() });
+      const resp = await this.wmFetch("list active jobs", url);
       if (!resp.ok) return [];
       const running = (await resp.json()) as Record<string, unknown>[];
 
       const queuedUrl = this.wmUrl(
         `/jobs/list?script_path_exact=${SCRIPT_PATH}&per_page=10`,
       );
-      const queuedResp = await fetch(queuedUrl, {
-        headers: this.wmHeaders(),
-      });
+      const queuedResp = await this.wmFetch("list queued jobs", queuedUrl);
       const allJobs = queuedResp.ok
         ? ((await queuedResp.json()) as Record<string, unknown>[])
         : [];
@@ -94,7 +107,7 @@ export class IngestService {
       }
       return merged;
     } catch (err) {
-      console.error("Error fetching Windmill jobs:", err);
+      logger.error({ err }, "Failed to fetch Windmill active jobs");
       return [];
     }
   }
@@ -104,7 +117,7 @@ export class IngestService {
       const url = this.wmUrl(
         `/jobs/completed/list?script_path_exact=${SCRIPT_PATH}&per_page=${limit}&order_desc=true`,
       );
-      const resp = await fetch(url, { headers: this.wmHeaders() });
+      const resp = await this.wmFetch("list completed jobs", url);
       if (!resp.ok) return [];
       const data = (await resp.json()) as Record<string, unknown>[];
 
@@ -119,7 +132,7 @@ export class IngestService {
         isSkipped: Boolean(j.is_skipped),
       }));
     } catch (err) {
-      console.error("Error fetching completed Windmill jobs:", err);
+      logger.error({ err }, "Failed to fetch Windmill completed jobs");
       return [];
     }
   }
@@ -129,7 +142,7 @@ export class IngestService {
       const url = this.wmUrl(
         `/schedules/list?path_start=${SCHEDULE_PREFIX}`,
       );
-      const resp = await fetch(url, { headers: this.wmHeaders() });
+      const resp = await this.wmFetch("list schedules", url);
       if (!resp.ok) return [];
       const data = (await resp.json()) as Record<string, unknown>[];
       return data.map((s) => ({
@@ -142,7 +155,7 @@ export class IngestService {
         description: s.description ? String(s.description) : null,
       }));
     } catch (err) {
-      console.error("Error fetching Windmill schedules:", err);
+      logger.error({ err }, "Failed to fetch Windmill schedules");
       return [];
     }
   }
@@ -155,9 +168,8 @@ export class IngestService {
 
     const url = this.wmUrl(`/jobs/run/p/${SCRIPT_PATH}`);
 
-    const response = await fetch(url, {
+    const response = await this.wmFetch("trigger ingest", url, {
       method: "POST",
-      headers: this.wmHeaders(),
       body: JSON.stringify({
         db_resource_path: "u/kevin/universe_db",
       }),

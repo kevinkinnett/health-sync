@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import type { IngestService } from "../services/ingestService.js";
+import { logger } from "../logger.js";
 
 export class IngestController {
   constructor(private service: IngestService) {}
@@ -10,7 +11,7 @@ export class IngestController {
       const overview = await this.service.getOverview(limit);
       res.json(overview);
     } catch (err) {
-      console.error("Error fetching ingest overview:", err);
+      logger.error({ err }, "Failed to fetch ingest overview");
       res.status(500).json({ error: "Failed to fetch ingest overview" });
     }
   }
@@ -20,7 +21,7 @@ export class IngestController {
       const state = await this.service.getState();
       res.json(state);
     } catch (err) {
-      console.error("Error fetching ingest state:", err);
+      logger.error({ err }, "Failed to fetch ingest state");
       res.status(500).json({ error: "Failed to fetch ingest state" });
     }
   }
@@ -31,7 +32,7 @@ export class IngestController {
       const runs = await this.service.getRuns(limit);
       res.json(runs);
     } catch (err) {
-      console.error("Error fetching ingest runs:", err);
+      logger.error({ err }, "Failed to fetch ingest runs");
       res.status(500).json({ error: "Failed to fetch ingest runs" });
     }
   }
@@ -40,12 +41,14 @@ export class IngestController {
     try {
       const result = await this.service.triggerRun();
       if (!result.jobId) {
+        logger.warn("Ingest trigger rejected: job already running");
         res.status(409).json(result);
         return;
       }
+      logger.info({ jobId: result.jobId }, "Ingest job triggered");
       res.json(result);
     } catch (err) {
-      console.error("Error triggering ingest:", err);
+      logger.error({ err }, "Failed to trigger ingest");
       res.status(500).json({ error: "Failed to trigger ingest" });
     }
   }

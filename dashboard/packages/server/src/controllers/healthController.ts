@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import type { HealthDataService } from "../services/healthDataService.js";
+import { logger } from "../logger.js";
 
 export class HealthController {
   constructor(private service: HealthDataService) {}
@@ -9,7 +10,7 @@ export class HealthController {
       const summary = await this.service.getSummary();
       res.json(summary);
     } catch (err) {
-      console.error("Error fetching summary:", err);
+      logger.error({ err }, "Failed to fetch health summary");
       res.status(500).json({ error: "Failed to fetch health summary" });
     }
   }
@@ -20,7 +21,7 @@ export class HealthController {
       const data = await this.service.getActivity(start, end);
       res.json(data);
     } catch (err) {
-      console.error("Error fetching activity:", err);
+      logger.error({ err }, "Failed to fetch activity data");
       res.status(500).json({ error: "Failed to fetch activity data" });
     }
   }
@@ -31,7 +32,7 @@ export class HealthController {
       const data = await this.service.getSleep(start, end);
       res.json(data);
     } catch (err) {
-      console.error("Error fetching sleep:", err);
+      logger.error({ err }, "Failed to fetch sleep data");
       res.status(500).json({ error: "Failed to fetch sleep data" });
     }
   }
@@ -42,7 +43,7 @@ export class HealthController {
       const data = await this.service.getHeartRate(start, end);
       res.json(data);
     } catch (err) {
-      console.error("Error fetching heart rate:", err);
+      logger.error({ err }, "Failed to fetch heart rate data");
       res.status(500).json({ error: "Failed to fetch heart rate data" });
     }
   }
@@ -53,7 +54,7 @@ export class HealthController {
       const data = await this.service.getWeight(start, end);
       res.json(data);
     } catch (err) {
-      console.error("Error fetching weight:", err);
+      logger.error({ err }, "Failed to fetch weight data");
       res.status(500).json({ error: "Failed to fetch weight data" });
     }
   }
@@ -64,7 +65,7 @@ export class HealthController {
       const data = await this.service.getHrv(start, end);
       res.json(data);
     } catch (err) {
-      console.error("Error fetching HRV:", err);
+      logger.error({ err }, "Failed to fetch HRV data");
       res.status(500).json({ error: "Failed to fetch HRV data" });
     }
   }
@@ -75,7 +76,7 @@ export class HealthController {
       const data = await this.service.getExerciseLogs(start, end);
       res.json(data);
     } catch (err) {
-      console.error("Error fetching exercise logs:", err);
+      logger.error({ err }, "Failed to fetch exercise logs");
       res.status(500).json({ error: "Failed to fetch exercise logs" });
     }
   }
