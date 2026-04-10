@@ -69,7 +69,7 @@ app.use("/api/ingest", createIngestRoutes(ingestController));
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const clientDir = path.resolve(__dirname, "public");
 app.use(express.static(clientDir));
-app.get("*", (_req, res, next) => {
+app.get("/{*splat}", (_req, res, next) => {
   // Only serve index.html for non-API routes (SPA fallback)
   if (_req.path.startsWith("/api/")) return next();
   res.sendFile(path.join(clientDir, "index.html"), (err) => {
