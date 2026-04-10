@@ -1,0 +1,23 @@
+services:
+  server:
+    image: ghcr.io/kevinkinnett/health-sync/server:latest
+    ports:
+      - "3001:3001"
+    env_file:
+      - .env
+    environment:
+      - PORT=3001
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3001/api/health-check"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  client:
+    image: ghcr.io/kevinkinnett/health-sync/client:latest
+    ports:
+      - "5173:80"
+    depends_on:
+      - server
+    restart: unless-stopped
