@@ -1,8 +1,6 @@
 services:
-  server:
-    build:
-      context: .
-      dockerfile: packages/server/Dockerfile
+  health-sync:
+    build: .
     ports:
       - "3001:3001"
     env_file:
@@ -14,12 +12,3 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-
-  client:
-    build:
-      context: .
-      dockerfile: packages/client/Dockerfile
-    ports:
-      - "5173:80"
-    depends_on:
-      - server

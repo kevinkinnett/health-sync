@@ -1,3 +1,5 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import express, { type Express } from "express";
 import cors from "cors";
 import { loadConfig } from "./config.js";
@@ -61,6 +63,19 @@ app.get("/api/health-check", async (_req, res) => {
 // Routes
 app.use("/api/health", createHealthRoutes(healthController));
 app.use("/api/ingest", createIngestRoutes(ingestController));
+
+// Serve client static files in production (single-container mode)
+// In Docker: dist/public/  In dev: ../../client/dist/
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const clientDir = path.resolve(__dirname, "public");
+app.use(express.static(clientDir));
+app.get("*", (_req, res, next) => {
+  // Only serve index.html for non-API routes (SPA fallback)
+  if (_req.path.startsWith("/api/")) return next();
+  res.sendFile(path.join(clientDir, "index.html"), (err) => {
+    if (err) next();
+  });
+});
 
 app.listen(config.port, () => {
   console.log(`Server running on port ${config.port}`);

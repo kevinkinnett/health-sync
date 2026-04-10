@@ -1,4 +1,4 @@
-name: Build and Push Docker Images
+name: Build and Push Docker Image
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: ghcr.io/${{ github.repository }}
+  IMAGE_NAME: ghcr.io/${{ github.repository }}
 
 jobs:
   build-and-push:
@@ -15,14 +15,6 @@ jobs:
     permissions:
       contents: read
       packages: write
-
-    strategy:
-      matrix:
-        include:
-          - name: server
-            dockerfile: packages/server/Dockerfile
-          - name: client
-            dockerfile: packages/client/Dockerfile
 
     steps:
       - name: Checkout
@@ -39,7 +31,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.IMAGE_PREFIX }}/${{ matrix.name }}
+          images: ${{ env.IMAGE_NAME }}
           tags: |
             type=sha
             type=raw,value=latest,enable={{is_default_branch}}
@@ -48,7 +40,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: ./dashboard
-          file: ./dashboard/${{ matrix.dockerfile }}
+          file: ./dashboard/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
