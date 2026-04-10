@@ -177,12 +177,12 @@ function DetailBreakdown({
       {types.map(([dataType, d]) => (
         <div
           key={dataType}
-          className="bg-gray-50 rounded-lg px-3 py-2 border border-gray-100"
+          className="bg-gray-50 dark:bg-gray-900 rounded-lg px-3 py-2 border border-gray-100 dark:border-gray-700"
         >
-          <div className="text-xs font-medium text-gray-700 capitalize mb-1">
+          <div className="text-xs font-medium text-gray-700 dark:text-gray-300 capitalize mb-1">
             {dataType.replace(/_/g, " ")}
           </div>
-          <div className="text-lg font-semibold text-gray-900">
+          <div className="text-lg font-semibold text-gray-900 dark:text-gray-100">
             {d.rows}{" "}
             <span className="text-xs font-normal text-gray-500">rows</span>
           </div>
@@ -229,12 +229,12 @@ function DbStatusIndicator() {
 
   return (
     <div className="flex items-center gap-4">
-      <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-1.5">
+      <div className="flex items-center gap-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5">
         <span className={`inline-block w-2 h-2 rounded-full ${dotColor}`} />
         <span className="text-xs font-medium text-gray-500">Database</span>
         <span className={`text-xs font-medium ${labelColor}`}>{label}</span>
       </div>
-      <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-1.5">
+      <div className="flex items-center gap-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5">
         <span className="inline-block w-2 h-2 rounded-full bg-green-500" />
         <span className="text-xs font-medium text-gray-500">Windmill</span>
         <span className="text-xs font-medium text-green-700">Connected</span>
@@ -259,7 +259,7 @@ function BackfillEstimateCard({
   const allComplete = state.every((s) => s.backfillComplete);
   if (allComplete) {
     return (
-      <div className="bg-green-50 border border-green-200 rounded-xl px-5 py-4 flex items-center gap-3">
+      <div className="bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-xl px-5 py-4 flex items-center gap-3">
         <span className="text-green-600 text-lg">&#10003;</span>
         <div>
           <span className="text-sm font-medium text-green-800">
@@ -291,7 +291,7 @@ function BackfillEstimateCard({
   }
 
   return (
-    <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4">
+    <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-xl px-5 py-4">
       <div className="flex items-start justify-between">
         <div>
           <h4 className="text-sm font-medium text-amber-900">
@@ -346,7 +346,7 @@ function ScheduleCard({ schedule }: { schedule: WindmillSchedule }) {
   const meta = SCHEDULE_DESCRIPTIONS[name];
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-5">
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
       <div className="flex items-start justify-between mb-3">
         <div>
           <div className="flex items-center gap-2 mb-1">
@@ -355,7 +355,7 @@ function ScheduleCard({ schedule }: { schedule: WindmillSchedule }) {
                 schedule.enabled ? "bg-green-500" : "bg-gray-300"
               }`}
             />
-            <h3 className="text-sm font-semibold text-gray-900">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
               {meta?.title ?? name}
             </h3>
             {!schedule.enabled && (
@@ -364,7 +364,7 @@ function ScheduleCard({ schedule }: { schedule: WindmillSchedule }) {
               </span>
             )}
           </div>
-          <p className="text-sm text-gray-500 max-w-lg leading-relaxed">
+          <p className="text-sm text-gray-500 dark:text-gray-400 max-w-lg leading-relaxed">
             {meta?.description ??
               schedule.summary ??
               "Windmill schedule for Fitbit ingest."}
@@ -373,12 +373,12 @@ function ScheduleCard({ schedule }: { schedule: WindmillSchedule }) {
         <button
           onClick={() => trigger.mutate()}
           disabled={trigger.isPending || !schedule.enabled}
-          className="shrink-0 ml-4 px-3 py-1.5 bg-gray-900 text-white rounded-lg text-xs font-medium hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="shrink-0 ml-4 px-3 py-1.5 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 rounded-lg text-xs font-medium hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {trigger.isPending ? "Triggering..." : "Run Now"}
         </button>
       </div>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 mt-2 pt-2 border-t border-gray-100">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400 mt-2 pt-2 border-t border-gray-100 dark:border-gray-700">
         <span>
           <span className="font-medium text-gray-600">Frequency:</span>{" "}
           {cronToHuman(schedule.schedule)}
@@ -447,10 +447,10 @@ export function Ingest() {
       {/* Page Header + Status */}
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
             Ingest Pipeline
           </h2>
-          <p className="text-sm text-gray-500 mt-1">
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             Fitbit data is ingested into the database via two Windmill
             schedules. Both run the same script with 10 data types — the{" "}
             <strong>Daily Sync</strong> keeps data current, while the{" "}
@@ -474,7 +474,7 @@ export function Ingest() {
           <ScheduleCard key={s.path} schedule={s} />
         ))}
         {schedules.length === 0 && !overview.isLoading && (
-          <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
             <p className="text-sm text-gray-400">
               No schedules found in Windmill.
             </p>
@@ -484,7 +484,7 @@ export function Ingest() {
 
       {/* Active / Queued Jobs */}
       {activeJobs.length > 0 && (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-5">
+        <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-xl p-5">
           <h3 className="text-sm font-medium text-blue-800 mb-3">
             Active & Queued Jobs ({activeJobs.length})
           </h3>
@@ -494,7 +494,7 @@ export function Ingest() {
               return (
                 <div
                   key={job.id}
-                  className="flex items-center justify-between bg-white rounded-lg px-4 py-2.5 border border-blue-100"
+                  className="flex items-center justify-between bg-white dark:bg-gray-800 rounded-lg px-4 py-2.5 border border-blue-100 dark:border-blue-800"
                 >
                   <div className="flex items-center gap-3">
                     <span
@@ -504,7 +504,7 @@ export function Ingest() {
                           : "bg-yellow-400"
                       }`}
                     />
-                    <span className="text-sm font-medium text-gray-900">
+                    <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
                       {job.running ? "Running" : "Queued"}
                     </span>
                     <span
@@ -516,7 +516,7 @@ export function Ingest() {
                       {job.id.slice(0, 8)}
                     </code>
                   </div>
-                  <div className="text-xs text-gray-500">
+                  <div className="text-xs text-gray-500 dark:text-gray-400">
                     {job.running && job.startedAt && (
                       <span>
                         started{" "}
@@ -538,11 +538,11 @@ export function Ingest() {
       )}
 
       {/* Backfill Progress */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5">
-        <h3 className="text-sm font-medium text-gray-500 mb-1">
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
+        <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
           Backfill Progress
         </h3>
-        <p className="text-xs text-gray-400 mb-4">
+        <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">
           Each data type is being backfilled to 365 days of history. Range
           types (HRV, SpO2, etc.) use efficient 30-day batch requests. Once
           all reach 100%, disable the backfill schedule.
@@ -589,10 +589,10 @@ export function Ingest() {
             return (
               <div key={s.dataType}>
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-sm font-medium text-gray-700 capitalize">
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300 capitalize">
                     {s.dataType.replace(/_/g, " ")}
                   </span>
-                  <span className="text-xs text-gray-500">
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
                     {s.backfillComplete ? (
                       <span className="text-green-600 font-medium">
                         Complete
@@ -602,7 +602,7 @@ export function Ingest() {
                     )}
                   </span>
                 </div>
-                <div className="w-full bg-gray-100 rounded-full h-2">
+                <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-2">
                   <div
                     className={`h-2 rounded-full transition-all ${
                       s.backfillComplete ? "bg-green-500" : "bg-blue-500"
@@ -694,7 +694,7 @@ export function Ingest() {
 
               {/* OAuth scope warning */}
               {scopeMissing.length > 0 && (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-3">
+                <div className="bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 rounded-lg px-4 py-3">
                   <div className="flex items-start gap-2">
                     <span className="text-yellow-500 text-sm mt-0.5">&#9888;</span>
                     <div>
@@ -729,11 +729,11 @@ export function Ingest() {
       </div>
 
       {/* Job History */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5">
-        <h3 className="text-sm font-medium text-gray-500 mb-1">
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
+        <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
           Job History
         </h3>
-        <p className="text-xs text-gray-400 mb-4">
+        <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">
           Click a row to see per-data-type details. Rows and errors come from
           the database; source and timing from Windmill.
         </p>
@@ -772,7 +772,7 @@ export function Ingest() {
                   </span>
 
                   {/* Timestamp */}
-                  <span className="text-sm text-gray-600 w-44 shrink-0">
+                  <span className="text-sm text-gray-600 dark:text-gray-400 w-44 shrink-0">
                     {job.startedAt
                       ? new Date(job.startedAt).toLocaleString()
                       : "—"}
@@ -805,7 +805,7 @@ export function Ingest() {
                   </span>
 
                   {/* Summary stats */}
-                  <span className="text-sm text-gray-600 ml-auto flex items-center gap-3">
+                  <span className="text-sm text-gray-600 dark:text-gray-400 ml-auto flex items-center gap-3">
                     {dbRun ? (
                       <>
                         <span>
@@ -836,7 +836,7 @@ export function Ingest() {
 
                 {/* Expanded detail */}
                 {isExpanded && (
-                  <div className="ml-9 mr-4 mt-1 mb-2 p-3 bg-gray-50 rounded-lg border border-gray-100">
+                  <div className="ml-9 mr-4 mt-1 mb-2 p-3 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-100 dark:border-gray-700">
                     {hasDetails ? (
                       <DetailBreakdown details={dbRun!.details!} />
                     ) : dbRun ? (

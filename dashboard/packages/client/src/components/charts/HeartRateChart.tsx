@@ -8,13 +8,15 @@ import {
   Tooltip,
 } from "recharts";
 import type { HeartRateDay } from "@health-dashboard/shared";
+import { useChartTheme } from "../../stores/themeStore";
 
 interface Props {
   data: HeartRateDay[];
 }
 
 export function HeartRateChart({ data }: Props) {
-  // Compute 7-day moving average
+  const ct = useChartTheme();
+
   const chartData = data.map((d, i) => {
     const window = data.slice(Math.max(0, i - 6), i + 1);
     const validValues = window
@@ -32,14 +34,14 @@ export function HeartRateChart({ data }: Props) {
   });
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-5">
-      <h3 className="text-sm font-medium text-gray-500 mb-4">Resting Heart Rate</h3>
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
+      <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-4">Resting Heart Rate</h3>
       <ResponsiveContainer width="100%" height={280}>
         <LineChart data={chartData}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-          <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-          <YAxis domain={["dataMin - 5", "dataMax + 5"]} tick={{ fontSize: 11 }} />
-          <Tooltip />
+          <CartesianGrid strokeDasharray="3 3" stroke={ct.grid} />
+          <XAxis dataKey="date" tick={ct.tick} />
+          <YAxis domain={["dataMin - 5", "dataMax + 5"]} tick={ct.tick} />
+          <Tooltip contentStyle={ct.tooltip.contentStyle} labelStyle={ct.tooltip.labelStyle} itemStyle={ct.tooltip.itemStyle} />
           <Line
             type="monotone"
             dataKey="rhr"

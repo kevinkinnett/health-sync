@@ -13,6 +13,7 @@ vi.mock("../api/client", () => ({
   apiFetch: vi.fn(() => Promise.resolve([])),
 }));
 
+
 function renderWithProviders(initialRoute = "/") {
   const queryClient = new QueryClient({
     defaultOptions: {
