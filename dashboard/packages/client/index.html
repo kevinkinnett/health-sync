@@ -1,20 +1,21 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <script>
-      (function(){var m=localStorage.getItem("theme")||"system";var d=m==="dark"||(m==="system"&&matchMedia("(prefers-color-scheme:dark)").matches);if(d)document.documentElement.classList.add("dark");})();
-    </script>
+    <script>document.documentElement.classList.add("dark");</script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Personal health metrics dashboard — activity, sleep, heart rate, HRV, and more." />
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f9fafb" />
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#030712" />
+    <meta name="theme-color" content="#0b1326" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" type="image/png" sizes="64x64" href="/icon-64.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <title>Health Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
+    <title>Vitalis</title>
   </head>
   <body>
     <div id="root"></div>

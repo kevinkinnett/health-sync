@@ -28,12 +28,12 @@ const tabs = [
 ] as const;
 type Tab = (typeof tabs)[number];
 
-const thClass = "text-left py-2 pr-4 text-gray-500 dark:text-gray-400 font-medium";
-const thRightClass = "text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium";
-const tdClass = "py-1.5 pr-4 text-gray-900 dark:text-gray-100";
-const tdRightClass = "text-right py-1.5 px-2 text-gray-700 dark:text-gray-300";
-const trClass = "border-b border-gray-50 dark:border-gray-700/50";
-const trHeadClass = "border-b border-gray-100 dark:border-gray-700";
+const thClass = "text-left py-3 px-6 text-outline font-semibold uppercase text-xs tracking-wider";
+const thRightClass = "text-right py-3 px-6 text-outline font-semibold uppercase text-xs tracking-wider";
+const tdClass = "py-3 px-6 text-on-surface tabular-nums";
+const tdRightClass = "text-right py-3 px-6 text-on-surface-variant tabular-nums";
+const trClass = "border-b border-outline-variant/5 hover:bg-surface-container-high transition-colors";
+const trHeadClass = "bg-surface-container-low border-b border-outline-variant/10";
 
 function DataTable({
   title,
@@ -45,8 +45,14 @@ function DataTable({
   children: React.ReactNode;
 }) {
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-      <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-3">{title}</h3>
+    <div className="bg-surface-container rounded-xl overflow-hidden">
+      <div className="p-6 flex items-center justify-between">
+        <h3 className="font-headline font-semibold text-lg text-on-surface">{title}</h3>
+        <button className="flex items-center gap-2 text-primary font-bold text-xs uppercase tracking-wider">
+          <span className="material-symbols-outlined text-sm">download</span>
+          <span>Export CSV</span>
+        </button>
+      </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -76,23 +82,35 @@ export function Explore() {
 
   return (
     <div className="space-y-6">
-      {heatmap.data && <DayOfWeekHeatmap data={heatmap.data} />}
+      {/* Header */}
+      <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div>
+          <h1 className="font-headline text-3xl font-bold tracking-tight text-on-surface">
+            Explore Analytics
+          </h1>
+          <p className="text-on-surface-variant mt-1">
+            Deep-dive into performance correlations and weekly patterns.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-1 p-1.5 bg-surface-container-low rounded-2xl border border-outline-variant/10">
+          {tabs.map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-5 py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${
+                activeTab === tab
+                  ? "bg-primary text-on-primary-fixed"
+                  : "text-outline hover:text-on-surface"
+              }`}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
+      </header>
 
-      <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5 w-fit">
-        {tabs.map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
-              activeTab === tab
-                ? "bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm"
-                : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
-            }`}
-          >
-            {tab}
-          </button>
-        ))}
-      </div>
+      {/* Heatmap (always visible) */}
+      {heatmap.data && <DayOfWeekHeatmap data={heatmap.data} />}
 
       {activeTab === "Activity" && activity.data && (
         <div className="space-y-4">

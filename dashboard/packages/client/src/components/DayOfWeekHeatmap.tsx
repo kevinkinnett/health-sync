@@ -1,46 +1,40 @@
 import type { DayOfWeekHeatmapData, DayOfWeekHeatmapRow } from "@health-dashboard/shared";
 
-function interpolateColor(t: number, isDark: boolean): string {
-  // t is 0..1 where 0 = low, 1 = high
-  // Light: white -> indigo-100 -> indigo-500
-  // Dark:  gray-800 -> indigo-900 -> indigo-400
-  if (isDark) {
-    const r = Math.round(30 + t * (99 - 30));
-    const g = Math.round(41 + t * (102 - 41));
-    const b = Math.round(59 + t * (241 - 59));
-    return `rgb(${r}, ${g}, ${b})`;
-  }
-  const r = Math.round(255 - t * (255 - 99));
-  const g = Math.round(255 - t * (255 - 102));
-  const b = Math.round(255 - t * (255 - 241));
+// Map metric type to accent color hue for the heatmap
+function getColorForMetric(metric: string): { r0: number; g0: number; b0: number; r1: number; g1: number; b1: number } {
+  // Activity metrics -> primary (indigo)
+  if (metric.includes("step") || metric.includes("active") || metric.includes("calor") || metric.includes("dist"))
+    return { r0: 23, g0: 31, b0: 51, r1: 192, g1: 193, b1: 255 }; // surface-container -> primary
+  // Sleep metrics -> secondary (emerald)
+  if (metric.includes("sleep") || metric.includes("deep") || metric.includes("rem") || metric.includes("eff"))
+    return { r0: 23, g0: 31, b0: 51, r1: 78, g1: 222, b1: 163 }; // -> secondary
+  // HR metrics -> tertiary (rose)
+  if (metric.includes("heart") || metric.includes("hr") || metric.includes("resting"))
+    return { r0: 23, g0: 31, b0: 51, r1: 255, g1: 178, b1: 183 }; // -> tertiary
+  // Default -> primary
+  return { r0: 23, g0: 31, b0: 51, r1: 192, g1: 193, b1: 255 };
+}
+
+function interpolateColor(t: number, metric: string): string {
+  const c = getColorForMetric(metric);
+  const r = Math.round(c.r0 + t * (c.r1 - c.r0));
+  const g = Math.round(c.g0 + t * (c.g1 - c.g0));
+  const b = Math.round(c.b0 + t * (c.b1 - c.b0));
   return `rgb(${r}, ${g}, ${b})`;
 }
 
-function CellValue({
-  row,
-  dayIndex,
-  isDark,
-}: {
-  row: DayOfWeekHeatmapRow;
-  dayIndex: number;
-  isDark: boolean;
-}) {
+function CellValue({ row, dayIndex }: { row: DayOfWeekHeatmapRow; dayIndex: number }) {
   const val = row.values[dayIndex];
   if (val == null) {
     return (
-      <td className="p-1.5">
-        <div className="rounded-md h-10 flex items-center justify-center bg-gray-50 dark:bg-gray-800">
-          <span className="text-[10px] text-gray-300 dark:text-gray-600">--</span>
-        </div>
-      </td>
+      <td className="px-4 py-4 text-center text-outline">--</td>
     );
   }
 
   const range = row.max - row.min;
   const t = range === 0 ? 0.5 : (val - row.min) / range;
-  const bg = interpolateColor(t, isDark);
-  // High contrast text: dark text on light bg, light text on dark bg
-  const textColor = t > 0.5 ? "text-white" : isDark ? "text-gray-200" : "text-gray-700";
+  const bg = interpolateColor(t, row.metric);
+  const isBold = t > 0.8;
 
   const formatted =
     row.unit === "km"
@@ -50,83 +44,62 @@ function CellValue({
         : val.toLocaleString();
 
   return (
-    <td className="p-1.5">
-      <div
-        className={`rounded-md h-10 flex flex-col items-center justify-center ${textColor}`}
-        style={{ backgroundColor: bg }}
-        title={`${row.label}: ${formatted} ${row.unit}`}
-      >
-        <span className="text-xs font-semibold leading-tight">{formatted}</span>
-      </div>
+    <td
+      className={`px-4 py-4 text-center tabular-nums ${isBold ? "font-bold" : ""}`}
+      style={{ backgroundColor: bg }}
+      title={`${row.label}: ${formatted} ${row.unit}`}
+    >
+      {formatted}
     </td>
   );
 }
 
 export function DayOfWeekHeatmap({ data }: { data: DayOfWeekHeatmapData }) {
-  const isDark = document.documentElement.classList.contains("dark");
-
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-      <div className="flex items-baseline justify-between mb-4">
-        <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-          Day-of-Week Patterns
+    <div className="bg-surface-container rounded-xl overflow-hidden">
+      <div className="p-6 border-b border-outline-variant/10 flex items-center justify-between">
+        <h2 className="font-headline font-semibold text-lg text-on-surface">
+          Weekly Performance Heatmap
         </h2>
-        <span className="text-xs text-gray-400 dark:text-gray-500">
-          Based on {data.totalDays} days of data
-        </span>
+        <div className="flex items-center gap-2">
+          <div className="flex gap-1">
+            <div className="w-3 h-3 bg-primary/20 rounded-sm" />
+            <div className="w-3 h-3 bg-primary/50 rounded-sm" />
+            <div className="w-3 h-3 bg-primary/80 rounded-sm" />
+            <div className="w-3 h-3 bg-primary rounded-sm" />
+          </div>
+          <span className="text-xs text-outline tabular-nums ml-2">
+            {data.totalDays} days
+          </span>
+        </div>
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full">
+        <table className="w-full text-left text-sm border-collapse">
           <thead>
-            <tr>
-              <th className="text-left text-xs font-medium text-gray-500 dark:text-gray-400 pb-2 pr-3 w-28">
-                Metric
-              </th>
-              {data.dayNames.map((name, i) => (
-                <th
-                  key={name}
-                  className="text-center text-xs font-medium text-gray-500 dark:text-gray-400 pb-2 px-1"
-                >
-                  <div>{name}</div>
-                  <div className="text-[10px] text-gray-300 dark:text-gray-600 font-normal">
-                    {data.dayCounts[i]}d
-                  </div>
+            <tr className="bg-surface-container-low">
+              <th className="px-6 py-4 font-semibold text-outline">METRIC</th>
+              {data.dayNames.map((name) => (
+                <th key={name} className="px-4 py-4 font-semibold text-outline text-center">
+                  {name}
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody>
+          <tbody className="tabular-nums">
             {data.rows.map((row) => (
-              <tr key={row.metric}>
-                <td className="text-xs text-gray-600 dark:text-gray-300 pr-3 py-0.5 whitespace-nowrap">
+              <tr key={row.metric} className="border-b border-outline-variant/5">
+                <td className="px-6 py-4 font-medium text-on-surface">
                   {row.label}
-                  <span className="text-gray-400 dark:text-gray-500 ml-1 text-[10px]">
-                    {row.unit}
-                  </span>
+                  <span className="text-outline ml-1 text-xs">{row.unit}</span>
                 </td>
                 {data.dayNames.map((_, i) => (
-                  <CellValue key={i} row={row} dayIndex={i} isDark={isDark} />
+                  <CellValue key={i} row={row} dayIndex={i} />
                 ))}
               </tr>
             ))}
           </tbody>
         </table>
-      </div>
-
-      {/* Color scale legend */}
-      <div className="flex items-center justify-end gap-2 mt-3">
-        <span className="text-[10px] text-gray-400 dark:text-gray-500">Low</span>
-        <div className="flex h-2 rounded-full overflow-hidden w-24">
-          {Array.from({ length: 10 }).map((_, i) => (
-            <div
-              key={i}
-              className="flex-1"
-              style={{ backgroundColor: interpolateColor(i / 9, isDark) }}
-            />
-          ))}
-        </div>
-        <span className="text-[10px] text-gray-400 dark:text-gray-500">High</span>
       </div>
     </div>
   );

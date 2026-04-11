@@ -26,8 +26,8 @@ export function HeartRateChart({ data }: Props) {
   }));
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-      <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-4">Resting Heart Rate</h3>
+    <div className="bg-surface-container rounded-xl p-5">
+      <h3 className="text-sm font-headline font-semibold text-on-surface mb-4">Resting Heart Rate</h3>
       <ResponsiveContainer width="100%" height={280}>
         <LineChart data={chartData}>
           <CartesianGrid strokeDasharray="3 3" stroke={ct.grid} />
@@ -37,7 +37,7 @@ export function HeartRateChart({ data }: Props) {
           <Line
             type="monotone"
             dataKey="rhr"
-            stroke="#ef4444"
+            stroke="#ffb2b7"
             strokeWidth={1.5}
             dot={{ r: 2 }}
             connectNulls
@@ -46,7 +46,7 @@ export function HeartRateChart({ data }: Props) {
           <Line
             type="monotone"
             dataKey="ma7d"
-            stroke="#dc2626"
+            stroke="#ff8a93"
             strokeWidth={2}
             dot={false}
             strokeDasharray="5 3"

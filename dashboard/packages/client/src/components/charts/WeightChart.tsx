@@ -19,9 +19,9 @@ export function WeightChart({ data }: Props) {
 
   if (data.length === 0) {
     return (
-      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-        <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-4">Weight</h3>
-        <div className="h-[280px] flex items-center justify-center text-gray-400 text-sm">
+      <div className="bg-surface-container rounded-xl p-5">
+        <h3 className="text-sm font-headline font-semibold text-on-surface mb-4">Weight</h3>
+        <div className="h-[280px] flex items-center justify-center text-outline text-sm">
           No weight data yet
         </div>
       </div>
@@ -34,8 +34,8 @@ export function WeightChart({ data }: Props) {
   }));
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-      <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-4">Weight</h3>
+    <div className="bg-surface-container rounded-xl p-5">
+      <h3 className="text-sm font-headline font-semibold text-on-surface mb-4">Weight</h3>
       <ResponsiveContainer width="100%" height={280}>
         <LineChart data={chartData}>
           <CartesianGrid strokeDasharray="3 3" stroke={ct.grid} />
@@ -45,9 +45,9 @@ export function WeightChart({ data }: Props) {
           <Line
             type="monotone"
             dataKey="weight"
-            stroke="#10b981"
+            stroke="#4edea3"
             strokeWidth={2}
-            dot={{ r: 3, fill: "#10b981" }}
+            dot={{ r: 3, fill: "#4edea3" }}
             connectNulls
             name="Weight (kg)"
           />

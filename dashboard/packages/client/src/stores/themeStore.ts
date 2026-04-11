@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type ThemeMode = "system" | "light" | "dark";
+export type ThemeMode = "dark";
 
 interface ThemeState {
   mode: ThemeMode;
@@ -8,56 +8,27 @@ interface ThemeState {
   setMode: (mode: ThemeMode) => void;
 }
 
-function resolveIsDark(mode: ThemeMode): boolean {
-  if (mode === "dark") return true;
-  if (mode === "light") return false;
-  return window.matchMedia("(prefers-color-scheme: dark)").matches;
-}
-
-function applyClass(isDark: boolean) {
-  document.documentElement.classList.toggle("dark", isDark);
-}
-
-const savedMode =
-  (localStorage.getItem("theme") as ThemeMode) || "system";
-const initialIsDark = resolveIsDark(savedMode);
-applyClass(initialIsDark);
-
-export const useThemeStore = create<ThemeState>((set) => ({
-  mode: savedMode,
-  isDark: initialIsDark,
-  setMode: (mode) => {
-    localStorage.setItem("theme", mode);
-    const isDark = resolveIsDark(mode);
-    applyClass(isDark);
-    set({ mode, isDark });
+export const useThemeStore = create<ThemeState>(() => ({
+  mode: "dark",
+  isDark: true,
+  setMode: () => {
+    // dark-only design system
   },
 }));
 
-window
-  .matchMedia("(prefers-color-scheme: dark)")
-  .addEventListener("change", () => {
-    const { mode } = useThemeStore.getState();
-    if (mode === "system") {
-      const isDark = resolveIsDark("system");
-      applyClass(isDark);
-      useThemeStore.setState({ isDark });
-    }
-  });
-
 export function useChartTheme() {
-  const isDark = useThemeStore((s) => s.isDark);
   return {
-    grid: isDark ? "#374151" : "#f0f0f0",
-    tick: { fontSize: 11, fill: isDark ? "#9ca3af" : "#6b7280" },
+    grid: "#222a3d",
+    tick: { fontSize: 11, fill: "#908fa0" },
     tooltip: {
       contentStyle: {
-        backgroundColor: isDark ? "#1f2937" : "#fff",
-        border: `1px solid ${isDark ? "#374151" : "#e5e7eb"}`,
-        borderRadius: 8,
+        backgroundColor: "#171f33",
+        border: "1px solid rgba(70, 69, 84, 0.15)",
+        borderRadius: 12,
+        boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
       },
-      labelStyle: { color: isDark ? "#e5e7eb" : "#111827" },
-      itemStyle: { color: isDark ? "#d1d5db" : "#374151" },
+      labelStyle: { color: "#dae2fd", fontFamily: "Manrope", fontWeight: 600 },
+      itemStyle: { color: "#c7c4d7" },
     },
   };
 }

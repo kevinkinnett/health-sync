@@ -1,14 +1,14 @@
 const statusStyles: Record<string, string> = {
-  completed: "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400",
-  partial: "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400",
-  running: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400",
-  failed: "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400",
+  completed: "bg-secondary/10 text-secondary",
+  partial: "bg-tertiary/10 text-tertiary",
+  running: "bg-primary/10 text-primary",
+  failed: "bg-error/10 text-error",
 };
 
 export function StatusBadge({ status }: { status: string }) {
-  const style = statusStyles[status] ?? "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300";
+  const style = statusStyles[status] ?? "bg-surface-container-highest text-on-surface-variant";
   return (
-    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${style}`}>
+    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${style}`}>
       {status}
     </span>
   );

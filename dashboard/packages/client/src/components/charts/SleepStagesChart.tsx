@@ -30,8 +30,8 @@ export function SleepStagesChart({ data }: Props) {
   }));
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-      <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-4">Sleep Stages</h3>
+    <div className="bg-surface-container rounded-xl p-5">
+      <h3 className="text-sm font-headline font-semibold text-on-surface mb-4">Sleep Stages</h3>
       <ResponsiveContainer width="100%" height={280}>
         <ComposedChart data={chartData}>
           <CartesianGrid strokeDasharray="3 3" stroke={ct.grid} />
@@ -39,14 +39,14 @@ export function SleepStagesChart({ data }: Props) {
           <YAxis tick={ct.tick} label={{ value: "min", angle: -90, position: "insideLeft", style: { fontSize: 11, fill: ct.tick.fill } }} />
           <Tooltip contentStyle={ct.tooltip.contentStyle} labelStyle={ct.tooltip.labelStyle} itemStyle={ct.tooltip.itemStyle} />
           <Legend />
-          <Bar dataKey="deep" stackId="sleep" fill="#1e40af" name="Deep" />
-          <Bar dataKey="light" stackId="sleep" fill="#60a5fa" name="Light" />
-          <Bar dataKey="rem" stackId="sleep" fill="#a78bfa" name="REM" />
-          <Bar dataKey="wake" stackId="sleep" fill="#fbbf24" name="Wake" />
+          <Bar dataKey="deep" stackId="sleep" fill="#0d7a5f" name="Deep" />
+          <Bar dataKey="light" stackId="sleep" fill="#4edea3" name="Light" />
+          <Bar dataKey="rem" stackId="sleep" fill="#80ebc2" name="REM" />
+          <Bar dataKey="wake" stackId="sleep" fill="#ffb2b7" name="Wake" />
           <Line
             type="monotone"
             dataKey="sleepMA"
-            stroke="#1e3a5f"
+            stroke="#0a5e49"
             strokeWidth={2}
             dot={false}
             strokeDasharray="5 3"

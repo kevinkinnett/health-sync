@@ -39,11 +39,11 @@ export function HrvChart({ data }: Props) {
   });
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-      <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+    <div className="bg-surface-container rounded-xl p-5">
+      <h3 className="text-sm font-headline font-semibold text-on-surface mb-1">
         Heart Rate Variability (RMSSD)
       </h3>
-      <p className="text-xs text-gray-400 mb-4">
+      <p className="text-xs text-outline mb-4">
         Higher HRV generally indicates better cardiovascular fitness and
         recovery. Deep sleep RMSSD reflects parasympathetic activity during
         restorative sleep.
@@ -72,7 +72,7 @@ export function HrvChart({ data }: Props) {
           <Line
             type="monotone"
             dataKey="dailyRmssd"
-            stroke="#8b5cf6"
+            stroke="#c0c1ff"
             strokeWidth={1.5}
             dot={{ r: 1.5 }}
             connectNulls
@@ -81,7 +81,7 @@ export function HrvChart({ data }: Props) {
           <Line
             type="monotone"
             dataKey="deepRmssd"
-            stroke="#6366f1"
+            stroke="#4edea3"
             strokeWidth={1.5}
             dot={{ r: 1.5 }}
             connectNulls
@@ -90,7 +90,7 @@ export function HrvChart({ data }: Props) {
           <Line
             type="monotone"
             dataKey="ma7d"
-            stroke="#7c3aed"
+            stroke="#9b9dff"
             strokeWidth={2.5}
             dot={false}
             strokeDasharray="5 3"

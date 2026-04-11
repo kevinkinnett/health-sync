@@ -88,32 +88,32 @@ export function SleepTimingChart({ data }: Props) {
   const maxTime = Math.max(...allTimes) + 30;
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
+    <div className="bg-surface-container rounded-xl p-5">
       <div className="flex items-baseline justify-between mb-4">
-        <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Sleep Timing</h3>
+        <h3 className="text-sm font-headline font-semibold text-on-surface">Sleep Timing</h3>
         <div className="flex gap-4">
           <div className="text-center">
-            <div className="text-lg font-bold text-gray-900 dark:text-gray-100">
+            <div className="text-lg font-bold text-on-surface">
               {bedConsistency.score}
             </div>
-            <div className="text-[10px] text-gray-400 dark:text-gray-500">Bedtime Score</div>
+            <div className="text-[10px] text-outline">Bedtime Score</div>
           </div>
           <div className="text-center">
-            <div className="text-lg font-bold text-gray-900 dark:text-gray-100">
+            <div className="text-lg font-bold text-on-surface">
               {wakeConsistency.score}
             </div>
-            <div className="text-[10px] text-gray-400 dark:text-gray-500">Wake Score</div>
+            <div className="text-[10px] text-outline">Wake Score</div>
           </div>
         </div>
       </div>
 
       {/* Avg times */}
-      <div className="flex gap-4 mb-3 text-xs text-gray-500 dark:text-gray-400">
-        <span>Avg bedtime: <span className="font-medium text-gray-700 dark:text-gray-300">{minutesToTimeLabel(Math.round(avgBedtime))}</span></span>
+      <div className="flex gap-4 mb-3 text-xs text-on-surface-variant">
+        <span>Avg bedtime: <span className="font-medium text-on-surface">{minutesToTimeLabel(Math.round(avgBedtime))}</span></span>
         {avgWaketime != null && (
-          <span>Avg wake: <span className="font-medium text-gray-700 dark:text-gray-300">{minutesToTimeLabel(Math.round(avgWaketime))}</span></span>
+          <span>Avg wake: <span className="font-medium text-on-surface">{minutesToTimeLabel(Math.round(avgWaketime))}</span></span>
         )}
-        <span>Bedtime spread: <span className="font-medium text-gray-700 dark:text-gray-300">{Math.round(bedConsistency.stdDev)} min</span></span>
+        <span>Bedtime spread: <span className="font-medium text-on-surface">{Math.round(bedConsistency.stdDev)} min</span></span>
       </div>
 
       <ResponsiveContainer width="100%" height={220}>
@@ -145,20 +145,20 @@ export function SleepTimingChart({ data }: Props) {
           <Legend />
           <ReferenceLine
             y={avgBedtime}
-            stroke="#6366f1"
+            stroke="#c0c1ff"
             strokeDasharray="5 5"
             strokeOpacity={0.5}
           />
           {avgWaketime != null && (
             <ReferenceLine
               y={avgWaketime}
-              stroke="#f59e0b"
+              stroke="#4edea3"
               strokeDasharray="5 5"
               strokeOpacity={0.5}
             />
           )}
-          <Scatter name="Bedtime" data={chartBedtimes} fill="#6366f1" r={3} />
-          <Scatter name="Wake" data={chartWaketimes} fill="#f59e0b" r={3} />
+          <Scatter name="Bedtime" data={chartBedtimes} fill="#c0c1ff" r={3} />
+          <Scatter name="Wake" data={chartWaketimes} fill="#4edea3" r={3} />
         </ScatterChart>
       </ResponsiveContainer>
     </div>

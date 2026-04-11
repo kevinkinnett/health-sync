@@ -15,10 +15,10 @@ import type { HeartRateDay } from "@health-dashboard/shared";
 import { useChartTheme } from "../../stores/themeStore";
 
 const ZONE_COLORS = {
-  outOfRange: "#94a3b8",
-  fatBurn: "#22c55e",
-  cardio: "#f59e0b",
-  peak: "#ef4444",
+  outOfRange: "#938f99",
+  fatBurn: "#4edea3",
+  cardio: "#c0c1ff",
+  peak: "#ffb2b7",
 };
 
 interface Props {
@@ -59,8 +59,8 @@ export function HrZoneChart({ data }: Props) {
     : 0;
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-      <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-4">
+    <div className="bg-surface-container rounded-xl p-5">
+      <h3 className="text-sm font-headline font-semibold text-on-surface mb-4">
         Heart Rate Zones
       </h3>
 
@@ -93,10 +93,10 @@ export function HrZoneChart({ data }: Props) {
             </ResponsiveContainer>
           </div>
           <div className="text-center mt-1">
-            <div className="text-lg font-bold text-gray-900 dark:text-gray-100">
+            <div className="text-lg font-bold text-on-surface">
               {avgPerDay} min/day
             </div>
-            <div className="text-[10px] text-gray-400 dark:text-gray-500">
+            <div className="text-[10px] text-outline">
               Avg active zone minutes
             </div>
           </div>
@@ -111,19 +111,19 @@ export function HrZoneChart({ data }: Props) {
           ].map((zone) => (
             <div
               key={zone.label}
-              className="rounded-lg border border-gray-100 dark:border-gray-700 p-3 text-center"
+              className="rounded-lg bg-surface-container-high p-3 text-center"
             >
               <div
                 className="w-2 h-2 rounded-full mx-auto mb-1"
                 style={{ backgroundColor: zone.color }}
               />
-              <span className="text-xs text-gray-500 dark:text-gray-400">
+              <span className="text-xs text-on-surface-variant">
                 {zone.label}
               </span>
-              <div className="text-lg font-bold text-gray-900 dark:text-gray-100">
+              <div className="text-lg font-bold text-on-surface">
                 {zone.total} min
               </div>
-              <div className="text-[10px] text-gray-400 dark:text-gray-500">
+              <div className="text-[10px] text-outline">
                 {data.length > 0 ? Math.round(zone.total / data.length) : 0} min/day
               </div>
             </div>

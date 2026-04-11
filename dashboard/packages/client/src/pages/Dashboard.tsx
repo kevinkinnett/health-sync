@@ -29,51 +29,61 @@ export function Dashboard() {
   const weight = useWeight();
 
   if (summary.isLoading) {
-    return <div className="text-gray-400 text-center py-12">Loading...</div>;
+    return (
+      <div className="flex items-center justify-center py-24">
+        <div className="text-outline text-sm font-medium">Loading...</div>
+      </div>
+    );
   }
 
   const s = summary.data;
 
   return (
     <div className="space-y-6">
-      {/* Weekly Insights */}
-      {insights.data && <WeeklyInsights data={insights.data} />}
-
-      {/* Goal Progress Rings */}
-      {s && <GoalRings summary={s} />}
+      {/* Top Bento: Weekly Insights + Goal Rings */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <div className="xl:col-span-2">
+          {insights.data && <WeeklyInsights data={insights.data} />}
+        </div>
+        <div>{s && <GoalRings summary={s} />}</div>
+      </div>
 
       {/* Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
-          title="Steps"
-          value={s?.activity.latest?.steps ?? null}
+          title="Total Steps"
+          value={s?.activity.latest?.steps?.toLocaleString() ?? null}
           sparkline={s?.activity.sparkline ?? []}
-          color="#6366f1"
+          color="#c0c1ff"
+          icon="footprint"
         />
         <StatCard
-          title="Sleep"
+          title="Rest Duration"
           value={
             s?.sleep.latest?.totalMinutesAsleep != null
-              ? (s.sleep.latest.totalMinutesAsleep / 60).toFixed(1)
+              ? `${Math.floor(s.sleep.latest.totalMinutesAsleep / 60)}:${String(s.sleep.latest.totalMinutesAsleep % 60).padStart(2, "0")}`
               : null
           }
           unit="hrs"
           sparkline={s?.sleep.sparkline ?? []}
-          color="#3b82f6"
+          color="#4edea3"
+          icon="bedtime"
         />
         <StatCard
           title="Resting HR"
           value={s?.heartRate.latest?.restingHeartRate ?? null}
           unit="bpm"
           sparkline={s?.heartRate.sparkline ?? []}
-          color="#ef4444"
+          color="#ffb2b7"
+          icon="favorite"
         />
         <StatCard
-          title="Weight"
+          title="Body Mass"
           value={s?.weight.latest?.weightKg ?? null}
           unit="kg"
           sparkline={s?.weight.sparkline ?? []}
-          color="#10b981"
+          color="#c0c1ff"
+          icon="scale"
         />
       </div>
 
@@ -85,10 +95,8 @@ export function Dashboard() {
         <WeightChart data={weight.data ?? []} />
       </div>
 
-      {/* Records & Streaks */}
+      {/* Records & Correlations */}
       {records.data && <PersonalRecords data={records.data} />}
-
-      {/* Correlations */}
       {correlations.data && <Correlations data={correlations.data} />}
     </div>
   );

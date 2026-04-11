@@ -4,7 +4,6 @@ import {
   useTriggerIngest,
   useHealthCheck,
 } from "../api/queries";
-import { StatusBadge } from "../components/StatusBadge";
 import type {
   WindmillSchedule,
   WindmillCompletedJob,
@@ -31,18 +30,17 @@ function formatDuration(ms: number): string {
 
 function scheduleLabel(path: string | null): { label: string; color: string } {
   if (!path)
-    return { label: "Manual", color: "bg-purple-100 text-purple-700" };
+    return { label: "Manual", color: "bg-primary/10 text-primary" };
   if (path.includes("backfill"))
-    return { label: "Backfill", color: "bg-orange-100 text-orange-700" };
+    return { label: "Backfill", color: "bg-tertiary/10 text-tertiary" };
   if (path.includes("daily"))
-    return { label: "Daily", color: "bg-blue-100 text-blue-700" };
+    return { label: "Daily", color: "bg-secondary/10 text-secondary" };
   return {
     label: path.split("/").pop() ?? path,
-    color: "bg-gray-100 text-gray-700",
+    color: "bg-surface-container-highest text-on-surface-variant",
   };
 }
 
-/** Match a Windmill completed job to a DB ingest_run by overlapping start time (within 5s). */
 function findMatchingRun(
   jobStartedAt: string | null,
   runs: IngestRun[],
@@ -55,13 +53,6 @@ function findMatchingRun(
   });
 }
 
-/**
- * Estimate time to complete backfill based on recent progress.
- *
- * Strategy: look at recent successful runs to compute the average
- * "days of coverage gained per calendar day", then extrapolate
- * from the worst-case (most-remaining) data type.
- */
 function computeBackfillEstimate(
   state: IngestState[],
   runs: IngestRun[],
@@ -73,87 +64,38 @@ function computeBackfillEstimate(
   estimatedDays: number | null;
 } | null {
   if (state.length === 0) return null;
-
-  // Find the data type with the most days remaining
   let worstType = "";
   let maxRemaining = 0;
-
   for (const s of state) {
     if (s.backfillComplete) continue;
-    const earliest = s.earliestFetchedDate
-      ? new Date(s.earliestFetchedDate)
-      : null;
-    const latest = s.latestFetchedDate
-      ? new Date(s.latestFetchedDate)
-      : null;
-    const daysFetched =
-      earliest && latest
-        ? Math.round((latest.getTime() - earliest.getTime()) / 86_400_000)
-        : 0;
+    const earliest = s.earliestFetchedDate ? new Date(s.earliestFetchedDate) : null;
+    const latest = s.latestFetchedDate ? new Date(s.latestFetchedDate) : null;
+    const daysFetched = earliest && latest ? Math.round((latest.getTime() - earliest.getTime()) / 86_400_000) : 0;
     const remaining = Math.max(0, 365 - daysFetched);
-    if (remaining > maxRemaining) {
-      maxRemaining = remaining;
-      worstType = s.dataType;
-    }
+    if (remaining > maxRemaining) { maxRemaining = remaining; worstType = s.dataType; }
   }
-
-  if (maxRemaining === 0) return null; // all complete
-
-  // Calculate average days of data fetched per successful backfill run
-  // by looking at recent DB runs that actually wrote rows
-  const successfulRuns = runs.filter(
-    (r) => (r.rowsWritten ?? 0) > 5 && r.finishedAtUtc,
-  );
-
-  if (successfulRuns.length < 2) {
-    return { worstType, daysRemaining: maxRemaining, daysPerDay: 0, estimatedDays: null };
-  }
-
-  // Compute total days of data fetched across all successful runs for the worst type
+  if (maxRemaining === 0) return null;
+  const successfulRuns = runs.filter((r) => (r.rowsWritten ?? 0) > 5 && r.finishedAtUtc);
+  if (successfulRuns.length < 2) return { worstType, daysRemaining: maxRemaining, daysPerDay: 0, estimatedDays: null };
   let totalDaysFetched = 0;
   for (const r of successfulRuns) {
     if (!r.details) continue;
     const typeDetail = r.details[worstType];
     if (typeDetail && typeDetail.rows > 0) {
-      // Parse range "YYYY-MM-DD to YYYY-MM-DD" to get days covered
       const parts = typeDetail.range.split(" to ");
       if (parts.length === 2) {
-        const start = new Date(parts[0]);
-        const end = new Date(parts[1]);
-        const days = Math.round(
-          (end.getTime() - start.getTime()) / 86_400_000,
-        );
+        const days = Math.round((new Date(parts[1]).getTime() - new Date(parts[0]).getTime()) / 86_400_000);
         if (days > 0) totalDaysFetched += days;
       }
     }
   }
-
-  // Time span of these runs (first to last)
-  const oldest = new Date(
-    successfulRuns[successfulRuns.length - 1].startedAtUtc,
-  );
+  const oldest = new Date(successfulRuns[successfulRuns.length - 1].startedAtUtc);
   const newest = new Date(successfulRuns[0].startedAtUtc);
-  const calendarDaysSpanned = Math.max(
-    1,
-    (newest.getTime() - oldest.getTime()) / 86_400_000,
-  );
-
-  // Also factor in backfill schedule frequency: count successful backfill jobs per day
-  const backfillJobs = completedJobs.filter(
-    (j) => j.success && !j.isSkipped && j.schedulePath?.includes("backfill"),
-  );
-  const successfulBackfillsPerDay =
-    calendarDaysSpanned > 0.1
-      ? backfillJobs.length / calendarDaysSpanned
-      : 12; // default: every 2h = 12/day
-
-  const daysPerDay =
-    totalDaysFetched > 0
-      ? totalDaysFetched / calendarDaysSpanned
-      : successfulBackfillsPerDay * 20; // rough estimate: ~20 days per run
-
+  const calendarDaysSpanned = Math.max(1, (newest.getTime() - oldest.getTime()) / 86_400_000);
+  const backfillJobs = completedJobs.filter((j) => j.success && !j.isSkipped && j.schedulePath?.includes("backfill"));
+  const successfulBackfillsPerDay = calendarDaysSpanned > 0.1 ? backfillJobs.length / calendarDaysSpanned : 12;
+  const daysPerDay = totalDaysFetched > 0 ? totalDaysFetched / calendarDaysSpanned : successfulBackfillsPerDay * 20;
   const estimatedDays = daysPerDay > 0 ? maxRemaining / daysPerDay : null;
-
   return { worstType, daysRemaining: maxRemaining, daysPerDay, estimatedDays };
 }
 
@@ -161,39 +103,19 @@ function computeBackfillEstimate(
 // Sub-components
 // ────────────────────────────────────────────
 
-function DetailBreakdown({
-  details,
-}: {
-  details: Record<string, IngestRunTypeDetail>;
-}) {
+function DetailBreakdown({ details }: { details: Record<string, IngestRunTypeDetail> }) {
   const types = Object.entries(details);
-  if (types.length === 0)
-    return (
-      <span className="text-xs text-gray-400 italic">No type-level data</span>
-    );
-
+  if (types.length === 0) return <span className="text-xs text-outline italic">No type-level data</span>;
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
       {types.map(([dataType, d]) => (
-        <div
-          key={dataType}
-          className="bg-gray-50 dark:bg-gray-900 rounded-lg px-3 py-2 border border-gray-100 dark:border-gray-700"
-        >
-          <div className="text-xs font-medium text-gray-700 dark:text-gray-300 capitalize mb-1">
-            {dataType.replace(/_/g, " ")}
+        <div key={dataType} className="bg-surface-container-low rounded-lg px-3 py-2 border border-outline-variant/5">
+          <div className="text-xs font-medium text-on-surface capitalize mb-1">{dataType.replace(/_/g, " ")}</div>
+          <div className="text-lg font-semibold font-headline tabular-nums text-on-surface">
+            {d.rows} <span className="text-xs font-normal text-outline">rows</span>
           </div>
-          <div className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-            {d.rows}{" "}
-            <span className="text-xs font-normal text-gray-500">rows</span>
-          </div>
-          {d.range && (
-            <div className="text-xs text-gray-400 mt-0.5">{d.range}</div>
-          )}
-          {d.errors > 0 && (
-            <div className="text-xs text-red-500 mt-0.5">
-              {d.errors} error{d.errors > 1 ? "s" : ""}
-            </div>
-          )}
+          {d.range && <div className="text-xs text-outline mt-0.5 tabular-nums">{d.range}</div>}
+          {d.errors > 0 && <div className="text-xs text-error mt-0.5">{d.errors} error{d.errors > 1 ? "s" : ""}</div>}
         </div>
       ))}
     </div>
@@ -202,141 +124,86 @@ function DetailBreakdown({
 
 function DbStatusIndicator() {
   const health = useHealthCheck();
-
   const connected = health.data?.dbConnected === true;
   const loading = health.isLoading;
   const error = health.isError;
 
-  let dotColor = "bg-gray-300";
-  let label = "Checking...";
-  let labelColor = "text-gray-400";
-
-  if (!loading) {
-    if (connected) {
-      dotColor = "bg-green-500";
-      label = "Connected";
-      labelColor = "text-green-700";
-    } else if (error) {
-      dotColor = "bg-red-500";
-      label = "Unreachable";
-      labelColor = "text-red-700";
-    } else {
-      dotColor = "bg-red-500";
-      label = "Disconnected";
-      labelColor = "text-red-700";
-    }
-  }
+  const items = [
+    {
+      label: "Database",
+      status: loading ? "Checking..." : connected ? "Online" : error ? "Unreachable" : "Disconnected",
+      ok: !loading && connected,
+    },
+    { label: "Sync Service", status: "Active", ok: true },
+  ];
 
   return (
-    <div className="flex items-center gap-4">
-      <div className="flex items-center gap-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5">
-        <span className={`inline-block w-2 h-2 rounded-full ${dotColor}`} />
-        <span className="text-xs font-medium text-gray-500">Database</span>
-        <span className={`text-xs font-medium ${labelColor}`}>{label}</span>
-      </div>
-      <div className="flex items-center gap-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5">
-        <span className="inline-block w-2 h-2 rounded-full bg-green-500" />
-        <span className="text-xs font-medium text-gray-500">Windmill</span>
-        <span className="text-xs font-medium text-green-700">Connected</span>
-      </div>
+    <div className="flex flex-wrap gap-3">
+      {items.map((item) => (
+        <div key={item.label} className={`flex items-center gap-2 px-3 py-1.5 rounded-full border ${item.ok ? "bg-secondary/10 text-secondary border-secondary/20" : "bg-error/10 text-error border-error/20"}`}>
+          <span className="relative flex h-2 w-2">
+            {item.ok && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-secondary opacity-75" />}
+            <span className={`relative inline-flex rounded-full h-2 w-2 ${item.ok ? "bg-secondary" : "bg-error"}`} />
+          </span>
+          <span className="text-xs font-semibold uppercase tracking-wider">{item.label}: {item.status}</span>
+        </div>
+      ))}
     </div>
   );
 }
 
 function BackfillEstimateCard({
-  state,
-  runs,
-  completedJobs,
+  state, runs, completedJobs,
 }: {
-  state: IngestState[];
-  runs: IngestRun[];
-  completedJobs: WindmillCompletedJob[];
+  state: IngestState[]; runs: IngestRun[]; completedJobs: WindmillCompletedJob[];
 }) {
   const estimate = computeBackfillEstimate(state, runs, completedJobs);
-
   if (!estimate) return null;
-
   const allComplete = state.every((s) => s.backfillComplete);
   if (allComplete) {
     return (
-      <div className="bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-xl px-5 py-4 flex items-center gap-3">
-        <span className="text-green-600 text-lg">&#10003;</span>
+      <div className="p-4 bg-secondary/10 border-l-4 border-secondary rounded-r-xl flex items-center gap-3">
+        <span className="material-symbols-outlined text-secondary" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
         <div>
-          <span className="text-sm font-medium text-green-800">
-            Backfill complete!
-          </span>
-          <span className="text-xs text-green-600 ml-2">
-            All data types have 365 days of history. You can disable the
-            backfill schedule.
-          </span>
+          <span className="text-sm font-bold text-secondary">Backfill complete!</span>
+          <span className="text-xs text-on-surface-variant ml-2">All data types have 365 days of history.</span>
         </div>
       </div>
     );
   }
-
   const { worstType, daysRemaining, daysPerDay, estimatedDays } = estimate;
-
   let timeStr: string;
-  if (estimatedDays == null || daysPerDay === 0) {
-    timeStr = "Insufficient data to estimate";
-  } else if (estimatedDays < 1) {
-    const hours = Math.max(1, Math.round(estimatedDays * 24));
-    timeStr = `~${hours} hour${hours !== 1 ? "s" : ""}`;
-  } else if (estimatedDays < 30) {
-    const d = Math.round(estimatedDays);
-    timeStr = `~${d} day${d !== 1 ? "s" : ""}`;
-  } else {
-    const weeks = Math.round(estimatedDays / 7);
-    timeStr = `~${weeks} week${weeks !== 1 ? "s" : ""}`;
-  }
+  if (estimatedDays == null || daysPerDay === 0) timeStr = "Insufficient data";
+  else if (estimatedDays < 1) { const h = Math.max(1, Math.round(estimatedDays * 24)); timeStr = `~${h}h`; }
+  else if (estimatedDays < 30) { const d = Math.round(estimatedDays); timeStr = `~${d}d`; }
+  else { const w = Math.round(estimatedDays / 7); timeStr = `~${w}w`; }
 
   return (
-    <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-xl px-5 py-4">
-      <div className="flex items-start justify-between">
-        <div>
-          <h4 className="text-sm font-medium text-amber-900">
-            Estimated time to complete backfill
-          </h4>
-          <p className="text-2xl font-bold text-amber-800 mt-1">{timeStr}</p>
+    <div className="p-4 bg-error-container/10 border-l-4 border-error rounded-r-xl flex items-start gap-4">
+      <span className="material-symbols-outlined text-error mt-0.5" style={{ fontVariationSettings: "'FILL' 1" }}>warning</span>
+      <div className="flex-1">
+        <div className="flex items-center justify-between">
+          <h4 className="text-sm font-bold text-error uppercase tracking-wider">Backfill Estimated Completion</h4>
+          <span className="text-xs text-on-surface-variant">Bottleneck: <span className="capitalize">{worstType.replace(/_/g, " ")}</span></span>
         </div>
-        <div className="text-right text-xs text-amber-700 space-y-0.5">
-          <div>
-            Bottleneck:{" "}
-            <span className="font-medium capitalize">
-              {worstType.replace(/_/g, " ")}
-            </span>
-          </div>
-          <div>
-            {daysRemaining} days remaining of 365
-          </div>
-          {daysPerDay > 0 && (
-            <div>
-              Avg rate: {Math.round(daysPerDay)} days of data / calendar day
-            </div>
-          )}
-        </div>
+        <p className="text-on-surface-variant text-sm mt-1">
+          Estimated time remaining: <span className="text-on-surface font-bold tabular-nums">{timeStr}</span>.
+          {daysPerDay > 0 && <> Throughput: {Math.round(daysPerDay)} days/calendar day. </>}
+          {daysRemaining} of 365 days remaining.
+        </p>
       </div>
     </div>
   );
 }
 
-// ────────────────────────────────────────────
-// Schedule descriptions
-// ────────────────────────────────────────────
-
-const SCHEDULE_DESCRIPTIONS: Record<
-  string,
-  { title: string; description: string }
-> = {
+const SCHEDULE_DESCRIPTIONS: Record<string, { title: string; description: string }> = {
   ingest_fitbit_daily: {
     title: "Daily Sync",
-    description:
-      "Runs once a day at noon UTC (7 AM ET) to fetch yesterday's Fitbit data across 10 data types: activity, sleep, heart rate, body weight, SpO2, HRV, breathing rate, skin temp, VO2 max, and exercise logs. Range-based types (SpO2, HRV, etc.) are fetched first since they cover 30 days per API call, leaving the full budget for daily types.",
+    description: "Incremental updates for all connected telemetry endpoints. Runs once daily at noon UTC.",
   },
   ingest_fitbit_backfill: {
     title: "Historical Backfill",
-    description:
-      "Runs every 2 hours with a 120-request budget to catch up on historical data. Range types (HRV, SpO2, etc.) are processed first at 1 request per 30 days, then exercise logs, then daily types round-robin. Disable this schedule once all progress bars below reach 100%.",
+    description: "Importing deep-history data for trend analysis modeling. Runs every 2 hours with a 120-request budget.",
   },
 };
 
@@ -344,73 +211,42 @@ function ScheduleCard({ schedule }: { schedule: WindmillSchedule }) {
   const trigger = useTriggerIngest();
   const name = schedule.path.split("/").pop() ?? schedule.path;
   const meta = SCHEDULE_DESCRIPTIONS[name];
+  const isBackfill = name.includes("backfill");
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-      <div className="flex items-start justify-between mb-3">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span
-              className={`inline-block w-2.5 h-2.5 rounded-full ${
-                schedule.enabled ? "bg-green-500" : "bg-gray-300"
-              }`}
-            />
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-              {meta?.title ?? name}
-            </h3>
-            {!schedule.enabled && (
-              <span className="text-xs font-medium text-yellow-600 bg-yellow-50 px-2 py-0.5 rounded-full">
-                Disabled
-              </span>
-            )}
-          </div>
-          <p className="text-sm text-gray-500 dark:text-gray-400 max-w-lg leading-relaxed">
-            {meta?.description ??
-              schedule.summary ??
-              "Windmill schedule for Fitbit ingest."}
-          </p>
+    <div className="bg-surface-container p-6 rounded-xl border border-outline-variant/10 relative overflow-hidden">
+      {isBackfill && <div className="absolute top-0 right-0 w-24 h-24 bg-tertiary/5 rounded-full blur-3xl -mr-12 -mt-12" />}
+      <div className="flex items-center justify-between mb-4">
+        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${isBackfill ? "bg-tertiary/10 text-tertiary" : "bg-primary/10 text-primary"}`}>
+          <span className="material-symbols-outlined">{isBackfill ? "history" : "sync"}</span>
+        </div>
+        <span className={`text-[10px] px-2 py-1 rounded-full font-bold tracking-widest uppercase ${
+          schedule.enabled
+            ? isBackfill ? "bg-tertiary-container/20 text-tertiary" : "bg-surface-container-high text-outline"
+            : "bg-surface-container-high text-outline"
+        }`}>
+          {schedule.enabled ? (isBackfill ? "Ongoing" : cronToHuman(schedule.schedule).split(" ").slice(-2).join(" ")) : "Disabled"}
+        </span>
+      </div>
+      <h3 className="text-lg font-bold font-headline text-on-surface">{meta?.title ?? name}</h3>
+      <p className="text-on-surface-variant text-xs mt-1 mb-6 leading-relaxed">{meta?.description ?? schedule.summary ?? "Windmill schedule."}</p>
+      <div className="flex items-center justify-between gap-4">
+        <div className="text-[10px] text-outline font-semibold uppercase tracking-tighter">
+          Cron: <span className="text-on-surface-variant">{schedule.schedule}</span>
         </div>
         <button
           onClick={() => trigger.mutate()}
           disabled={trigger.isPending || !schedule.enabled}
-          className="shrink-0 ml-4 px-3 py-1.5 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 rounded-lg text-xs font-medium hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="bg-surface-container-highest px-4 py-2 rounded-lg text-xs font-bold hover:text-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          {trigger.isPending ? "Triggering..." : "Run Now"}
+          {trigger.isPending ? "Running..." : "Run Now"}
         </button>
       </div>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400 mt-2 pt-2 border-t border-gray-100 dark:border-gray-700">
-        <span>
-          <span className="font-medium text-gray-600">Frequency:</span>{" "}
-          {cronToHuman(schedule.schedule)}
-        </span>
-        <span>
-          <span className="font-medium text-gray-600">Cron:</span>{" "}
-          <code className="bg-gray-50 px-1 rounded">{schedule.schedule}</code>
-        </span>
-        {schedule.nextExecution && (
-          <span>
-            <span className="font-medium text-gray-600">Next:</span>{" "}
-            {new Date(schedule.nextExecution).toLocaleString()}
-          </span>
-        )}
-      </div>
       {trigger.isSuccess && trigger.data.jobId && (
-        <div className="mt-2 text-xs text-green-600">
-          Job triggered:{" "}
-          <code className="bg-green-50 px-1 rounded">
-            {trigger.data.jobId}
-          </code>
-        </div>
-      )}
-      {trigger.isSuccess && !trigger.data.jobId && (
-        <div className="mt-2 text-xs text-yellow-600">
-          {trigger.data.message}
-        </div>
+        <div className="mt-2 text-xs text-secondary">Job triggered: <code className="bg-secondary/10 px-1 rounded tabular-nums">{trigger.data.jobId}</code></div>
       )}
       {trigger.isError && (
-        <div className="mt-2 text-xs text-red-600">
-          Error: {(trigger.error as Error).message}
-        </div>
+        <div className="mt-2 text-xs text-error">Error: {(trigger.error as Error).message}</div>
       )}
     </div>
   );
@@ -425,13 +261,7 @@ export function Ingest() {
   const [expandedJobs, setExpandedJobs] = useState<Set<string>>(new Set());
 
   const { state, runs, activeJobs, completedJobs, schedules } =
-    overview.data ?? {
-      state: [],
-      runs: [],
-      activeJobs: [],
-      completedJobs: [],
-      schedules: [],
-    };
+    overview.data ?? { state: [], runs: [], activeJobs: [], completedJobs: [], schedules: [] };
 
   const toggleExpanded = (jobId: string) => {
     setExpandedJobs((prev) => {
@@ -444,417 +274,185 @@ export function Ingest() {
 
   return (
     <div className="space-y-6">
-      {/* Page Header + Status */}
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+      {/* Header */}
+      <section className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-            Ingest Pipeline
-          </h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Fitbit data is ingested into the database via two Windmill
-            schedules. Both run the same script with 10 data types — the{" "}
-            <strong>Daily Sync</strong> keeps data current, while the{" "}
-            <strong>Backfill</strong> catches up on historical data (disable
-            it once all progress bars are complete).
-          </p>
+          <h1 className="text-3xl font-bold font-headline text-on-surface mb-2">Pipeline Status</h1>
+          <DbStatusIndicator />
         </div>
-        <DbStatusIndicator />
-      </div>
+        <div className="flex gap-3">
+          <button className="bg-surface-container-high px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 border border-outline-variant/15 hover:bg-surface-bright transition-colors">
+            <span className="material-symbols-outlined text-[20px]">refresh</span>
+            Refresh
+          </button>
+        </div>
+      </section>
 
-      {/* Backfill Estimate */}
-      <BackfillEstimateCard
-        state={state}
-        runs={runs}
-        completedJobs={completedJobs}
-      />
+      {/* Backfill Alert */}
+      <BackfillEstimateCard state={state} runs={runs} completedJobs={completedJobs} />
 
-      {/* Schedules */}
-      <div className="space-y-3">
+      {/* Schedule Cards */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {schedules.map((s) => (
           <ScheduleCard key={s.path} schedule={s} />
         ))}
-        {schedules.length === 0 && !overview.isLoading && (
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-            <p className="text-sm text-gray-400">
-              No schedules found in Windmill.
-            </p>
-          </div>
-        )}
       </div>
 
-      {/* Active / Queued Jobs */}
+      {/* Active Jobs */}
       {activeJobs.length > 0 && (
-        <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-xl p-5">
-          <h3 className="text-sm font-medium text-blue-800 mb-3">
-            Active & Queued Jobs ({activeJobs.length})
-          </h3>
-          <div className="space-y-2">
-            {activeJobs.map((job) => {
-              const source = scheduleLabel(job.schedulePath);
-              return (
-                <div
-                  key={job.id}
-                  className="flex items-center justify-between bg-white dark:bg-gray-800 rounded-lg px-4 py-2.5 border border-blue-100 dark:border-blue-800"
-                >
-                  <div className="flex items-center gap-3">
-                    <span
-                      className={`inline-block w-2 h-2 rounded-full ${
-                        job.running
-                          ? "bg-blue-500 animate-pulse"
-                          : "bg-yellow-400"
-                      }`}
-                    />
-                    <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                      {job.running ? "Running" : "Queued"}
-                    </span>
-                    <span
-                      className={`text-xs font-medium px-2 py-0.5 rounded-full ${source.color}`}
-                    >
-                      {source.label}
-                    </span>
-                    <code className="text-xs text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded">
-                      {job.id.slice(0, 8)}
-                    </code>
-                  </div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400">
-                    {job.running && job.startedAt && (
-                      <span>
-                        started{" "}
-                        {new Date(job.startedAt).toLocaleTimeString()}
-                      </span>
-                    )}
-                    {!job.running && job.scheduledFor && (
-                      <span>
-                        scheduled for{" "}
-                        {new Date(job.scheduledFor).toLocaleString()}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+        <div className="bg-surface-container rounded-xl border border-outline-variant/10 overflow-hidden">
+          <div className="px-6 py-4 border-b border-outline-variant/10 flex items-center justify-between">
+            <h3 className="font-bold font-headline text-on-surface">Active & Queued Jobs</h3>
+            <span className="text-[10px] font-bold text-outline uppercase tracking-widest">{activeJobs.filter(j => j.running).length} Running · {activeJobs.filter(j => !j.running).length} Queued</span>
           </div>
+          <table className="w-full text-left">
+            <thead className="bg-surface-container-low text-[10px] text-outline uppercase font-bold tracking-wider">
+              <tr>
+                <th className="px-6 py-3">Job ID</th>
+                <th className="px-6 py-3">Source</th>
+                <th className="px-6 py-3">Status</th>
+                <th className="px-6 py-3 text-right">Started</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-outline-variant/10">
+              {activeJobs.map((job) => {
+                const source = scheduleLabel(job.schedulePath);
+                return (
+                  <tr key={job.id} className="hover:bg-surface-bright/30 transition-colors">
+                    <td className="px-6 py-4">
+                      <div className="text-sm font-bold tabular-nums text-on-surface">{job.id.slice(0, 8)}</div>
+                    </td>
+                    <td className="px-6 py-4"><span className={`text-xs font-bold px-2 py-0.5 rounded-full ${source.color}`}>{source.label}</span></td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-1.5 h-1.5 rounded-full ${job.running ? "bg-secondary shadow-[0_0_8px_#4edea3]" : "bg-outline"}`} />
+                        <span className={`text-xs font-medium ${job.running ? "text-secondary" : "text-outline"}`}>{job.running ? "Processing" : "Queued"}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-right text-xs text-on-surface-variant tabular-nums">
+                      {job.running && job.startedAt ? new Date(job.startedAt).toLocaleTimeString() : "—"}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
 
       {/* Backfill Progress */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-        <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
-          Backfill Progress
-        </h3>
-        <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">
-          Each data type is being backfilled to 365 days of history. Range
-          types (HRV, SpO2, etc.) use efficient 30-day batch requests. Once
-          all reach 100%, disable the backfill schedule.
-        </p>
-        {(() => {
-          const DAILY = ["activity", "sleep", "heart_rate", "body_weight"];
-          const RANGE = ["spo2", "hrv", "breathing_rate", "skin_temp", "vo2_max"];
-          const PAGINATED = ["exercise_log"];
-          const ALL_KNOWN = [...DAILY, ...RANGE, ...PAGINATED];
-          const SCOPE_NAMES: Record<string, string> = {
-            spo2: "oxygen_saturation",
-            breathing_rate: "respiratory_rate",
-            skin_temp: "temperature",
-            vo2_max: "cardio_fitness",
-          };
+      <div className="bg-surface-container rounded-xl border border-outline-variant/10 overflow-hidden">
+        <div className="px-6 py-4 border-b border-outline-variant/10">
+          <h3 className="font-bold font-headline text-on-surface">Backfill Progress by Data Type</h3>
+        </div>
+        <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-6">
+          {(() => {
+            const DAILY = ["activity", "sleep", "heart_rate", "body_weight"];
+            const RANGE = ["spo2", "hrv", "breathing_rate", "skin_temp", "vo2_max"];
+            const PAGINATED = ["exercise_log"];
+            const stateByType = Object.fromEntries(state.map((s) => [s.dataType, s]));
+            const all = [...DAILY, ...RANGE, ...PAGINATED];
+            const colors = ["bg-primary", "bg-secondary", "bg-tertiary", "bg-tertiary-container"];
 
-          // Types present in state
-          const stateByType = Object.fromEntries(
-            state.map((s) => [s.dataType, s]),
-          );
-          // Types that are known but have no state row yet (never fetched or 403)
-          const missingTypes = ALL_KNOWN.filter(
-            (t) => !stateByType[t],
-          );
-
-          const renderBar = (s: IngestState) => {
-            const earliest = s.earliestFetchedDate
-              ? new Date(s.earliestFetchedDate)
-              : null;
-            const latest = s.latestFetchedDate
-              ? new Date(s.latestFetchedDate)
-              : null;
-            const daysFetched =
-              earliest && latest
-                ? Math.round(
-                    (latest.getTime() - earliest.getTime()) / 86_400_000,
-                  )
-                : 0;
-            const pct = Math.min(
-              100,
-              Math.round((daysFetched / 365) * 100),
-            );
-
-            return (
-              <div key={s.dataType}>
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300 capitalize">
-                    {s.dataType.replace(/_/g, " ")}
-                  </span>
-                  <span className="text-xs text-gray-500 dark:text-gray-400">
-                    {s.backfillComplete ? (
-                      <span className="text-green-600 font-medium">
-                        Complete
-                      </span>
-                    ) : (
-                      `${pct}% (${daysFetched}/365 days)`
-                    )}
-                  </span>
-                </div>
-                <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-2">
-                  <div
-                    className={`h-2 rounded-full transition-all ${
-                      s.backfillComplete ? "bg-green-500" : "bg-blue-500"
-                    }`}
-                    style={{
-                      width: `${s.backfillComplete ? 100 : pct}%`,
-                    }}
-                  />
-                </div>
-                <div className="text-xs text-gray-400 mt-0.5">
-                  {s.earliestFetchedDate ?? "—"} to{" "}
-                  {s.latestFetchedDate ?? "—"}
-                  {s.lastSuccessAtUtc && (
-                    <>
-                      {" · "}
-                      Last success:{" "}
-                      {new Date(s.lastSuccessAtUtc).toLocaleString()}
-                    </>
-                  )}
-                </div>
-              </div>
-            );
-          };
-
-          const groupState = (types: string[]) =>
-            types
-              .map((t) => stateByType[t])
-              .filter((s): s is IngestState => s != null);
-
-          const dailyState = groupState(DAILY);
-          const rangeState = groupState(RANGE);
-          const paginatedState = groupState(PAGINATED);
-          const scopeMissing = missingTypes.filter(
-            (t) => SCOPE_NAMES[t],
-          );
-
-          return (
-            <div className="space-y-5">
-              {/* Daily types */}
-              {dailyState.length > 0 && (
-                <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                      Daily Types
-                    </span>
-                    <span className="text-xs text-gray-300">
-                      1 API call per day per type
-                    </span>
+            return all.map((t, i) => {
+              const s = stateByType[t];
+              if (!s) return null;
+              const earliest = s.earliestFetchedDate ? new Date(s.earliestFetchedDate) : null;
+              const latest = s.latestFetchedDate ? new Date(s.latestFetchedDate) : null;
+              const daysFetched = earliest && latest ? Math.round((latest.getTime() - earliest.getTime()) / 86_400_000) : 0;
+              const pct = Math.min(100, Math.round((daysFetched / 365) * 100));
+              const barColor = s.backfillComplete ? "bg-secondary" : colors[i % colors.length];
+              return (
+                <div key={t} className="space-y-2">
+                  <div className="flex justify-between text-xs font-bold uppercase tracking-wider">
+                    <span className="text-on-surface-variant capitalize">{t.replace(/_/g, " ")}</span>
+                    <span className="text-on-surface tabular-nums">{s.backfillComplete ? "100%" : `${pct}%`}</span>
                   </div>
-                  <div className="space-y-4">
-                    {dailyState.map(renderBar)}
+                  <div className="h-2 w-full bg-surface-container-high rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full ${barColor}`} style={{ width: `${s.backfillComplete ? 100 : pct}%` }} />
                   </div>
+                  <p className="text-[10px] text-outline tabular-nums">
+                    {s.backfillComplete ? "Completed" : `${s.earliestFetchedDate ?? "—"} to ${s.latestFetchedDate ?? "—"}`}
+                  </p>
                 </div>
-              )}
-
-              {/* Range types */}
-              {rangeState.length > 0 && (
-                <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                      Range Types
-                    </span>
-                    <span className="text-xs text-gray-300">
-                      1 API call per 30 days
-                    </span>
-                  </div>
-                  <div className="space-y-4">
-                    {rangeState.map(renderBar)}
-                  </div>
-                </div>
-              )}
-
-              {/* Paginated types */}
-              {paginatedState.length > 0 && (
-                <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                      Paginated Types
-                    </span>
-                    <span className="text-xs text-gray-300">
-                      100 items per API call
-                    </span>
-                  </div>
-                  <div className="space-y-4">
-                    {paginatedState.map(renderBar)}
-                  </div>
-                </div>
-              )}
-
-              {/* OAuth scope warning */}
-              {scopeMissing.length > 0 && (
-                <div className="bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 rounded-lg px-4 py-3">
-                  <div className="flex items-start gap-2">
-                    <span className="text-yellow-500 text-sm mt-0.5">&#9888;</span>
-                    <div>
-                      <p className="text-xs font-medium text-yellow-800">
-                        Missing OAuth scopes
-                      </p>
-                      <p className="text-xs text-yellow-700 mt-0.5">
-                        The following data types need additional Fitbit OAuth
-                        authorization. Re-authorize your app with these scopes:{" "}
-                        {scopeMissing.map((t) => (
-                          <code
-                            key={t}
-                            className="bg-yellow-100 px-1 rounded mx-0.5"
-                          >
-                            {SCOPE_NAMES[t]}
-                          </code>
-                        ))}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {state.length === 0 && (
-                <p className="text-sm text-gray-400">
-                  No ingest state data yet.
-                </p>
-              )}
-            </div>
-          );
-        })()}
+              );
+            }).filter(Boolean);
+          })()}
+          {state.length === 0 && <p className="text-sm text-outline col-span-2">No ingest state data yet.</p>}
+        </div>
       </div>
 
       {/* Job History */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-        <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
-          Job History
-        </h3>
-        <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">
-          Click a row to see per-data-type details. Rows and errors come from
-          the database; source and timing from Windmill.
-        </p>
-        <div className="space-y-1">
+      <div className="bg-surface-container rounded-xl border border-outline-variant/10 overflow-hidden">
+        <div className="px-6 py-4 border-b border-outline-variant/10 flex items-center justify-between">
+          <h3 className="font-bold font-headline text-on-surface">Job History</h3>
+          <button className="text-xs font-bold text-primary hover:underline">View Full Log</button>
+        </div>
+        <div className="divide-y divide-outline-variant/10">
           {completedJobs.map((job) => {
             const source = scheduleLabel(job.schedulePath);
             const dbRun = findMatchingRun(job.startedAt, runs);
             const isExpanded = expandedJobs.has(job.id);
-            const hasDetails =
-              dbRun?.details && Object.keys(dbRun.details).length > 0;
+            const hasDetails = dbRun?.details && Object.keys(dbRun.details).length > 0;
 
             return (
               <div key={job.id}>
-                {/* Summary row */}
                 <button
                   type="button"
                   onClick={() => toggleExpanded(job.id)}
-                  className={`w-full text-left px-4 py-2.5 rounded-lg flex items-center gap-4 transition-colors ${
-                    isExpanded ? "bg-gray-100" : "hover:bg-gray-50"
-                  }`}
+                  className="w-full text-left px-6 py-4 flex items-center justify-between hover:bg-surface-bright/20 cursor-pointer transition-colors group"
                 >
-                  {/* Expand indicator */}
-                  <span
-                    className={`text-gray-400 text-xs transition-transform ${
-                      isExpanded ? "rotate-90" : ""
-                    }`}
-                  >
-                    ▶
-                  </span>
-
-                  {/* Source badge */}
-                  <span
-                    className={`text-xs font-medium px-2 py-0.5 rounded-full shrink-0 ${source.color}`}
-                  >
-                    {source.label}
-                  </span>
-
-                  {/* Timestamp */}
-                  <span className="text-sm text-gray-600 dark:text-gray-400 w-44 shrink-0">
-                    {job.startedAt
-                      ? new Date(job.startedAt).toLocaleString()
-                      : "—"}
-                  </span>
-
-                  {/* Duration */}
-                  <span className="text-sm text-gray-500 w-16 shrink-0">
-                    {job.durationMs != null
-                      ? formatDuration(job.durationMs)
-                      : "—"}
-                  </span>
-
-                  {/* Status */}
-                  <span className="w-20 shrink-0">
+                  <div className="flex items-center gap-4">
                     {job.isSkipped ? (
-                      <span className="text-xs font-medium text-gray-400">
-                        Skipped
-                      </span>
+                      <span className="material-symbols-outlined text-outline">skip_next</span>
                     ) : dbRun ? (
-                      <StatusBadge status={dbRun.status} />
+                      <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1", color: dbRun.status === "completed" ? "#4edea3" : "#ffb4ab" }}>
+                        {dbRun.status === "completed" ? "check_circle" : "error"}
+                      </span>
                     ) : job.success ? (
-                      <span className="text-xs font-medium text-green-600">
-                        Success
-                      </span>
+                      <span className="material-symbols-outlined text-secondary" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
                     ) : (
-                      <span className="text-xs font-medium text-red-600">
-                        Failed
-                      </span>
+                      <span className="material-symbols-outlined text-error" style={{ fontVariationSettings: "'FILL' 1" }}>error</span>
                     )}
-                  </span>
-
-                  {/* Summary stats */}
-                  <span className="text-sm text-gray-600 dark:text-gray-400 ml-auto flex items-center gap-3">
-                    {dbRun ? (
-                      <>
-                        <span>
-                          <span className="font-medium">
-                            {dbRun.rowsWritten ?? 0}
-                          </span>{" "}
-                          <span className="text-gray-400">rows</span>
-                        </span>
-                        {(dbRun.errorCount ?? 0) > 0 && (
-                          <span className="text-red-500">
-                            {dbRun.errorCount} error
-                            {(dbRun.errorCount ?? 0) > 1 ? "s" : ""}
-                          </span>
-                        )}
-                      </>
-                    ) : (
-                      <span className="text-xs text-gray-400">
-                        {job.success ? "no DB data" : "—"}
-                      </span>
+                    <div>
+                      <div className="text-sm font-bold text-on-surface flex items-center gap-2">
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${source.color}`}>{source.label}</span>
+                        <code className="text-xs text-outline tabular-nums">#{job.id.slice(0, 8)}</code>
+                      </div>
+                      <div className="text-[10px] text-outline tabular-nums uppercase mt-0.5">
+                        {job.isSkipped ? "SKIPPED" : dbRun?.status?.toUpperCase() ?? (job.success ? "COMPLETED" : "FAILED")}
+                        {" · "}
+                        {job.startedAt ? new Date(job.startedAt).toLocaleString() : "—"}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-6">
+                    {job.durationMs != null && (
+                      <div className="hidden md:block text-right">
+                        <div className="text-[10px] text-outline uppercase font-bold tracking-tighter">Duration</div>
+                        <div className="text-xs font-semibold tabular-nums text-on-surface-variant">{formatDuration(job.durationMs)}</div>
+                      </div>
                     )}
-                  </span>
-
-                  {/* Job ID */}
-                  <code className="text-xs text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded shrink-0">
-                    {job.id.slice(0, 8)}
-                  </code>
+                    {dbRun && (
+                      <div className="hidden md:block text-right">
+                        <div className="text-[10px] text-outline uppercase font-bold tracking-tighter">Records</div>
+                        <div className="text-xs font-semibold tabular-nums text-on-surface-variant">{(dbRun.rowsWritten ?? 0).toLocaleString()}</div>
+                      </div>
+                    )}
+                    <span className="material-symbols-outlined text-outline group-hover:translate-x-1 transition-transform">chevron_right</span>
+                  </div>
                 </button>
 
-                {/* Expanded detail */}
                 {isExpanded && (
-                  <div className="ml-9 mr-4 mt-1 mb-2 p-3 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-100 dark:border-gray-700">
+                  <div className="mx-6 mb-4 p-4 bg-surface-container-low rounded-lg border border-outline-variant/5">
                     {hasDetails ? (
                       <DetailBreakdown details={dbRun!.details!} />
                     ) : dbRun ? (
-                      <p className="text-xs text-gray-400 italic">
-                        Run #{dbRun.ingestRunId} — no per-type breakdown
-                        available.
-                      </p>
+                      <p className="text-xs text-outline italic">Run #{dbRun.ingestRunId} — no per-type breakdown available.</p>
                     ) : job.success ? (
-                      <p className="text-xs text-gray-400 italic">
-                        Windmill job completed successfully but no matching
-                        database run found. The job may have written to a
-                        different database.
-                      </p>
+                      <p className="text-xs text-outline italic">Job completed but no matching database run found.</p>
                     ) : (
-                      <p className="text-xs text-red-400 italic">
-                        Job failed before writing any data. Check Windmill
-                        logs for job {job.id.slice(0, 12)}...
-                      </p>
+                      <p className="text-xs text-error italic">Job failed before writing any data. Check Windmill logs for job {job.id.slice(0, 12)}...</p>
                     )}
                   </div>
                 )}
@@ -862,9 +460,7 @@ export function Ingest() {
             );
           })}
           {completedJobs.length === 0 && (
-            <p className="py-4 text-center text-sm text-gray-400">
-              No completed jobs yet.
-            </p>
+            <p className="py-8 text-center text-sm text-outline">No completed jobs yet.</p>
           )}
         </div>
       </div>

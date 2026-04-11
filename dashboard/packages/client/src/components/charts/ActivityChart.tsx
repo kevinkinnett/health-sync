@@ -28,8 +28,8 @@ export function ActivityChart({ data }: Props) {
   }));
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-      <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-4">Activity</h3>
+    <div className="bg-surface-container rounded-xl p-5">
+      <h3 className="text-sm font-headline font-semibold text-on-surface mb-4">Activity</h3>
       <ResponsiveContainer width="100%" height={280}>
         <ComposedChart data={chartData}>
           <CartesianGrid strokeDasharray="3 3" stroke={ct.grid} />
@@ -42,7 +42,7 @@ export function ActivityChart({ data }: Props) {
             yAxisId="steps"
             type="monotone"
             dataKey="steps"
-            stroke="#6366f1"
+            stroke="#c0c1ff"
             strokeWidth={2}
             dot={false}
             name="Steps"
@@ -51,7 +51,7 @@ export function ActivityChart({ data }: Props) {
             yAxisId="steps"
             type="monotone"
             dataKey="stepsMA"
-            stroke="#4338ca"
+            stroke="#9b9dff"
             strokeWidth={2}
             dot={false}
             strokeDasharray="5 3"
@@ -62,9 +62,9 @@ export function ActivityChart({ data }: Props) {
             yAxisId="minutes"
             type="monotone"
             dataKey="activeMinutes"
-            fill="#818cf8"
+            fill="#c0c1ff"
             fillOpacity={0.2}
-            stroke="#818cf8"
+            stroke="#c0c1ff"
             name="Active Min"
           />
         </ComposedChart>
