@@ -15,6 +15,8 @@ import { HeartRateChart } from "../components/charts/HeartRateChart";
 import { WeightChart } from "../components/charts/WeightChart";
 import { HrvChart } from "../components/charts/HrvChart";
 import { ExerciseLogTable } from "../components/charts/ExerciseLogTable";
+import { SleepTimingChart } from "../components/charts/SleepTimingChart";
+import { HrZoneChart } from "../components/charts/HrZoneChart";
 
 const tabs = [
   "Activity",
@@ -114,6 +116,7 @@ export function Explore() {
       {activeTab === "Sleep" && sleep.data && (
         <div className="space-y-4">
           <SleepStagesChart data={sleep.data} />
+          <SleepTimingChart data={sleep.data} />
           <DataTable title="Sleep Log" headers={["Date", "Asleep", "In Bed", "Efficiency", "Deep", "REM"]}>
             {[...sleep.data].reverse().slice(0, 30).map((d) => (
               <tr key={d.date} className={trClass}>
@@ -136,6 +139,7 @@ export function Explore() {
       {activeTab === "Heart Rate" && heartRate.data && (
         <div className="space-y-4">
           <HeartRateChart data={heartRate.data} />
+          <HrZoneChart data={heartRate.data} />
           <DataTable title="Daily Heart Rate" headers={["Date", "Resting HR", "Fat Burn", "Cardio", "Peak"]}>
             {[...heartRate.data].reverse().slice(0, 30).map((d) => (
               <tr key={d.date} className={trClass}>

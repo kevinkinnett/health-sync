@@ -13,6 +13,7 @@ export function createHealthRoutes(controller: HealthController): Router {
   router.get("/insights/weekly", (req, res) => controller.getWeeklyInsights(req, res));
   router.get("/correlations", (req, res) => controller.getCorrelations(req, res));
   router.get("/heatmap/day-of-week", (req, res) => controller.getDayOfWeekHeatmap(req, res));
+  router.get("/records", (req, res) => controller.getRecords(req, res));
   router.get("/exercise-logs", (req, res) => controller.getExerciseLogs(req, res));
 
   return router;

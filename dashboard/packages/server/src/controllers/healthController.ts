@@ -70,6 +70,16 @@ export class HealthController {
     }
   }
 
+  async getRecords(_req: Request, res: Response): Promise<void> {
+    try {
+      const data = await this.service.getRecords();
+      res.json(data);
+    } catch (err) {
+      logger.error({ err }, "Failed to fetch records");
+      res.status(500).json({ error: "Failed to fetch records" });
+    }
+  }
+
   async getDayOfWeekHeatmap(_req: Request, res: Response): Promise<void> {
     try {
       const data = await this.service.getDayOfWeekHeatmap();

@@ -9,6 +9,7 @@ import {
 } from "recharts";
 import type { HeartRateDay } from "@health-dashboard/shared";
 import { useChartTheme } from "../../stores/themeStore";
+import { movingAverage } from "../../utils/movingAverage";
 
 interface Props {
   data: HeartRateDay[];
@@ -16,22 +17,13 @@ interface Props {
 
 export function HeartRateChart({ data }: Props) {
   const ct = useChartTheme();
+  const ma7 = movingAverage(data, (d) => d.restingHeartRate, 7);
 
-  const chartData = data.map((d, i) => {
-    const window = data.slice(Math.max(0, i - 6), i + 1);
-    const validValues = window
-      .map((w) => w.restingHeartRate)
-      .filter((v): v is number => v != null);
-    const ma = validValues.length > 0
-      ? Math.round(validValues.reduce((a, b) => a + b, 0) / validValues.length)
-      : null;
-
-    return {
-      date: d.date,
-      rhr: d.restingHeartRate,
-      ma7d: ma,
-    };
-  });
+  const chartData = data.map((d, i) => ({
+    date: d.date,
+    rhr: d.restingHeartRate,
+    ma7d: ma7[i],
+  }));
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">

@@ -13,6 +13,9 @@ import type {
   ActivityBucket,
   DayOfWeekHeatmapData,
   DayOfWeekHeatmapRow,
+  RecordsData,
+  PersonalRecord,
+  Streak,
 } from "@health-dashboard/shared";
 import type { ActivityRepository } from "../repositories/activityRepo.js";
 import type { SleepRepository } from "../repositories/sleepRepo.js";
@@ -485,6 +488,93 @@ export class HealthDataService {
       dayCounts,
     };
   }
+
+  async getRecords(): Promise<RecordsData> {
+    const [activity, sleep, heartRate] = await Promise.all([
+      this.activityRepo.findLatest(200),
+      this.sleepRepo.findLatest(200),
+      this.heartRateRepo.findLatest(200),
+    ]);
+
+    const records: PersonalRecord[] = [];
+
+    // Best step day
+    const bestSteps = activity
+      .filter((d) => d.steps != null)
+      .sort((a, b) => (b.steps ?? 0) - (a.steps ?? 0))[0];
+    if (bestSteps?.steps) {
+      records.push({ metric: "steps", label: "Most Steps", value: bestSteps.steps, unit: "steps", date: bestSteps.date });
+    }
+
+    // Best distance
+    const bestDist = activity
+      .filter((d) => d.distanceKm != null)
+      .sort((a, b) => (b.distanceKm ?? 0) - (a.distanceKm ?? 0))[0];
+    if (bestDist?.distanceKm) {
+      records.push({ metric: "distance", label: "Longest Distance", value: Math.round(bestDist.distanceKm * 100) / 100, unit: "km", date: bestDist.date });
+    }
+
+    // Best active minutes
+    const bestActive = activity
+      .map((d) => ({ ...d, activeMin: (d.minutesFairlyActive ?? 0) + (d.minutesVeryActive ?? 0) }))
+      .sort((a, b) => b.activeMin - a.activeMin)[0];
+    if (bestActive && bestActive.activeMin > 0) {
+      records.push({ metric: "activeMin", label: "Most Active Minutes", value: bestActive.activeMin, unit: "min", date: bestActive.date });
+    }
+
+    // Best calories
+    const bestCal = activity
+      .filter((d) => d.caloriesOut != null)
+      .sort((a, b) => (b.caloriesOut ?? 0) - (a.caloriesOut ?? 0))[0];
+    if (bestCal?.caloriesOut) {
+      records.push({ metric: "calories", label: "Most Calories", value: bestCal.caloriesOut, unit: "cal", date: bestCal.date });
+    }
+
+    // Best sleep
+    const bestSleep = sleep
+      .filter((d) => d.totalMinutesAsleep != null)
+      .sort((a, b) => (b.totalMinutesAsleep ?? 0) - (a.totalMinutesAsleep ?? 0))[0];
+    if (bestSleep?.totalMinutesAsleep) {
+      records.push({ metric: "sleep", label: "Longest Sleep", value: bestSleep.totalMinutesAsleep, unit: "min", date: bestSleep.date });
+    }
+
+    // Best efficiency
+    const bestEff = sleep
+      .filter((d) => d.efficiency != null)
+      .sort((a, b) => (b.efficiency ?? 0) - (a.efficiency ?? 0))[0];
+    if (bestEff?.efficiency) {
+      records.push({ metric: "efficiency", label: "Best Sleep Efficiency", value: bestEff.efficiency, unit: "%", date: bestEff.date });
+    }
+
+    // Lowest RHR
+    const bestRhr = heartRate
+      .filter((d) => d.restingHeartRate != null)
+      .sort((a, b) => (a.restingHeartRate ?? 999) - (b.restingHeartRate ?? 999))[0];
+    if (bestRhr?.restingHeartRate) {
+      records.push({ metric: "rhr", label: "Lowest Resting HR", value: bestRhr.restingHeartRate, unit: "bpm", date: bestRhr.date });
+    }
+
+    // Streaks
+    const streaks: Streak[] = [];
+
+    // Steps streak: consecutive days >= 5000 steps
+    const sortedActivity = [...activity].sort((a, b) => a.date.localeCompare(b.date));
+    const stepsStreak = computeStreak(sortedActivity, (d) => (d.steps ?? 0) >= 5000);
+    streaks.push({ label: "5k+ Steps", ...stepsStreak, unit: "days" });
+
+    // Active streak: consecutive days with >= 10 active minutes
+    const activeStreak = computeStreak(sortedActivity, (d) =>
+      ((d.minutesFairlyActive ?? 0) + (d.minutesVeryActive ?? 0)) >= 10,
+    );
+    streaks.push({ label: "10+ Active Min", ...activeStreak, unit: "days" });
+
+    // Sleep streak: consecutive days >= 7 hours sleep
+    const sortedSleep = [...sleep].sort((a, b) => a.date.localeCompare(b.date));
+    const sleepStreak = computeStreak(sortedSleep, (d) => (d.totalMinutesAsleep ?? 0) >= 420);
+    streaks.push({ label: "7+ Hours Sleep", ...sleepStreak, unit: "days" });
+
+    return { records, streaks };
+  }
 }
 
 function shiftDate(dateStr: string, days: number): string {
@@ -643,4 +733,30 @@ function describeCorrelation(r: number, xName: string, yName: string): string {
       ? `more ${xName} tends to go with more ${yName}`
       : `more ${xName} tends to go with less ${yName}`;
   return `${strength.charAt(0).toUpperCase() + strength.slice(1)} ${direction} correlation (r=${r.toFixed(2)}): ${meaning}`;
+}
+
+function computeStreak<T extends { date: string }>(
+  sorted: T[],
+  test: (d: T) => boolean,
+): { current: number; best: number } {
+  let current = 0;
+  let best = 0;
+  let streak = 0;
+
+  for (let i = 0; i < sorted.length; i++) {
+    if (test(sorted[i])) {
+      streak++;
+      if (streak > best) best = streak;
+    } else {
+      streak = 0;
+    }
+  }
+  // Current streak counts backwards from the end
+  current = 0;
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    if (test(sorted[i])) current++;
+    else break;
+  }
+
+  return { current, best };
 }

@@ -4,6 +4,7 @@ import type {
   WeeklyInsights,
   CorrelationsData,
   DayOfWeekHeatmapData,
+  RecordsData,
   ActivityDay,
   SleepDay,
   HeartRateDay,
@@ -30,6 +31,14 @@ export function useWeeklyInsights() {
     queryKey: ["health", "insights", "weekly"],
     queryFn: () => apiFetch("/health/insights/weekly"),
     staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useRecords() {
+  return useQuery<RecordsData>({
+    queryKey: ["health", "records"],
+    queryFn: () => apiFetch("/health/records"),
+    staleTime: 10 * 60 * 1000,
   });
 }
 

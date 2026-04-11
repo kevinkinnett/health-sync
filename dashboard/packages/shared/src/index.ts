@@ -38,3 +38,8 @@ export type {
   DayOfWeekHeatmapRow,
   DayOfWeekHeatmapData,
 } from "./types/heatmap.js";
+export type {
+  PersonalRecord,
+  Streak,
+  RecordsData,
+} from "./types/records.js";

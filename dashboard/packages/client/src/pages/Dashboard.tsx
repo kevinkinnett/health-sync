@@ -1,6 +1,8 @@
 import { StatCard } from "../components/StatCard";
 import { WeeklyInsights } from "../components/WeeklyInsights";
 import { Correlations } from "../components/Correlations";
+import { PersonalRecords } from "../components/PersonalRecords";
+import { GoalRings } from "../components/GoalRings";
 import { ActivityChart } from "../components/charts/ActivityChart";
 import { SleepStagesChart } from "../components/charts/SleepStagesChart";
 import { HeartRateChart } from "../components/charts/HeartRateChart";
@@ -9,6 +11,7 @@ import {
   useHealthSummary,
   useWeeklyInsights,
   useCorrelations,
+  useRecords,
   useActivity,
   useSleep,
   useHeartRate,
@@ -19,6 +22,7 @@ export function Dashboard() {
   const summary = useHealthSummary();
   const insights = useWeeklyInsights();
   const correlations = useCorrelations();
+  const records = useRecords();
   const activity = useActivity();
   const sleep = useSleep();
   const heartRate = useHeartRate();
@@ -34,6 +38,9 @@ export function Dashboard() {
     <div className="space-y-6">
       {/* Weekly Insights */}
       {insights.data && <WeeklyInsights data={insights.data} />}
+
+      {/* Goal Progress Rings */}
+      {s && <GoalRings summary={s} />}
 
       {/* Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -77,6 +84,9 @@ export function Dashboard() {
         {heartRate.data && <HeartRateChart data={heartRate.data} />}
         <WeightChart data={weight.data ?? []} />
       </div>
+
+      {/* Records & Streaks */}
+      {records.data && <PersonalRecords data={records.data} />}
 
       {/* Correlations */}
       {correlations.data && <Correlations data={correlations.data} />}

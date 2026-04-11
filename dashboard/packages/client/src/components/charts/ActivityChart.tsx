@@ -11,6 +11,7 @@ import {
 } from "recharts";
 import type { ActivityDay } from "@health-dashboard/shared";
 import { useChartTheme } from "../../stores/themeStore";
+import { movingAverage } from "../../utils/movingAverage";
 
 interface Props {
   data: ActivityDay[];
@@ -18,10 +19,12 @@ interface Props {
 
 export function ActivityChart({ data }: Props) {
   const ct = useChartTheme();
-  const chartData = data.map((d) => ({
+  const ma7 = movingAverage(data, (d) => d.steps, 7);
+  const chartData = data.map((d, i) => ({
     date: d.date,
     steps: d.steps,
     activeMinutes: (d.minutesFairlyActive ?? 0) + (d.minutesVeryActive ?? 0),
+    stepsMA: ma7[i],
   }));
 
   return (
@@ -43,6 +46,17 @@ export function ActivityChart({ data }: Props) {
             strokeWidth={2}
             dot={false}
             name="Steps"
+          />
+          <Line
+            yAxisId="steps"
+            type="monotone"
+            dataKey="stepsMA"
+            stroke="#4338ca"
+            strokeWidth={2}
+            dot={false}
+            strokeDasharray="5 3"
+            connectNulls
+            name="7-day avg"
           />
           <Area
             yAxisId="minutes"
