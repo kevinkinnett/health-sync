@@ -11,6 +11,8 @@ import type {
   CorrelationsData,
   CorrelationPair,
   ActivityBucket,
+  DayOfWeekHeatmapData,
+  DayOfWeekHeatmapRow,
 } from "@health-dashboard/shared";
 import type { ActivityRepository } from "../repositories/activityRepo.js";
 import type { SleepRepository } from "../repositories/sleepRepo.js";
@@ -406,6 +408,81 @@ export class HealthDataService {
       pairs,
       activitySleepBuckets,
       dataPoints: joined.length,
+    };
+  }
+
+  async getDayOfWeekHeatmap(): Promise<DayOfWeekHeatmapData> {
+    const [activity, sleep, heartRate] = await Promise.all([
+      this.activityRepo.findLatest(200),
+      this.sleepRepo.findLatest(200),
+      this.heartRateRepo.findLatest(200),
+    ]);
+
+    const sleepByDate = new Map(sleep.map((d) => [d.date, d]));
+    const hrByDate = new Map(heartRate.map((d) => [d.date, d]));
+
+    // Buckets per day-of-week (0=Sun..6=Sat)
+    type Bucket = { steps: number[]; activeMin: number[]; distance: number[]; calories: number[]; sleepMin: number[]; deepMin: number[]; efficiency: number[]; rhr: number[] };
+    const buckets: Bucket[] = Array.from({ length: 7 }, () => ({
+      steps: [], activeMin: [], distance: [], calories: [],
+      sleepMin: [], deepMin: [], efficiency: [], rhr: [],
+    }));
+    const dayCounts = new Array(7).fill(0);
+
+    for (const a of activity) {
+      if (a.steps == null) continue;
+      const dow = new Date(a.date + "T00:00:00Z").getUTCDay();
+      dayCounts[dow]++;
+      buckets[dow].steps.push(a.steps);
+      buckets[dow].activeMin.push((a.minutesFairlyActive ?? 0) + (a.minutesVeryActive ?? 0));
+      if (a.distanceKm != null) buckets[dow].distance.push(a.distanceKm);
+      if (a.caloriesOut != null) buckets[dow].calories.push(a.caloriesOut);
+
+      const s = sleepByDate.get(a.date);
+      if (s?.totalMinutesAsleep != null) buckets[dow].sleepMin.push(s.totalMinutesAsleep);
+      if (s?.minutesDeep != null) buckets[dow].deepMin.push(s.minutesDeep);
+      if (s?.efficiency != null) buckets[dow].efficiency.push(s.efficiency);
+
+      const h = hrByDate.get(a.date);
+      if (h?.restingHeartRate != null) buckets[dow].rhr.push(h.restingHeartRate);
+    }
+
+    const metrics: { key: keyof Bucket; label: string; unit: string; decimals: number }[] = [
+      { key: "steps", label: "Steps", unit: "steps", decimals: 0 },
+      { key: "activeMin", label: "Active Minutes", unit: "min", decimals: 0 },
+      { key: "distance", label: "Distance", unit: "km", decimals: 1 },
+      { key: "calories", label: "Calories", unit: "cal", decimals: 0 },
+      { key: "sleepMin", label: "Sleep", unit: "min", decimals: 0 },
+      { key: "deepMin", label: "Deep Sleep", unit: "min", decimals: 0 },
+      { key: "efficiency", label: "Sleep Efficiency", unit: "%", decimals: 0 },
+      { key: "rhr", label: "Resting HR", unit: "bpm", decimals: 0 },
+    ];
+
+    const rows: DayOfWeekHeatmapRow[] = [];
+    for (const { key, label, unit, decimals } of metrics) {
+      const factor = 10 ** decimals;
+      const values = buckets.map((b) => {
+        const vals = b[key];
+        if (vals.length === 0) return null;
+        return Math.round(avg(vals) * factor) / factor;
+      });
+      const valid = values.filter((v): v is number => v != null);
+      if (valid.length === 0) continue;
+      rows.push({
+        metric: key,
+        label,
+        unit,
+        values,
+        min: Math.min(...valid),
+        max: Math.max(...valid),
+      });
+    }
+
+    return {
+      dayNames: DAY_NAMES,
+      rows,
+      totalDays: activity.filter((d) => d.steps != null).length,
+      dayCounts,
     };
   }
 }

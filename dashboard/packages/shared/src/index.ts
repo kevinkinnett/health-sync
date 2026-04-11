@@ -34,3 +34,7 @@ export type {
   ActivityBucket,
   CorrelationsData,
 } from "./types/correlations.js";
+export type {
+  DayOfWeekHeatmapRow,
+  DayOfWeekHeatmapData,
+} from "./types/heatmap.js";

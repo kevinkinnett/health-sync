@@ -70,6 +70,16 @@ export class HealthController {
     }
   }
 
+  async getDayOfWeekHeatmap(_req: Request, res: Response): Promise<void> {
+    try {
+      const data = await this.service.getDayOfWeekHeatmap();
+      res.json(data);
+    } catch (err) {
+      logger.error({ err }, "Failed to fetch day-of-week heatmap");
+      res.status(500).json({ error: "Failed to fetch day-of-week heatmap" });
+    }
+  }
+
   async getCorrelations(_req: Request, res: Response): Promise<void> {
     try {
       const data = await this.service.getCorrelations();

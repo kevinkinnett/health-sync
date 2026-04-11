@@ -6,7 +6,9 @@ import {
   useWeight,
   useHrv,
   useExerciseLogs,
+  useDayOfWeekHeatmap,
 } from "../api/queries";
+import { DayOfWeekHeatmap } from "../components/DayOfWeekHeatmap";
 import { ActivityChart } from "../components/charts/ActivityChart";
 import { SleepStagesChart } from "../components/charts/SleepStagesChart";
 import { HeartRateChart } from "../components/charts/HeartRateChart";
@@ -62,6 +64,7 @@ function DataTable({
 
 export function Explore() {
   const [activeTab, setActiveTab] = useState<Tab>("Activity");
+  const heatmap = useDayOfWeekHeatmap();
   const activity = useActivity();
   const sleep = useSleep();
   const heartRate = useHeartRate();
@@ -71,6 +74,8 @@ export function Explore() {
 
   return (
     <div className="space-y-6">
+      {heatmap.data && <DayOfWeekHeatmap data={heatmap.data} />}
+
       <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5 w-fit">
         {tabs.map((tab) => (
           <button

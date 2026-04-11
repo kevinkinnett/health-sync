@@ -3,6 +3,7 @@ import type {
   HealthSummary,
   WeeklyInsights,
   CorrelationsData,
+  DayOfWeekHeatmapData,
   ActivityDay,
   SleepDay,
   HeartRateDay,
@@ -29,6 +30,14 @@ export function useWeeklyInsights() {
     queryKey: ["health", "insights", "weekly"],
     queryFn: () => apiFetch("/health/insights/weekly"),
     staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useDayOfWeekHeatmap() {
+  return useQuery<DayOfWeekHeatmapData>({
+    queryKey: ["health", "heatmap", "day-of-week"],
+    queryFn: () => apiFetch("/health/heatmap/day-of-week"),
+    staleTime: 10 * 60 * 1000,
   });
 }
 
