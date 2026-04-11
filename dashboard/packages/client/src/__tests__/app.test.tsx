@@ -43,10 +43,10 @@ describe("App routing and layout", () => {
 
   it("renders the nav bar with all navigation links", () => {
     renderWithProviders();
-    expect(screen.getByText("Health Dashboard")).toBeInTheDocument();
-    expect(screen.getByText("Dashboard")).toBeInTheDocument();
-    expect(screen.getByText("Explore")).toBeInTheDocument();
-    expect(screen.getByText("Ingest")).toBeInTheDocument();
+    expect(screen.getByText("VITALIS")).toBeInTheDocument();
+    expect(screen.getAllByText("Dashboard").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Analytics").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Data Pipeline").length).toBeGreaterThanOrEqual(1);
   });
 
   it("renders date range presets in the nav", () => {
@@ -73,7 +73,7 @@ describe("App routing and layout", () => {
 
   it("renders Ingest page at /ingest", () => {
     renderWithProviders("/ingest");
-    expect(screen.getByText("Ingest Pipeline")).toBeInTheDocument();
-    expect(screen.getByText("Backfill Progress")).toBeInTheDocument();
+    expect(screen.getByText("Pipeline Status")).toBeInTheDocument();
+    expect(screen.getByText("Backfill Progress by Data Type")).toBeInTheDocument();
   });
 });
