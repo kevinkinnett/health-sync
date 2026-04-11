@@ -8,6 +8,9 @@ import type {
   ActivityDay,
   SleepDay,
   HeartRateDay,
+  CorrelationsData,
+  CorrelationPair,
+  ActivityBucket,
 } from "@health-dashboard/shared";
 import type { ActivityRepository } from "../repositories/activityRepo.js";
 import type { SleepRepository } from "../repositories/sleepRepo.js";
@@ -207,6 +210,204 @@ export class HealthDataService {
       highlights,
     };
   }
+
+  async getCorrelations(): Promise<CorrelationsData> {
+    // Fetch all available data
+    const [activity, sleep, heartRate] = await Promise.all([
+      this.activityRepo.findLatest(200),
+      this.sleepRepo.findLatest(200),
+      this.heartRateRepo.findLatest(200),
+    ]);
+
+    // Index by date for fast join
+    const sleepByDate = new Map(sleep.map((d) => [d.date, d]));
+    const hrByDate = new Map(heartRate.map((d) => [d.date, d]));
+
+    // Build joined dataset
+    const joined: {
+      date: string;
+      steps: number;
+      activeMin: number;
+      sleepMin: number | null;
+      deepMin: number | null;
+      efficiency: number | null;
+      rhr: number | null;
+    }[] = [];
+
+    for (const a of activity) {
+      if (a.steps == null || a.steps === 0) continue;
+      const s = sleepByDate.get(a.date);
+      const h = hrByDate.get(a.date);
+      joined.push({
+        date: a.date,
+        steps: a.steps,
+        activeMin: (a.minutesFairlyActive ?? 0) + (a.minutesVeryActive ?? 0),
+        sleepMin: s?.totalMinutesAsleep ?? null,
+        deepMin: s?.minutesDeep ?? null,
+        efficiency: s?.efficiency ?? null,
+        rhr: h?.restingHeartRate ?? null,
+      });
+    }
+
+    // Compute correlation pairs
+    const pairs: CorrelationPair[] = [];
+
+    // Steps vs Sleep Duration
+    const stepsSleep = joined.filter(
+      (d) => d.sleepMin != null,
+    );
+    if (stepsSleep.length >= 10) {
+      const r = pearson(
+        stepsSleep.map((d) => d.steps),
+        stepsSleep.map((d) => d.sleepMin!),
+      );
+      pairs.push({
+        xMetric: "steps",
+        yMetric: "sleepMin",
+        xLabel: "Steps",
+        yLabel: "Sleep (min)",
+        correlation: r,
+        points: stepsSleep.map((d) => ({
+          x: d.steps,
+          y: d.sleepMin!,
+          date: d.date,
+        })),
+        insight: describeCorrelation(r, "steps", "sleep duration"),
+      });
+    }
+
+    // Steps vs Deep Sleep
+    const stepsDeep = joined.filter(
+      (d) => d.deepMin != null,
+    );
+    if (stepsDeep.length >= 10) {
+      const r = pearson(
+        stepsDeep.map((d) => d.steps),
+        stepsDeep.map((d) => d.deepMin!),
+      );
+      pairs.push({
+        xMetric: "steps",
+        yMetric: "deepMin",
+        xLabel: "Steps",
+        yLabel: "Deep Sleep (min)",
+        correlation: r,
+        points: stepsDeep.map((d) => ({
+          x: d.steps,
+          y: d.deepMin!,
+          date: d.date,
+        })),
+        insight: describeCorrelation(r, "steps", "deep sleep"),
+      });
+    }
+
+    // Active Minutes vs Sleep
+    const activeSleep = joined.filter(
+      (d) => d.sleepMin != null,
+    );
+    if (activeSleep.length >= 10) {
+      const r = pearson(
+        activeSleep.map((d) => d.activeMin),
+        activeSleep.map((d) => d.sleepMin!),
+      );
+      pairs.push({
+        xMetric: "activeMin",
+        yMetric: "sleepMin",
+        xLabel: "Active Minutes",
+        yLabel: "Sleep (min)",
+        correlation: r,
+        points: activeSleep.map((d) => ({
+          x: d.activeMin,
+          y: d.sleepMin!,
+          date: d.date,
+        })),
+        insight: describeCorrelation(r, "active minutes", "sleep duration"),
+      });
+    }
+
+    // Steps vs Resting HR
+    const stepsHr = joined.filter((d) => d.rhr != null);
+    if (stepsHr.length >= 10) {
+      const r = pearson(
+        stepsHr.map((d) => d.steps),
+        stepsHr.map((d) => d.rhr!),
+      );
+      pairs.push({
+        xMetric: "steps",
+        yMetric: "rhr",
+        xLabel: "Steps",
+        yLabel: "Resting HR (bpm)",
+        correlation: r,
+        points: stepsHr.map((d) => ({
+          x: d.steps,
+          y: d.rhr!,
+          date: d.date,
+        })),
+        insight: describeCorrelation(r, "steps", "resting heart rate"),
+      });
+    }
+
+    // Sleep vs Resting HR
+    const sleepHr = joined.filter(
+      (d) => d.sleepMin != null && d.rhr != null,
+    );
+    if (sleepHr.length >= 10) {
+      const r = pearson(
+        sleepHr.map((d) => d.sleepMin!),
+        sleepHr.map((d) => d.rhr!),
+      );
+      pairs.push({
+        xMetric: "sleepMin",
+        yMetric: "rhr",
+        xLabel: "Sleep (min)",
+        yLabel: "Resting HR (bpm)",
+        correlation: r,
+        points: sleepHr.map((d) => ({
+          x: d.sleepMin!,
+          y: d.rhr!,
+          date: d.date,
+        })),
+        insight: describeCorrelation(r, "sleep duration", "resting heart rate"),
+      });
+    }
+
+    // Activity-sleep buckets
+    const withNextDaySleep: { steps: number; sleepMin: number; deepMin: number; efficiency: number }[] = [];
+    for (const a of activity) {
+      if (a.steps == null || a.steps === 0) continue;
+      const nextDate = shiftDate(a.date, 1);
+      const s = sleepByDate.get(nextDate);
+      if (s?.totalMinutesAsleep != null && s.minutesDeep != null && s.efficiency != null) {
+        withNextDaySleep.push({
+          steps: a.steps,
+          sleepMin: s.totalMinutesAsleep,
+          deepMin: s.minutesDeep,
+          efficiency: s.efficiency,
+        });
+      }
+    }
+
+    const bucketDefs = [
+      { label: "Low (<3k steps)", test: (s: number) => s < 3000 },
+      { label: "Medium (3-6k)", test: (s: number) => s >= 3000 && s < 6000 },
+      { label: "High (6k+)", test: (s: number) => s >= 6000 },
+    ];
+    const activitySleepBuckets: ActivityBucket[] = bucketDefs.map(({ label, test }) => {
+      const bucket = withNextDaySleep.filter((d) => test(d.steps));
+      return {
+        label,
+        days: bucket.length,
+        avgSleepMin: Math.round(avg(bucket.map((d) => d.sleepMin))),
+        avgDeepMin: Math.round(avg(bucket.map((d) => d.deepMin))),
+        avgEfficiency: Math.round(avg(bucket.map((d) => d.efficiency))),
+      };
+    });
+
+    return {
+      pairs,
+      activitySleepBuckets,
+      dataPoints: joined.length,
+    };
+  }
 }
 
 function shiftDate(dateStr: string, days: number): string {
@@ -330,4 +531,39 @@ function generateHighlights(
   }
 
   return highlights;
+}
+
+function pearson(xs: number[], ys: number[]): number {
+  const n = xs.length;
+  if (n < 2) return 0;
+  const meanX = xs.reduce((a, b) => a + b, 0) / n;
+  const meanY = ys.reduce((a, b) => a + b, 0) / n;
+  let num = 0;
+  let denX = 0;
+  let denY = 0;
+  for (let i = 0; i < n; i++) {
+    const dx = xs[i] - meanX;
+    const dy = ys[i] - meanY;
+    num += dx * dy;
+    denX += dx * dx;
+    denY += dy * dy;
+  }
+  const den = Math.sqrt(denX * denY);
+  return den === 0 ? 0 : Math.round((num / den) * 1000) / 1000;
+}
+
+function describeCorrelation(r: number, xName: string, yName: string): string {
+  const abs = Math.abs(r);
+  let strength: string;
+  if (abs >= 0.7) strength = "strong";
+  else if (abs >= 0.4) strength = "moderate";
+  else if (abs >= 0.2) strength = "weak";
+  else return `No meaningful correlation between ${xName} and ${yName}`;
+
+  const direction = r > 0 ? "positive" : "negative";
+  const meaning =
+    r > 0
+      ? `more ${xName} tends to go with more ${yName}`
+      : `more ${xName} tends to go with less ${yName}`;
+  return `${strength.charAt(0).toUpperCase() + strength.slice(1)} ${direction} correlation (r=${r.toFixed(2)}): ${meaning}`;
 }

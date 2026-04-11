@@ -29,3 +29,8 @@ export type {
   Highlight,
   WeeklyInsights,
 } from "./types/insights.js";
+export type {
+  CorrelationPair,
+  ActivityBucket,
+  CorrelationsData,
+} from "./types/correlations.js";

@@ -1,5 +1,6 @@
 import { StatCard } from "../components/StatCard";
 import { WeeklyInsights } from "../components/WeeklyInsights";
+import { Correlations } from "../components/Correlations";
 import { ActivityChart } from "../components/charts/ActivityChart";
 import { SleepStagesChart } from "../components/charts/SleepStagesChart";
 import { HeartRateChart } from "../components/charts/HeartRateChart";
@@ -7,6 +8,7 @@ import { WeightChart } from "../components/charts/WeightChart";
 import {
   useHealthSummary,
   useWeeklyInsights,
+  useCorrelations,
   useActivity,
   useSleep,
   useHeartRate,
@@ -16,6 +18,7 @@ import {
 export function Dashboard() {
   const summary = useHealthSummary();
   const insights = useWeeklyInsights();
+  const correlations = useCorrelations();
   const activity = useActivity();
   const sleep = useSleep();
   const heartRate = useHeartRate();
@@ -74,6 +77,9 @@ export function Dashboard() {
         {heartRate.data && <HeartRateChart data={heartRate.data} />}
         <WeightChart data={weight.data ?? []} />
       </div>
+
+      {/* Correlations */}
+      {correlations.data && <Correlations data={correlations.data} />}
     </div>
   );
 }

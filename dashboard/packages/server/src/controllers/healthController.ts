@@ -70,6 +70,16 @@ export class HealthController {
     }
   }
 
+  async getCorrelations(_req: Request, res: Response): Promise<void> {
+    try {
+      const data = await this.service.getCorrelations();
+      res.json(data);
+    } catch (err) {
+      logger.error({ err }, "Failed to fetch correlations");
+      res.status(500).json({ error: "Failed to fetch correlations" });
+    }
+  }
+
   async getWeeklyInsights(_req: Request, res: Response): Promise<void> {
     try {
       const insights = await this.service.getWeeklyInsights();
