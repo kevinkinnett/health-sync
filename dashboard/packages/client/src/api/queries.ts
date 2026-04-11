@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type {
   HealthSummary,
+  WeeklyInsights,
   ActivityDay,
   SleepDay,
   HeartRateDay,
@@ -19,6 +20,14 @@ export function useHealthSummary() {
   return useQuery<HealthSummary>({
     queryKey: ["health", "summary"],
     queryFn: () => apiFetch("/health/summary"),
+  });
+}
+
+export function useWeeklyInsights() {
+  return useQuery<WeeklyInsights>({
+    queryKey: ["health", "insights", "weekly"],
+    queryFn: () => apiFetch("/health/insights/weekly"),
+    staleTime: 5 * 60 * 1000,
   });
 }
 

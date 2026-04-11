@@ -10,6 +10,7 @@ export function createHealthRoutes(controller: HealthController): Router {
   router.get("/heart-rate", (req, res) => controller.getHeartRate(req, res));
   router.get("/weight", (req, res) => controller.getWeight(req, res));
   router.get("/hrv", (req, res) => controller.getHrv(req, res));
+  router.get("/insights/weekly", (req, res) => controller.getWeeklyInsights(req, res));
   router.get("/exercise-logs", (req, res) => controller.getExerciseLogs(req, res));
 
   return router;

@@ -70,6 +70,16 @@ export class HealthController {
     }
   }
 
+  async getWeeklyInsights(_req: Request, res: Response): Promise<void> {
+    try {
+      const insights = await this.service.getWeeklyInsights();
+      res.json(insights);
+    } catch (err) {
+      logger.error({ err }, "Failed to fetch weekly insights");
+      res.status(500).json({ error: "Failed to fetch weekly insights" });
+    }
+  }
+
   async getExerciseLogs(req: Request, res: Response): Promise<void> {
     try {
       const { start, end } = parseDateRange(req);

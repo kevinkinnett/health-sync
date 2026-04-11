@@ -1,10 +1,12 @@
 import { StatCard } from "../components/StatCard";
+import { WeeklyInsights } from "../components/WeeklyInsights";
 import { ActivityChart } from "../components/charts/ActivityChart";
 import { SleepStagesChart } from "../components/charts/SleepStagesChart";
 import { HeartRateChart } from "../components/charts/HeartRateChart";
 import { WeightChart } from "../components/charts/WeightChart";
 import {
   useHealthSummary,
+  useWeeklyInsights,
   useActivity,
   useSleep,
   useHeartRate,
@@ -13,6 +15,7 @@ import {
 
 export function Dashboard() {
   const summary = useHealthSummary();
+  const insights = useWeeklyInsights();
   const activity = useActivity();
   const sleep = useSleep();
   const heartRate = useHeartRate();
@@ -26,6 +29,9 @@ export function Dashboard() {
 
   return (
     <div className="space-y-6">
+      {/* Weekly Insights */}
+      {insights.data && <WeeklyInsights data={insights.data} />}
+
       {/* Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard

@@ -23,3 +23,9 @@ export type {
   SparklineData,
   HealthSummary,
 } from "./types/api.js";
+export type {
+  MetricComparison,
+  DayOfWeekAvg,
+  Highlight,
+  WeeklyInsights,
+} from "./types/insights.js";
