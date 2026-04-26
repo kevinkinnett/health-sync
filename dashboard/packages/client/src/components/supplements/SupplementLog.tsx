@@ -1,5 +1,9 @@
 import { useMemo, useState } from "react";
-import type { SupplementItem } from "@health-dashboard/shared";
+import type {
+  SupplementItem,
+  SupplementItemIngredient,
+  SupplementIntakeIngredient,
+} from "@health-dashboard/shared";
 import {
   useSupplementItems,
   useSupplementIntakes,
@@ -32,10 +36,36 @@ function rangeToSinceIso(range: HistoryRange): string | undefined {
 
 function formatDose(amount: number | null, unit: string): string {
   if (amount == null) return `— ${unit}`;
-  // Trim trailing zeros for whole-number doses (e.g. "1000" not "1000.000")
-  const formatted =
-    Number.isInteger(amount) ? String(amount) : String(parseFloat(amount.toFixed(3)));
-  return `${formatted} ${unit}`;
+  return `${formatAmount(amount)} ${unit}`;
+}
+
+function formatAmount(n: number): string {
+  return Number.isInteger(n) ? String(n) : String(parseFloat(n.toFixed(3)));
+}
+
+/**
+ * Mirror of the server's `computeBreakdown`: scales the item's
+ * composition by `intakeAmount / item.defaultAmount` when units match,
+ * otherwise returns []. Used for the live preview in the ConfirmSheet
+ * so the user sees what's actually about to be logged.
+ */
+function previewBreakdown(
+  item: SupplementItem,
+  intakeAmount: number | null,
+  intakeUnit: string,
+): SupplementItemIngredient[] {
+  if (item.ingredients.length === 0) return [];
+  if (intakeAmount == null || !Number.isFinite(intakeAmount)) return [];
+  if (item.defaultAmount == null || item.defaultAmount <= 0) return [];
+  if (intakeUnit !== item.defaultUnit) return [];
+  const ratio = intakeAmount / item.defaultAmount;
+  return item.ingredients.map((row) => ({
+    ingredientId: row.ingredientId,
+    ingredientName: row.ingredientName,
+    amount: Math.round(row.amount * ratio * 1000) / 1000,
+    unit: row.unit,
+    sortOrder: row.sortOrder,
+  }));
 }
 
 interface ConfirmSheetProps {
@@ -56,6 +86,19 @@ function ConfirmSheet({ item, onClose }: ConfirmSheetProps) {
   const [unit, setUnit] = useState(item.defaultUnit);
   const [notes, setNotes] = useState("");
   const log = useLogSupplementIntake();
+
+  const previewIngredients = useMemo(() => {
+    const trimmed = amount.trim();
+    const num = trimmed === "" ? null : Number(trimmed);
+    return previewBreakdown(item, num, unit);
+  }, [item, amount, unit]);
+
+  // When the supplement has a composition but the unit no longer matches
+  // the default, the server will skip the breakdown — surface that.
+  const cantScale =
+    item.ingredients.length > 0 &&
+    previewIngredients.length === 0 &&
+    unit !== item.defaultUnit;
 
   function handleConfirm() {
     const amountNum = amount.trim() === "" ? undefined : Number(amount);
@@ -155,6 +198,43 @@ function ConfirmSheet({ item, onClose }: ConfirmSheetProps) {
           </button>
         )}
       </div>
+
+      {/* Composition preview — only shown when the supplement has a
+          breakdown defined, so single-substance supplements stay clean. */}
+      {item.ingredients.length > 0 && (
+        <div className="mb-4 bg-surface-container rounded-xl p-3">
+          <p className="text-[10px] text-outline uppercase tracking-wider font-bold mb-2">
+            Will also log
+          </p>
+          {previewIngredients.length > 0 ? (
+            <ul className="space-y-1">
+              {previewIngredients.map((ing) => (
+                <li
+                  key={ing.ingredientId}
+                  className="text-xs flex items-baseline justify-between gap-2 tabular-nums"
+                >
+                  <span className="text-on-surface-variant truncate">
+                    {ing.ingredientName}
+                  </span>
+                  <span className="text-on-surface font-semibold whitespace-nowrap">
+                    {formatAmount(ing.amount)} {ing.unit}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : cantScale ? (
+            <p className="text-xs text-outline italic">
+              Ingredient breakdown skipped — unit doesn&rsquo;t match the
+              supplement&rsquo;s default ({item.defaultUnit}).
+            </p>
+          ) : (
+            <p className="text-xs text-outline italic">
+              Enter an amount to preview the breakdown.
+            </p>
+          )}
+        </div>
+      )}
+
       <div className="flex justify-end gap-2">
         <button
           onClick={onClose}
@@ -179,41 +259,84 @@ function ConfirmSheet({ item, onClose }: ConfirmSheetProps) {
   );
 }
 
-function IntakeRow({ id, label, time, dose, notes }: {
+function IntakeRow({
+  id,
+  label,
+  time,
+  dose,
+  notes,
+  ingredients,
+}: {
   id: number;
   label: string;
   time: string;
   dose: string;
   notes: string | null;
+  ingredients: SupplementIntakeIngredient[];
 }) {
   const del = useDeleteSupplementIntake();
+  const [expanded, setExpanded] = useState(false);
+  const hasIngredients = ingredients.length > 0;
   return (
-    <div className="bg-surface-container-low rounded-xl p-3 flex items-center gap-3">
-      <span
-        className="material-symbols-outlined text-secondary"
-        style={{ fontVariationSettings: "'FILL' 1" }}
-      >
-        medication
-      </span>
-      <div className="flex-1 min-w-0">
-        <p className="font-headline font-semibold text-sm text-on-surface truncate">
-          {label}
-        </p>
-        <p className="text-xs text-on-surface-variant tabular-nums">
-          {time} · <span className="text-on-surface">{dose}</span>
-          {notes ? ` · ${notes}` : ""}
-        </p>
+    <div className="bg-surface-container-low rounded-xl">
+      <div className="p-3 flex items-center gap-3">
+        <span
+          className="material-symbols-outlined text-secondary"
+          style={{ fontVariationSettings: "'FILL' 1" }}
+        >
+          medication
+        </span>
+        <div className="flex-1 min-w-0">
+          <p className="font-headline font-semibold text-sm text-on-surface truncate">
+            {label}
+          </p>
+          <p className="text-xs text-on-surface-variant tabular-nums">
+            {time} · <span className="text-on-surface">{dose}</span>
+            {notes ? ` · ${notes}` : ""}
+          </p>
+          {hasIngredients && (
+            <button
+              onClick={() => setExpanded(!expanded)}
+              aria-expanded={expanded}
+              className="mt-1 text-[11px] text-outline hover:text-on-surface flex items-center gap-1 transition-colors"
+            >
+              <span className="material-symbols-outlined text-sm">
+                {expanded ? "expand_less" : "expand_more"}
+              </span>
+              {ingredients.length} ingredient{ingredients.length === 1 ? "" : "s"}
+            </button>
+          )}
+        </div>
+        <button
+          onClick={() => {
+            if (confirm("Delete this intake entry?")) del.mutate(id);
+          }}
+          disabled={del.isPending}
+          className="text-outline hover:text-error transition-colors p-1"
+          aria-label="Delete intake"
+        >
+          <span className="material-symbols-outlined text-base">delete</span>
+        </button>
       </div>
-      <button
-        onClick={() => {
-          if (confirm("Delete this intake entry?")) del.mutate(id);
-        }}
-        disabled={del.isPending}
-        className="text-outline hover:text-error transition-colors p-1"
-        aria-label="Delete intake"
-      >
-        <span className="material-symbols-outlined text-base">delete</span>
-      </button>
+      {hasIngredients && expanded && (
+        <div className="px-3 pb-3 border-t border-outline-variant/10 pt-2">
+          <ul className="space-y-0.5">
+            {ingredients.map((ing) => (
+              <li
+                key={ing.id}
+                className="text-xs flex items-baseline justify-between gap-2 tabular-nums"
+              >
+                <span className="text-on-surface-variant truncate">
+                  {ing.ingredientName}
+                </span>
+                <span className="text-on-surface whitespace-nowrap">
+                  {formatAmount(ing.amount)} {ing.unit}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
@@ -274,6 +397,12 @@ export function SupplementLog() {
                     {item.brand}
                   </p>
                 )}
+                {item.ingredients.length > 0 && (
+                  <p className="text-[10px] text-secondary uppercase tracking-wider mt-1 font-bold">
+                    {item.ingredients.length} ingredient
+                    {item.ingredients.length === 1 ? "" : "s"}
+                  </p>
+                )}
               </button>
             ))}
           </div>
@@ -311,6 +440,7 @@ export function SupplementLog() {
                 })}
                 dose={formatDose(i.amount, i.unit)}
                 notes={i.notes}
+                ingredients={i.ingredients}
               />
             ))}
           </div>
@@ -360,6 +490,7 @@ export function SupplementLog() {
                 })}
                 dose={formatDose(i.amount, i.unit)}
                 notes={i.notes}
+                ingredients={i.ingredients}
               />
             ))}
           </div>

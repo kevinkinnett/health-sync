@@ -46,9 +46,15 @@ export type {
 export type {
   SupplementItem,
   SupplementIntake,
+  SupplementIngredient,
+  SupplementItemIngredient,
+  SupplementIntakeIngredient,
   CreateSupplementItemBody,
   UpdateSupplementItemBody,
   CreateSupplementIntakeBody,
+  CreateSupplementIngredientBody,
+  UpdateSupplementIngredientBody,
+  SetSupplementItemIngredientsBody,
 } from "./types/supplement.js";
 export type {
   MedicationItem,

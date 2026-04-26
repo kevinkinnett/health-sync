@@ -36,8 +36,39 @@ const createIntakeSchema = z.object({
   notes: z.string().nullable().optional(),
 });
 
+const createIngredientSchema = z.object({
+  name: z.string().trim().min(1, "name is required"),
+  notes: z.string().nullable().optional(),
+});
+
+const updateIngredientSchema = z
+  .object({
+    name: z.string().trim().min(1).optional(),
+    notes: z.string().nullable().optional(),
+  })
+  .strict();
+
+const compositionRowSchema = z
+  .object({
+    ingredientId: z.number().int().positive().optional(),
+    ingredientName: z.string().trim().min(1).optional(),
+    amount: z.number().nonnegative(),
+    unit: z.string().trim().min(1),
+    sortOrder: z.number().int().nonnegative().optional(),
+  })
+  .refine(
+    (row) => row.ingredientId != null || (row.ingredientName?.length ?? 0) > 0,
+    { message: "Each row needs ingredientId or ingredientName" },
+  );
+
+const setCompositionSchema = z.object({
+  ingredients: z.array(compositionRowSchema),
+});
+
 export class SupplementController {
   constructor(private service: SupplementService) {}
+
+  // ---- Items ----------------------------------------------------------------
 
   async listItems(req: Request, res: Response): Promise<void> {
     try {
@@ -103,6 +134,8 @@ export class SupplementController {
     }
   }
 
+  // ---- Intakes --------------------------------------------------------------
+
   async listIntakes(req: Request, res: Response): Promise<void> {
     try {
       const start = typeof req.query.start === "string" ? req.query.start : undefined;
@@ -147,6 +180,88 @@ export class SupplementController {
       res.status(204).send();
     } catch (err) {
       this.handleError(err, res, "Failed to delete supplement intake");
+    }
+  }
+
+  // ---- Ingredients ----------------------------------------------------------
+
+  async listIngredients(_req: Request, res: Response): Promise<void> {
+    try {
+      const ingredients = await this.service.listIngredients();
+      res.json(ingredients);
+    } catch (err) {
+      logger.error({ err }, "Failed to list ingredients");
+      res.status(500).json({ error: "Failed to list ingredients" });
+    }
+  }
+
+  async createIngredient(req: Request, res: Response): Promise<void> {
+    try {
+      const body = createIngredientSchema.parse(req.body);
+      const ingredient = await this.service.createIngredient(body);
+      res.status(201).json(ingredient);
+    } catch (err) {
+      this.handleError(err, res, "Failed to create ingredient");
+    }
+  }
+
+  async updateIngredient(req: Request, res: Response): Promise<void> {
+    try {
+      const id = parseId(req.params.id);
+      if (id == null) {
+        res.status(400).json({ error: "Invalid id" });
+        return;
+      }
+      const body = updateIngredientSchema.parse(req.body);
+      const ingredient = await this.service.updateIngredient(id, body);
+      res.json(ingredient);
+    } catch (err) {
+      this.handleError(err, res, "Failed to update ingredient");
+    }
+  }
+
+  async deleteIngredient(req: Request, res: Response): Promise<void> {
+    try {
+      const id = parseId(req.params.id);
+      if (id == null) {
+        res.status(400).json({ error: "Invalid id" });
+        return;
+      }
+      await this.service.deleteIngredient(id);
+      res.status(204).send();
+    } catch (err) {
+      this.handleError(err, res, "Failed to delete ingredient");
+    }
+  }
+
+  // ---- Composition ----------------------------------------------------------
+
+  async getItemIngredients(req: Request, res: Response): Promise<void> {
+    try {
+      const id = parseId(req.params.id);
+      if (id == null) {
+        res.status(400).json({ error: "Invalid id" });
+        return;
+      }
+      const rows = await this.service.getItemIngredients(id);
+      res.json(rows);
+    } catch (err) {
+      this.handleError(err, res, "Failed to get item composition");
+    }
+  }
+
+  async setItemIngredients(req: Request, res: Response): Promise<void> {
+    try {
+      const id = parseId(req.params.id);
+      if (id == null) {
+        res.status(400).json({ error: "Invalid id" });
+        return;
+      }
+      const body = setCompositionSchema.parse(req.body);
+      const rows = await this.service.setItemIngredients(id, body);
+      res.json(rows);
+    } catch (err) {
+      this.handleError(err, res, "Failed to set item composition");
     }
   }
 

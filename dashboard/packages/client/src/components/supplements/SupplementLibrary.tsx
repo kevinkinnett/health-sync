@@ -1,10 +1,16 @@
 import { useState } from "react";
-import type { SupplementItem } from "@health-dashboard/shared";
+import type {
+  SupplementItem,
+  SupplementItemIngredient,
+  SupplementIngredient,
+} from "@health-dashboard/shared";
 import {
   useSupplementItems,
   useCreateSupplementItem,
   useUpdateSupplementItem,
   useArchiveSupplementItem,
+  useSupplementIngredients,
+  useSetSupplementItemIngredients,
 } from "../../api/queries";
 
 const inputClass =
@@ -14,6 +20,16 @@ const labelClass = "text-[10px] text-outline uppercase tracking-wider font-bold 
 const COMMON_FORMS = ["capsule", "tablet", "powder", "liquid", "softgel", "gummy"];
 const COMMON_UNITS = ["mg", "g", "IU", "mcg", "mL", "capsule", "scoop", "drop"];
 
+interface CompositionRow {
+  /** Stable client-side key so React doesn't reorder rows on rerender. */
+  key: string;
+  /** Existing ingredient id, if known. May be undefined for newly-typed names. */
+  ingredientId?: number;
+  ingredientName: string;
+  amount: string;
+  unit: string;
+}
+
 interface ItemFormState {
   name: string;
   brand: string;
@@ -21,10 +37,25 @@ interface ItemFormState {
   defaultAmount: string;
   defaultUnit: string;
   notes: string;
+  composition: CompositionRow[];
+}
+
+let rowKeySeq = 0;
+function nextRowKey(): string {
+  rowKeySeq += 1;
+  return `r${rowKeySeq}`;
 }
 
 function emptyForm(): ItemFormState {
-  return { name: "", brand: "", form: "", defaultAmount: "", defaultUnit: "", notes: "" };
+  return {
+    name: "",
+    brand: "",
+    form: "",
+    defaultAmount: "",
+    defaultUnit: "",
+    notes: "",
+    composition: [],
+  };
 }
 
 function fromItem(item: SupplementItem): ItemFormState {
@@ -35,7 +66,22 @@ function fromItem(item: SupplementItem): ItemFormState {
     defaultAmount: item.defaultAmount != null ? String(item.defaultAmount) : "",
     defaultUnit: item.defaultUnit,
     notes: item.notes ?? "",
+    composition: item.ingredients.map((ing) => ({
+      key: nextRowKey(),
+      ingredientId: ing.ingredientId,
+      ingredientName: ing.ingredientName,
+      amount: String(ing.amount),
+      unit: ing.unit,
+    })),
   };
+}
+
+/** Numeric input that allows blank; returns null if empty/invalid. */
+function parseOptionalNumber(s: string): number | null {
+  const t = s.trim();
+  if (t === "") return null;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : null;
 }
 
 function ItemForm({
@@ -130,6 +176,164 @@ function ItemForm({
   );
 }
 
+function CompositionEditor({
+  rows,
+  onChange,
+  catalog,
+}: {
+  rows: CompositionRow[];
+  onChange: (next: CompositionRow[]) => void;
+  catalog: SupplementIngredient[];
+}) {
+  function update(idx: number, patch: Partial<CompositionRow>) {
+    const next = rows.slice();
+    next[idx] = { ...next[idx], ...patch };
+    onChange(next);
+  }
+  function remove(idx: number) {
+    const next = rows.slice();
+    next.splice(idx, 1);
+    onChange(next);
+  }
+  function add() {
+    onChange([
+      ...rows,
+      {
+        key: nextRowKey(),
+        ingredientName: "",
+        amount: "",
+        unit: rows[rows.length - 1]?.unit ?? "mg",
+      },
+    ]);
+  }
+
+  // When the user types an ingredient name, snap to the existing id if it
+  // matches the catalog by case-insensitive name. Otherwise leave id blank
+  // and let the server find-or-create on save.
+  function syncIngredientId(idx: number, name: string) {
+    const lower = name.trim().toLowerCase();
+    const match = catalog.find((c) => c.name.toLowerCase() === lower);
+    update(idx, { ingredientName: name, ingredientId: match?.id });
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <span className={labelClass}>
+          Ingredients ({rows.length}) — per default dose
+        </span>
+        <button
+          type="button"
+          onClick={add}
+          className="text-xs text-primary hover:text-on-primary-fixed hover:bg-primary px-3 py-1 rounded-lg transition-colors flex items-center gap-1 font-bold"
+        >
+          <span className="material-symbols-outlined text-sm">add</span>
+          Add ingredient
+        </button>
+      </div>
+      {rows.length === 0 ? (
+        <p className="text-xs text-outline italic">
+          No ingredients defined. Single-substance supplements can leave this
+          empty; for multi-ingredient blends, list each substance with its
+          per-dose amount.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          <datalist id="supplement-ingredient-catalog">
+            {catalog.map((c) => (
+              <option key={c.id} value={c.name} />
+            ))}
+          </datalist>
+          {rows.map((row, idx) => (
+            <div
+              key={row.key}
+              className="grid grid-cols-[1fr_5rem_4rem_auto] gap-2 items-end"
+            >
+              <label className="flex flex-col">
+                <span className="sr-only">Ingredient name</span>
+                <input
+                  type="text"
+                  list="supplement-ingredient-catalog"
+                  value={row.ingredientName}
+                  onChange={(e) => syncIngredientId(idx, e.target.value)}
+                  placeholder="Ashwagandha"
+                  className={inputClass}
+                />
+              </label>
+              <label className="flex flex-col">
+                <span className="sr-only">Amount</span>
+                <input
+                  type="number"
+                  step="0.001"
+                  value={row.amount}
+                  onChange={(e) => update(idx, { amount: e.target.value })}
+                  placeholder="300"
+                  className={`${inputClass} tabular-nums`}
+                />
+              </label>
+              <label className="flex flex-col">
+                <span className="sr-only">Unit</span>
+                <input
+                  type="text"
+                  list="supplement-units"
+                  value={row.unit}
+                  onChange={(e) => update(idx, { unit: e.target.value })}
+                  placeholder="mg"
+                  className={inputClass}
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => remove(idx)}
+                aria-label="Remove ingredient"
+                className="h-9 w-9 flex items-center justify-center rounded-lg text-outline hover:text-error hover:bg-error/10 transition-colors"
+              >
+                <span className="material-symbols-outlined text-base">close</span>
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Build the API body. Drops blank rows. */
+function buildCompositionBody(rows: CompositionRow[]): {
+  ingredients: Array<{
+    ingredientId?: number;
+    ingredientName?: string;
+    amount: number;
+    unit: string;
+    sortOrder: number;
+  }>;
+} {
+  const out: Array<{
+    ingredientId?: number;
+    ingredientName?: string;
+    amount: number;
+    unit: string;
+    sortOrder: number;
+  }> = [];
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    const name = r.ingredientName.trim();
+    if (!name && r.ingredientId == null) continue;
+    const amount = parseOptionalNumber(r.amount);
+    if (amount == null) continue;
+    if (!r.unit.trim()) continue;
+    out.push({
+      ...(r.ingredientId != null
+        ? { ingredientId: r.ingredientId }
+        : { ingredientName: name }),
+      amount,
+      unit: r.unit.trim(),
+      sortOrder: i,
+    });
+  }
+  return { ingredients: out };
+}
+
 function ItemEditCard({
   item,
   onCancel,
@@ -137,16 +341,20 @@ function ItemEditCard({
   item: SupplementItem;
   onCancel: () => void;
 }) {
-  const [form, setForm] = useState<ItemFormState>(fromItem(item));
+  const [form, setForm] = useState<ItemFormState>(() => fromItem(item));
   const update = useUpdateSupplementItem();
+  const setComposition = useSetSupplementItemIngredients();
   const archive = useArchiveSupplementItem();
+  const ingredients = useSupplementIngredients();
   const [confirming, setConfirming] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  function handleSave() {
+  async function handleSave() {
     if (!form.name.trim() || !form.defaultUnit.trim()) return;
+    setError(null);
     const amount = form.defaultAmount.trim();
-    update.mutate(
-      {
+    try {
+      await update.mutateAsync({
         id: item.id,
         body: {
           name: form.name.trim(),
@@ -156,15 +364,29 @@ function ItemEditCard({
           defaultUnit: form.defaultUnit.trim(),
           notes: form.notes.trim() || null,
         },
-      },
-      { onSuccess: onCancel },
-    );
+      });
+      await setComposition.mutateAsync({
+        itemId: item.id,
+        body: buildCompositionBody(form.composition),
+      });
+      onCancel();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save");
+    }
   }
 
+  const saving = update.isPending || setComposition.isPending;
+
   return (
-    <div className="bg-surface-container-high rounded-xl p-5 border border-primary/20">
+    <div className="bg-surface-container-high rounded-xl p-5 border border-primary/20 space-y-4">
       <ItemForm form={form} onChange={setForm} />
-      <div className="flex items-center justify-between mt-4 gap-2">
+      <CompositionEditor
+        rows={form.composition}
+        onChange={(rows) => setForm({ ...form, composition: rows })}
+        catalog={ingredients.data ?? []}
+      />
+      {error && <p className="text-xs text-error">{error}</p>}
+      <div className="flex items-center justify-between gap-2">
         {confirming ? (
           <div className="flex items-center gap-2 text-xs text-on-surface-variant">
             <span>Archive {item.name}?</span>
@@ -202,11 +424,11 @@ function ItemEditCard({
           <button
             onClick={handleSave}
             disabled={
-              update.isPending || !form.name.trim() || !form.defaultUnit.trim()
+              saving || !form.name.trim() || !form.defaultUnit.trim()
             }
             className="px-5 py-2 text-xs font-bold rounded-lg bg-linear-to-br from-primary to-primary-container text-on-primary-fixed shadow-lg shadow-primary/10 active:scale-95 transition-transform disabled:opacity-50"
           >
-            {update.isPending ? "Saving…" : "Save"}
+            {saving ? "Saving…" : "Save"}
           </button>
         </div>
       </div>
@@ -217,30 +439,49 @@ function ItemEditCard({
 function NewItemCard({ onClose }: { onClose: () => void }) {
   const [form, setForm] = useState<ItemFormState>(emptyForm());
   const create = useCreateSupplementItem();
+  const setComposition = useSetSupplementItemIngredients();
+  const ingredients = useSupplementIngredients();
+  const [error, setError] = useState<string | null>(null);
 
-  function handleSave() {
+  async function handleSave() {
     if (!form.name.trim() || !form.defaultUnit.trim()) return;
+    setError(null);
     const amount = form.defaultAmount.trim();
-    create.mutate(
-      {
+    try {
+      const created = await create.mutateAsync({
         name: form.name.trim(),
         brand: form.brand.trim() || null,
         form: form.form.trim() || null,
         defaultAmount: amount === "" ? null : Number(amount),
         defaultUnit: form.defaultUnit.trim(),
         notes: form.notes.trim() || null,
-      },
-      { onSuccess: onClose },
-    );
+      });
+      const compBody = buildCompositionBody(form.composition);
+      if (compBody.ingredients.length > 0) {
+        await setComposition.mutateAsync({
+          itemId: created.id,
+          body: compBody,
+        });
+      }
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save");
+    }
   }
 
+  const saving = create.isPending || setComposition.isPending;
+
   return (
-    <div className="bg-surface-container-high rounded-xl p-5 border border-primary/30">
-      <h3 className="font-headline font-bold text-on-surface mb-4">
-        Add supplement
-      </h3>
+    <div className="bg-surface-container-high rounded-xl p-5 border border-primary/30 space-y-4">
+      <h3 className="font-headline font-bold text-on-surface">Add supplement</h3>
       <ItemForm form={form} onChange={setForm} />
-      <div className="flex justify-end gap-2 mt-4">
+      <CompositionEditor
+        rows={form.composition}
+        onChange={(rows) => setForm({ ...form, composition: rows })}
+        catalog={ingredients.data ?? []}
+      />
+      {error && <p className="text-xs text-error">{error}</p>}
+      <div className="flex justify-end gap-2">
         <button
           onClick={onClose}
           className="px-4 py-2 text-xs font-bold rounded-lg text-outline hover:bg-surface-container-high transition-colors"
@@ -249,16 +490,46 @@ function NewItemCard({ onClose }: { onClose: () => void }) {
         </button>
         <button
           onClick={handleSave}
-          disabled={
-            create.isPending || !form.name.trim() || !form.defaultUnit.trim()
-          }
+          disabled={saving || !form.name.trim() || !form.defaultUnit.trim()}
           className="px-5 py-2 text-xs font-bold rounded-lg bg-linear-to-br from-primary to-primary-container text-on-primary-fixed shadow-lg shadow-primary/10 active:scale-95 transition-transform disabled:opacity-50"
         >
-          {create.isPending ? "Saving…" : "Save"}
+          {saving ? "Saving…" : "Save"}
         </button>
       </div>
     </div>
   );
+}
+
+function CompositionPreview({
+  ingredients,
+}: {
+  ingredients: SupplementItemIngredient[];
+}) {
+  if (ingredients.length === 0) return null;
+  return (
+    <div className="mt-3 pt-3 border-t border-outline-variant/15">
+      <p className="text-[10px] text-outline uppercase tracking-wider font-bold mb-1">
+        Contains
+      </p>
+      <ul className="space-y-0.5">
+        {ingredients.map((ing) => (
+          <li
+            key={ing.ingredientId}
+            className="text-xs text-on-surface-variant tabular-nums flex items-baseline justify-between gap-2"
+          >
+            <span className="truncate">{ing.ingredientName}</span>
+            <span className="text-outline whitespace-nowrap">
+              {formatAmount(ing.amount)} {ing.unit}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function formatAmount(n: number): string {
+  return Number.isInteger(n) ? String(n) : String(parseFloat(n.toFixed(3)));
 }
 
 function ItemCard({ item }: { item: SupplementItem }) {
@@ -285,7 +556,7 @@ function ItemCard({ item }: { item: SupplementItem }) {
       <p className="font-headline font-semibold text-on-surface">{item.name}</p>
       <p className="text-xs text-on-surface-variant tabular-nums mt-0.5">
         {item.defaultAmount != null
-          ? `${Number.isInteger(item.defaultAmount) ? item.defaultAmount : item.defaultAmount.toFixed(3)} ${item.defaultUnit}`
+          ? `${formatAmount(item.defaultAmount)} ${item.defaultUnit}`
           : `Variable · ${item.defaultUnit}`}
       </p>
       {item.brand && (
@@ -299,6 +570,7 @@ function ItemCard({ item }: { item: SupplementItem }) {
           {item.notes}
         </p>
       )}
+      <CompositionPreview ingredients={item.ingredients} />
     </button>
   );
 }

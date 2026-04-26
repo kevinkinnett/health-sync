@@ -17,9 +17,14 @@ import type {
   TriggerResponse,
   SupplementItem,
   SupplementIntake,
+  SupplementIngredient,
+  SupplementItemIngredient,
   CreateSupplementItemBody,
   UpdateSupplementItemBody,
   CreateSupplementIntakeBody,
+  CreateSupplementIngredientBody,
+  UpdateSupplementIngredientBody,
+  SetSupplementItemIngredientsBody,
   MedicationItem,
   MedicationIntake,
   CreateMedicationItemBody,
@@ -257,6 +262,90 @@ export function useDeleteSupplementIntake() {
       apiFetch<void>(`/supplements/intakes/${id}`, { method: "DELETE" }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["supplements", "intakes"] });
+    },
+  });
+}
+
+// ---- Ingredients & composition --------------------------------------------
+
+export function useSupplementIngredients() {
+  return useQuery<SupplementIngredient[]>({
+    queryKey: ["supplements", "ingredients"],
+    queryFn: () => apiFetch("/supplements/ingredients"),
+  });
+}
+
+export function useCreateSupplementIngredient() {
+  const queryClient = useQueryClient();
+  return useMutation<
+    SupplementIngredient,
+    Error,
+    CreateSupplementIngredientBody
+  >({
+    mutationFn: (body) =>
+      apiFetch("/supplements/ingredients", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["supplements", "ingredients"],
+      });
+    },
+  });
+}
+
+export function useUpdateSupplementIngredient() {
+  const queryClient = useQueryClient();
+  return useMutation<
+    SupplementIngredient,
+    Error,
+    { id: number; body: UpdateSupplementIngredientBody }
+  >({
+    mutationFn: ({ id, body }) =>
+      apiFetch(`/supplements/ingredients/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["supplements", "ingredients"],
+      });
+    },
+  });
+}
+
+export function useDeleteSupplementIngredient() {
+  const queryClient = useQueryClient();
+  return useMutation<void, Error, number>({
+    mutationFn: (id) =>
+      apiFetch<void>(`/supplements/ingredients/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["supplements", "ingredients"],
+      });
+    },
+  });
+}
+
+export function useSetSupplementItemIngredients() {
+  const queryClient = useQueryClient();
+  return useMutation<
+    SupplementItemIngredient[],
+    Error,
+    { itemId: number; body: SetSupplementItemIngredientsBody }
+  >({
+    mutationFn: ({ itemId, body }) =>
+      apiFetch(`/supplements/items/${itemId}/ingredients`, {
+        method: "PUT",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      // Both items (ingredients embedded) and ingredients list may change
+      queryClient.invalidateQueries({ queryKey: ["supplements", "items"] });
+      queryClient.invalidateQueries({
+        queryKey: ["supplements", "ingredients"],
+      });
     },
   });
 }
