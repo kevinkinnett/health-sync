@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { SupplementItem } from "@health-dashboard/shared";
 import {
   useSupplementItems,
@@ -38,7 +38,14 @@ interface ConfirmSheetProps {
 }
 
 function ConfirmSheet({ item, onClose }: ConfirmSheetProps) {
-  const [takenAt, setTakenAt] = useState(toDatetimeLocalValue(new Date().toISOString()));
+  // Default: omit takenAt entirely so the server uses NOW(). The user can
+  // opt into a custom timestamp via "Adjust time". This avoids the
+  // datetime-local local↔UTC round-trip which has been observed to flip
+  // 13 hours in some browser/locale combinations.
+  const [adjustTime, setAdjustTime] = useState(false);
+  const [takenAt, setTakenAt] = useState(() =>
+    toDatetimeLocalValue(new Date().toISOString()),
+  );
   const [amount, setAmount] = useState<string>(
     item.defaultAmount != null ? String(item.defaultAmount) : "",
   );
@@ -52,7 +59,8 @@ function ConfirmSheet({ item, onClose }: ConfirmSheetProps) {
     log.mutate(
       {
         itemId: item.id,
-        takenAt: fromDatetimeLocalValue(takenAt),
+        // Only send takenAt if user explicitly chose to adjust it.
+        takenAt: adjustTime ? fromDatetimeLocalValue(takenAt) : undefined,
         amount: amountNum,
         unit: unit.trim() || undefined,
         notes: notes.trim() ? notes.trim() : null,
@@ -79,16 +87,7 @@ function ConfirmSheet({ item, onClose }: ConfirmSheetProps) {
           </p>
         </div>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-        <label className="flex flex-col">
-          <span className={labelClass}>Taken at</span>
-          <input
-            type="datetime-local"
-            value={takenAt}
-            onChange={(e) => setTakenAt(e.target.value)}
-            className={inputClass}
-          />
-        </label>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
         <label className="flex flex-col">
           <span className={labelClass}>Amount</span>
           <input
@@ -109,7 +108,7 @@ function ConfirmSheet({ item, onClose }: ConfirmSheetProps) {
           />
         </label>
       </div>
-      <label className="flex flex-col mb-4">
+      <label className="flex flex-col mb-3">
         <span className={labelClass}>Notes (optional)</span>
         <input
           type="text"
@@ -119,6 +118,35 @@ function ConfirmSheet({ item, onClose }: ConfirmSheetProps) {
           className={inputClass}
         />
       </label>
+      <div className="mb-4">
+        {adjustTime ? (
+          <label className="flex flex-col">
+            <span className={labelClass}>Taken at</span>
+            <div className="flex items-center gap-2">
+              <input
+                type="datetime-local"
+                value={takenAt}
+                onChange={(e) => setTakenAt(e.target.value)}
+                className={inputClass}
+              />
+              <button
+                onClick={() => setAdjustTime(false)}
+                className="text-xs text-outline hover:text-on-surface px-2 py-1"
+              >
+                Use now
+              </button>
+            </div>
+          </label>
+        ) : (
+          <button
+            onClick={() => setAdjustTime(true)}
+            className="text-xs text-outline hover:text-on-surface flex items-center gap-1"
+          >
+            <span className="material-symbols-outlined text-sm">schedule</span>
+            Logging as <span className="text-on-surface font-semibold">now</span> · Adjust time
+          </button>
+        )}
+      </div>
       <div className="flex justify-end gap-2">
         <button
           onClick={onClose}
@@ -186,16 +214,19 @@ export function SupplementLog() {
   const items = useSupplementItems();
   const [selected, setSelected] = useState<SupplementItem | null>(null);
 
-  // Pull last 30 days of intakes for the timeline.
-  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  // Pull last 30 days of intakes for the timeline. Use a date-only stable
+  // string so the query key only changes when the calendar day rolls over,
+  // not on every render (which would otherwise cause refetch storms).
+  const since = useMemo(() => {
+    const d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString();
+  }, []);
   const intakes = useSupplementIntakes(since);
 
-  const today = new Date();
-  const todayStart = new Date(
-    today.getFullYear(),
-    today.getMonth(),
-    today.getDate(),
-  ).getTime();
+  const todayStart = useMemo(() => {
+    const t = new Date();
+    return new Date(t.getFullYear(), t.getMonth(), t.getDate()).getTime();
+  }, []);
 
   const todayIntakes =
     intakes.data?.filter((i) => new Date(i.takenAt).getTime() >= todayStart) ?? [];
