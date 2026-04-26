@@ -2,9 +2,12 @@
 Ingest Fitbit health data into universe schema tables in PostgreSQL.
 
 Data types (10 total):
-  Daily (1 request/day):  activity, sleep, heart_rate, body_weight
-  Range (1 req/30 days):  spo2, hrv, breathing_rate, skin_temp, vo2_max
+  Daily (1 request/day):  activity, heart_rate, body_weight
+  Range (1 req/30 days):  sleep, spo2, hrv, breathing_rate, skin_temp, vo2_max
   Paginated:              exercise_log
+
+Sleep moved from Daily to Range — Fitbit's per-day sleep endpoint silently returns
+empty for many dates that *do* have sleep data, while the range endpoint is reliable.
 
 Handles OAuth token auto-refresh, resumable backfill via fitbit_ingest_state,
 and rate-limit budgeting (150 req/hr Fitbit limit).
@@ -35,11 +38,21 @@ TOKEN_URL = "https://api.fitbit.com/oauth2/token"
 DEFAULT_BACKFILL_DAYS = 365
 RATE_LIMIT_PAUSE = 1.0  # seconds between API calls
 MAX_RANGE_DAYS = 30  # max days per range API request
+# Rolling window of recent days that are always re-fetched, regardless of state cursor.
+# Fitbit data for sleep / HRV / SpO2 / breathing / skin temp can arrive 1+ days late
+# (the metrics are derived after nightly processing). Without this, a day that returns
+# empty on first attempt is permanently lost — the cursor advances past it and never
+# revisits. Re-fetches are upsert-safe via ON CONFLICT.
+RECHECK_DAYS = 14
 
-# Types fetched one day at a time (existing)
-DAILY_TYPES = ["activity", "sleep", "heart_rate", "body_weight"]
-# Types fetched via efficient date-range APIs (new)
-RANGE_TYPES = ["spo2", "hrv", "breathing_rate", "skin_temp", "vo2_max"]
+# Types fetched one day at a time. Sleep was previously here but moved to RANGE_TYPES
+# because Fitbit's per-day sleep endpoint /1.2/user/-/sleep/date/{date}.json silently
+# returns empty for many days that *do* have sleep data — confirmed 2026-04-26 when
+# the range endpoint returned 10 dates of sleep that the per-day endpoint had reported
+# as empty. The range endpoint is the source of truth.
+DAILY_TYPES = ["activity", "heart_rate", "body_weight"]
+# Types fetched via efficient date-range APIs
+RANGE_TYPES = ["sleep", "spo2", "hrv", "breathing_rate", "skin_temp", "vo2_max"]
 # Types fetched via paginated list APIs (new)
 PAGINATED_TYPES = ["exercise_log"]
 # All types combined
@@ -424,45 +437,6 @@ def fetch_and_upsert_activity(conn: psycopg.Connection, creds: dict, date_str: s
     return 1
 
 
-def fetch_and_upsert_sleep(conn: psycopg.Connection, creds: dict, date_str: str) -> int:
-    data = fitbit_get(creds, f"/1.2/user/-/sleep/date/{date_str}.json")
-    sleep_list = data.get("sleep", [])
-    if not sleep_list:
-        return 0
-
-    main_sleep = next((s for s in sleep_list if s.get("isMainSleep")), sleep_list[0])
-    summary = data.get("summary", {})
-    stages = summary.get("stages", {})
-
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            INSERT INTO universe.fitbit_sleep_daily
-                (date, total_minutes_asleep, total_minutes_in_bed, total_sleep_records,
-                 minutes_deep, minutes_light, minutes_rem, minutes_wake, efficiency,
-                 main_sleep_start_time, main_sleep_end_time, raw_jsonb)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (date) DO UPDATE SET
-                total_minutes_asleep = EXCLUDED.total_minutes_asleep,
-                total_minutes_in_bed = EXCLUDED.total_minutes_in_bed,
-                total_sleep_records = EXCLUDED.total_sleep_records,
-                minutes_deep = EXCLUDED.minutes_deep, minutes_light = EXCLUDED.minutes_light,
-                minutes_rem = EXCLUDED.minutes_rem, minutes_wake = EXCLUDED.minutes_wake,
-                efficiency = EXCLUDED.efficiency,
-                main_sleep_start_time = EXCLUDED.main_sleep_start_time,
-                main_sleep_end_time = EXCLUDED.main_sleep_end_time,
-                raw_jsonb = EXCLUDED.raw_jsonb, fetched_at = NOW()
-            """,
-            (date_str, summary.get("totalMinutesAsleep"), summary.get("totalTimeInBed"),
-             summary.get("totalSleepRecords"), stages.get("deep"), stages.get("light"),
-             stages.get("rem"), stages.get("wake"), main_sleep.get("efficiency"),
-             main_sleep.get("startTime"), main_sleep.get("endTime"),
-             json.dumps(data)),
-        )
-    conn.commit()
-    return 1
-
-
 def fetch_and_upsert_heart_rate(conn: psycopg.Connection, creds: dict, date_str: str) -> int:
     data = fitbit_get(creds, f"/1/user/-/activities/heart/date/{date_str}/1d.json")
     hr_list = data.get("activities-heart", [])
@@ -529,7 +503,6 @@ def fetch_and_upsert_body_weight(conn: psycopg.Connection, creds: dict, date_str
 
 DAILY_FETCHERS = {
     "activity": fetch_and_upsert_activity,
-    "sleep": fetch_and_upsert_sleep,
     "heart_rate": fetch_and_upsert_heart_rate,
     "body_weight": fetch_and_upsert_body_weight,
 }
@@ -538,6 +511,88 @@ DAILY_FETCHERS = {
 # ===========================================================================
 # RANGE FETCHERS (1 request per 30 days — massively more efficient)
 # ===========================================================================
+
+def fetch_and_upsert_sleep_range(
+    conn: psycopg.Connection, creds: dict, start: str, end: str,
+) -> int:
+    """
+    GET /1.2/user/-/sleep/date/{start}/{end}.json → {sleep: [...], summary: {...}}.
+    Range endpoint is the source of truth — the per-day endpoint /sleep/date/{date}.json
+    silently returns empty for many dates that have sleep data (confirmed 2026-04-26).
+    Multiple records can exist per date (main sleep + naps); we upsert one row per date
+    using aggregated stage minutes and the main_sleep record for start/end times.
+    """
+    data = fitbit_get(creds, f"/1.2/user/-/sleep/date/{start}/{end}.json")
+    sleep_records = data.get("sleep", [])
+    if not sleep_records:
+        return 0
+
+    # Group by dateOfSleep, aggregating across naps + main sleep.
+    by_date: dict[str, dict[str, Any]] = {}
+    main_by_date: dict[str, dict[str, Any]] = {}
+    for rec in sleep_records:
+        d = rec.get("dateOfSleep")
+        if not d:
+            continue
+        bucket = by_date.setdefault(d, {
+            "total_minutes_asleep": 0, "total_minutes_in_bed": 0, "total_sleep_records": 0,
+            "minutes_deep": 0, "minutes_light": 0, "minutes_rem": 0, "minutes_wake": 0,
+            "all_records": [],
+        })
+        bucket["total_minutes_asleep"] += rec.get("minutesAsleep", 0) or 0
+        bucket["total_minutes_in_bed"] += rec.get("timeInBed", 0) or 0
+        bucket["total_sleep_records"] += 1
+        levels_summary = rec.get("levels", {}).get("summary", {})
+        for stage in ("deep", "light", "rem", "wake"):
+            stage_data = levels_summary.get(stage)
+            if isinstance(stage_data, dict):
+                bucket[f"minutes_{stage}"] += stage_data.get("minutes", 0) or 0
+        bucket["all_records"].append(rec)
+        # Prefer the main sleep record for efficiency / start / end times.
+        if rec.get("isMainSleep") or d not in main_by_date:
+            main_by_date[d] = rec
+
+    count = 0
+    with conn.cursor() as cur:
+        for d, bucket in by_date.items():
+            main_rec = main_by_date[d]
+            cur.execute(
+                """
+                INSERT INTO universe.fitbit_sleep_daily
+                    (date, total_minutes_asleep, total_minutes_in_bed, total_sleep_records,
+                     minutes_deep, minutes_light, minutes_rem, minutes_wake, efficiency,
+                     main_sleep_start_time, main_sleep_end_time, raw_jsonb)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (date) DO UPDATE SET
+                    total_minutes_asleep = EXCLUDED.total_minutes_asleep,
+                    total_minutes_in_bed = EXCLUDED.total_minutes_in_bed,
+                    total_sleep_records = EXCLUDED.total_sleep_records,
+                    minutes_deep = EXCLUDED.minutes_deep, minutes_light = EXCLUDED.minutes_light,
+                    minutes_rem = EXCLUDED.minutes_rem, minutes_wake = EXCLUDED.minutes_wake,
+                    efficiency = EXCLUDED.efficiency,
+                    main_sleep_start_time = EXCLUDED.main_sleep_start_time,
+                    main_sleep_end_time = EXCLUDED.main_sleep_end_time,
+                    raw_jsonb = EXCLUDED.raw_jsonb, fetched_at = NOW()
+                """,
+                (
+                    d,
+                    bucket["total_minutes_asleep"] or None,
+                    bucket["total_minutes_in_bed"] or None,
+                    bucket["total_sleep_records"],
+                    bucket["minutes_deep"] or None,
+                    bucket["minutes_light"] or None,
+                    bucket["minutes_rem"] or None,
+                    bucket["minutes_wake"] or None,
+                    main_rec.get("efficiency"),
+                    main_rec.get("startTime"),
+                    main_rec.get("endTime"),
+                    json.dumps({"sleep": bucket["all_records"]}),
+                ),
+            )
+            count += 1
+    conn.commit()
+    return count
+
 
 def fetch_and_upsert_spo2_range(
     conn: psycopg.Connection, creds: dict, start: str, end: str,
@@ -682,6 +737,7 @@ def fetch_and_upsert_cardio_range(
 
 
 RANGE_FETCHERS = {
+    "sleep": fetch_and_upsert_sleep_range,
     "spo2": fetch_and_upsert_spo2_range,
     "hrv": fetch_and_upsert_hrv_range,
     "breathing_rate": fetch_and_upsert_br_range,
@@ -846,9 +902,14 @@ def main(
 
             state = get_state(conn, data_type)
             if state and state["latest_fetched_date"]:
-                range_start = state["latest_fetched_date"] + timedelta(days=1)
+                state_start = state["latest_fetched_date"] + timedelta(days=1)
             else:
-                range_start = backfill_start
+                state_start = backfill_start
+            # Always re-fetch the rolling recheck window so late-arriving data
+            # (Fitbit publishes some derived metrics 1+ days after the date)
+            # gets picked up. Upserts are idempotent via ON CONFLICT.
+            recheck_start = today - timedelta(days=RECHECK_DAYS)
+            range_start = min(state_start, recheck_start)
 
             if range_start > today:
                 print(f"[{data_type}] Already up to date.")
@@ -909,9 +970,12 @@ def main(
         if "exercise_log" in enabled and request_count < max_requests_per_run:
             state = get_state(conn, "exercise_log")
             if state and state["latest_fetched_date"]:
-                after_date = state["latest_fetched_date"].isoformat()
+                state_after = state["latest_fetched_date"]
             else:
-                after_date = backfill_start.isoformat()
+                state_after = backfill_start
+            # Roll back into the recheck window so late-synced workouts show up.
+            recheck_after = today - timedelta(days=RECHECK_DAYS)
+            after_date = min(state_after, recheck_after).isoformat()
 
             print(f"[exercise_log] Fetching logs after {after_date}")
             try:
@@ -954,9 +1018,12 @@ def main(
                 continue
             state = get_state(conn, data_type)
             if state and state["latest_fetched_date"]:
-                start_date = state["latest_fetched_date"] + timedelta(days=1)
+                state_start = state["latest_fetched_date"] + timedelta(days=1)
             else:
-                start_date = backfill_start
+                state_start = backfill_start
+            # Always re-attempt the rolling recheck window for late-arriving data.
+            recheck_start = today - timedelta(days=RECHECK_DAYS)
+            start_date = min(state_start, recheck_start)
             if start_date > today:
                 print(f"[{data_type}] Already up to date.")
                 continue
