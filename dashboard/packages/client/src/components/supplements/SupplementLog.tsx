@@ -6,6 +6,7 @@ import {
   useLogSupplementIntake,
   useDeleteSupplementIntake,
 } from "../../api/queries";
+import { DateTimePicker } from "../DateTimePicker";
 
 const inputClass =
   "w-full rounded-lg bg-surface-container-lowest border border-outline-variant/20 px-3 py-2 text-sm text-on-surface focus:outline-none focus:ring-1 focus:ring-primary";
@@ -37,19 +38,6 @@ function formatDose(amount: number | null, unit: string): string {
   return `${formatted} ${unit}`;
 }
 
-function toDatetimeLocalValue(iso: string): string {
-  // <input type="datetime-local"> wants "YYYY-MM-DDTHH:mm" in *local* time.
-  const d = new Date(iso);
-  const offset = d.getTimezoneOffset();
-  const local = new Date(d.getTime() - offset * 60_000);
-  return local.toISOString().slice(0, 16);
-}
-
-function fromDatetimeLocalValue(value: string): string {
-  // Treat the string as local time, convert to ISO with timezone.
-  return new Date(value).toISOString();
-}
-
 interface ConfirmSheetProps {
   item: SupplementItem;
   onClose: () => void;
@@ -57,13 +45,11 @@ interface ConfirmSheetProps {
 
 function ConfirmSheet({ item, onClose }: ConfirmSheetProps) {
   // Default: omit takenAt entirely so the server uses NOW(). The user can
-  // opt into a custom timestamp via "Adjust time". This avoids the
-  // datetime-local local↔UTC round-trip which has been observed to flip
-  // 13 hours in some browser/locale combinations.
+  // opt into a custom timestamp via "Adjust time". Working with Date objects
+  // (rather than the datetime-local string format) avoids the local↔UTC
+  // round-trip bug seen in some browser/locale combinations.
   const [adjustTime, setAdjustTime] = useState(false);
-  const [takenAt, setTakenAt] = useState(() =>
-    toDatetimeLocalValue(new Date().toISOString()),
-  );
+  const [takenAt, setTakenAt] = useState<Date>(() => new Date());
   const [amount, setAmount] = useState<string>(
     item.defaultAmount != null ? String(item.defaultAmount) : "",
   );
@@ -78,13 +64,20 @@ function ConfirmSheet({ item, onClose }: ConfirmSheetProps) {
       {
         itemId: item.id,
         // Only send takenAt if user explicitly chose to adjust it.
-        takenAt: adjustTime ? fromDatetimeLocalValue(takenAt) : undefined,
+        takenAt: adjustTime ? takenAt.toISOString() : undefined,
         amount: amountNum,
         unit: unit.trim() || undefined,
         notes: notes.trim() ? notes.trim() : null,
       },
       { onSuccess: onClose },
     );
+  }
+
+  function openAdjustTime() {
+    // Refresh "now" each time the picker opens so it doesn't show a stale
+    // timestamp from when the sheet first mounted.
+    setTakenAt(new Date());
+    setAdjustTime(true);
   }
 
   return (
@@ -138,15 +131,11 @@ function ConfirmSheet({ item, onClose }: ConfirmSheetProps) {
       </label>
       <div className="mb-4">
         {adjustTime ? (
-          <label className="flex flex-col">
-            <span className={labelClass}>Taken at</span>
-            <div className="flex items-center gap-2">
-              <input
-                type="datetime-local"
-                value={takenAt}
-                onChange={(e) => setTakenAt(e.target.value)}
-                className={inputClass}
-              />
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[10px] text-outline uppercase tracking-wider font-bold">
+                Taken at
+              </span>
               <button
                 onClick={() => setAdjustTime(false)}
                 className="text-xs text-outline hover:text-on-surface px-2 py-1"
@@ -154,10 +143,11 @@ function ConfirmSheet({ item, onClose }: ConfirmSheetProps) {
                 Use now
               </button>
             </div>
-          </label>
+            <DateTimePicker value={takenAt} onChange={setTakenAt} />
+          </div>
         ) : (
           <button
-            onClick={() => setAdjustTime(true)}
+            onClick={openAdjustTime}
             className="text-xs text-outline hover:text-on-surface flex items-center gap-1"
           >
             <span className="material-symbols-outlined text-sm">schedule</span>
