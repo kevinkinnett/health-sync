@@ -5,6 +5,7 @@ import { Dashboard } from "./pages/Dashboard";
 import { Explore } from "./pages/Explore";
 import { Ingest } from "./pages/Ingest";
 import { Settings } from "./pages/Settings";
+import { Supplements } from "./pages/Supplements";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -24,6 +25,7 @@ export default function App() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/explore" element={<Explore />} />
             <Route path="/ingest" element={<Ingest />} />
+            <Route path="/supplements" element={<Supplements />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>

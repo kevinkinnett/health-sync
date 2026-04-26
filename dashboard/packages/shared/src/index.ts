@@ -43,3 +43,10 @@ export type {
   Streak,
   RecordsData,
 } from "./types/records.js";
+export type {
+  SupplementItem,
+  SupplementIntake,
+  CreateSupplementItemBody,
+  UpdateSupplementItemBody,
+  CreateSupplementIntakeBody,
+} from "./types/supplement.js";

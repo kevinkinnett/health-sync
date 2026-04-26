@@ -15,6 +15,11 @@ import type {
   IngestRun,
   IngestOverview,
   TriggerResponse,
+  SupplementItem,
+  SupplementIntake,
+  CreateSupplementItemBody,
+  UpdateSupplementItemBody,
+  CreateSupplementIntakeBody,
 } from "@health-dashboard/shared";
 import { apiFetch } from "./client";
 import { useDateRangeStore } from "../stores/dateRangeStore";
@@ -149,6 +154,104 @@ export function useTriggerIngest() {
       apiFetch("/ingest/trigger", { method: "POST" }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["ingest"] });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Supplements
+// ---------------------------------------------------------------------------
+
+export function useSupplementItems(includeInactive = false) {
+  return useQuery<SupplementItem[]>({
+    queryKey: ["supplements", "items", includeInactive],
+    queryFn: () =>
+      apiFetch(
+        `/supplements/items${includeInactive ? "?includeInactive=true" : ""}`,
+      ),
+  });
+}
+
+export function useSupplementIntakes(
+  start?: string,
+  end?: string,
+  itemId?: number,
+) {
+  const params = new URLSearchParams();
+  if (start) params.set("start", start);
+  if (end) params.set("end", end);
+  if (itemId != null) params.set("itemId", String(itemId));
+  const query = params.toString();
+  return useQuery<SupplementIntake[]>({
+    queryKey: ["supplements", "intakes", start ?? null, end ?? null, itemId ?? null],
+    queryFn: () => apiFetch(`/supplements/intakes${query ? `?${query}` : ""}`),
+  });
+}
+
+export function useCreateSupplementItem() {
+  const queryClient = useQueryClient();
+  return useMutation<SupplementItem, Error, CreateSupplementItemBody>({
+    mutationFn: (body) =>
+      apiFetch("/supplements/items", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["supplements", "items"] });
+    },
+  });
+}
+
+export function useUpdateSupplementItem() {
+  const queryClient = useQueryClient();
+  return useMutation<
+    SupplementItem,
+    Error,
+    { id: number; body: UpdateSupplementItemBody }
+  >({
+    mutationFn: ({ id, body }) =>
+      apiFetch(`/supplements/items/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["supplements", "items"] });
+    },
+  });
+}
+
+export function useArchiveSupplementItem() {
+  const queryClient = useQueryClient();
+  return useMutation<void, Error, number>({
+    mutationFn: (id) =>
+      apiFetch<void>(`/supplements/items/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["supplements", "items"] });
+    },
+  });
+}
+
+export function useLogSupplementIntake() {
+  const queryClient = useQueryClient();
+  return useMutation<SupplementIntake, Error, CreateSupplementIntakeBody>({
+    mutationFn: (body) =>
+      apiFetch("/supplements/intakes", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["supplements", "intakes"] });
+    },
+  });
+}
+
+export function useDeleteSupplementIntake() {
+  const queryClient = useQueryClient();
+  return useMutation<void, Error, number>({
+    mutationFn: (id) =>
+      apiFetch<void>(`/supplements/intakes/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["supplements", "intakes"] });
     },
   });
 }

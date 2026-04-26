@@ -14,5 +14,11 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     throw new Error(`API error ${response.status}: ${text}`);
   }
 
+  // Handle 204 No Content and other empty responses gracefully so callers
+  // expecting `Promise<void>` don't hit a JSON-parse error.
+  if (response.status === 204 || response.headers.get("content-length") === "0") {
+    return undefined as T;
+  }
+
   return response.json() as Promise<T>;
 }

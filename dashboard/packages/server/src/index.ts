@@ -13,12 +13,16 @@ import { WeightRepository } from "./repositories/weightRepo.js";
 import { HrvRepository } from "./repositories/hrvRepo.js";
 import { ExerciseLogRepository } from "./repositories/exerciseLogRepo.js";
 import { IngestRepository } from "./repositories/ingestRepo.js";
+import { SupplementRepository } from "./repositories/supplementRepo.js";
 import { HealthDataService } from "./services/healthDataService.js";
 import { IngestService } from "./services/ingestService.js";
+import { SupplementService } from "./services/supplementService.js";
 import { HealthController } from "./controllers/healthController.js";
 import { IngestController } from "./controllers/ingestController.js";
+import { SupplementController } from "./controllers/supplementController.js";
 import { createHealthRoutes } from "./routes/health.js";
 import { createIngestRoutes } from "./routes/ingest.js";
+import { createSupplementRoutes } from "./routes/supplement.js";
 
 const config = loadConfig();
 const pool = createPool(config.db);
@@ -35,6 +39,10 @@ const weightRepo = new WeightRepository(pool);
 const hrvRepo = new HrvRepository(pool);
 const exerciseLogRepo = new ExerciseLogRepository(pool);
 const ingestRepo = new IngestRepository(pool);
+const supplementRepo = new SupplementRepository(pool);
+
+// Ensure user-input tables exist before serving traffic
+await supplementRepo.ensureTables();
 
 // Services
 const healthDataService = new HealthDataService(
@@ -46,10 +54,12 @@ const healthDataService = new HealthDataService(
   exerciseLogRepo,
 );
 const ingestService = new IngestService(ingestRepo, config.windmill);
+const supplementService = new SupplementService(supplementRepo);
 
 // Controllers
 const healthController = new HealthController(healthDataService);
 const ingestController = new IngestController(ingestService);
+const supplementController = new SupplementController(supplementService);
 
 // App
 const app: Express = express();
@@ -70,6 +80,7 @@ app.get("/api/health-check", async (_req, res) => {
 // Routes
 app.use("/api/health", createHealthRoutes(healthController));
 app.use("/api/ingest", createIngestRoutes(ingestController));
+app.use("/api/supplements", createSupplementRoutes(supplementController));
 
 // Serve client static files in production (single-container mode)
 // In Docker: dist/public/  In dev: ../../client/dist/
