@@ -11,6 +11,24 @@ const inputClass =
   "w-full rounded-lg bg-surface-container-lowest border border-outline-variant/20 px-3 py-2 text-sm text-on-surface focus:outline-none focus:ring-1 focus:ring-primary";
 const labelClass = "text-[10px] text-outline uppercase tracking-wider font-bold mb-1 block";
 
+type HistoryRange = "7d" | "30d" | "90d" | "all";
+
+const HISTORY_PRESETS: { label: string; value: HistoryRange }[] = [
+  { label: "7D", value: "7d" },
+  { label: "30D", value: "30d" },
+  { label: "90D", value: "90d" },
+  { label: "All", value: "all" },
+];
+
+function rangeToSinceIso(range: HistoryRange): string | undefined {
+  if (range === "all") return undefined;
+  const days = range === "7d" ? 7 : range === "30d" ? 30 : 90;
+  const d = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  // Date-only floor so the query key is stable until the calendar day
+  // rolls over, not changing on every render.
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString();
+}
+
 function formatDose(amount: number | null, unit: string): string {
   if (amount == null) return `— ${unit}`;
   // Trim trailing zeros for whole-number doses (e.g. "1000" not "1000.000")
@@ -213,14 +231,13 @@ function IntakeRow({ id, label, time, dose, notes }: {
 export function SupplementLog() {
   const items = useSupplementItems();
   const [selected, setSelected] = useState<SupplementItem | null>(null);
+  const [historyRange, setHistoryRange] = useState<HistoryRange>("30d");
 
-  // Pull last 30 days of intakes for the timeline. Use a date-only stable
-  // string so the query key only changes when the calendar day rolls over,
-  // not on every render (which would otherwise cause refetch storms).
-  const since = useMemo(() => {
-    const d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    return new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString();
-  }, []);
+  // Pull intakes for the selected history range. Use a date-only stable
+  // string so the query key only changes when the calendar day rolls over
+  // or the range changes, not on every render (which would otherwise cause
+  // refetch storms).
+  const since = useMemo(() => rangeToSinceIso(historyRange), [historyRange]);
   const intakes = useSupplementIntakes(since);
 
   const todayStart = useMemo(() => {
@@ -311,11 +328,34 @@ export function SupplementLog() {
       </div>
 
       {/* History */}
-      {olderIntakes.length > 0 && (
-        <div className="bg-surface-container rounded-xl p-5">
-          <h2 className="font-headline text-lg font-semibold text-on-surface mb-4">
-            History (last 30 days)
+      <div className="bg-surface-container rounded-xl p-5">
+        <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+          <h2 className="font-headline text-lg font-semibold text-on-surface">
+            History
           </h2>
+          <div className="flex items-center gap-1 bg-surface-container-low px-1.5 py-1 rounded-xl border border-outline-variant/10">
+            {HISTORY_PRESETS.map((p) => (
+              <button
+                key={p.value}
+                onClick={() => setHistoryRange(p.value)}
+                className={`px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
+                  historyRange === p.value
+                    ? "bg-primary text-on-primary-fixed"
+                    : "text-outline hover:text-on-surface"
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {intakes.isLoading ? (
+          <p className="text-on-surface-variant text-sm">Loading…</p>
+        ) : olderIntakes.length === 0 ? (
+          <p className="text-on-surface-variant text-sm">
+            No history in this range.
+          </p>
+        ) : (
           <div className="space-y-2">
             {olderIntakes.map((i) => (
               <IntakeRow
@@ -333,8 +373,8 @@ export function SupplementLog() {
               />
             ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
