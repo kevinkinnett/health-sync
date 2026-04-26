@@ -50,3 +50,10 @@ export type {
   UpdateSupplementItemBody,
   CreateSupplementIntakeBody,
 } from "./types/supplement.js";
+export type {
+  MedicationItem,
+  MedicationIntake,
+  CreateMedicationItemBody,
+  UpdateMedicationItemBody,
+  CreateMedicationIntakeBody,
+} from "./types/medication.js";

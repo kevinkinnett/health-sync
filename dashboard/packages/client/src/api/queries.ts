@@ -20,6 +20,11 @@ import type {
   CreateSupplementItemBody,
   UpdateSupplementItemBody,
   CreateSupplementIntakeBody,
+  MedicationItem,
+  MedicationIntake,
+  CreateMedicationItemBody,
+  UpdateMedicationItemBody,
+  CreateMedicationIntakeBody,
 } from "@health-dashboard/shared";
 import { apiFetch } from "./client";
 import { useDateRangeStore } from "../stores/dateRangeStore";
@@ -252,6 +257,104 @@ export function useDeleteSupplementIntake() {
       apiFetch<void>(`/supplements/intakes/${id}`, { method: "DELETE" }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["supplements", "intakes"] });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Medications
+// ---------------------------------------------------------------------------
+
+export function useMedicationItems(includeInactive = false) {
+  return useQuery<MedicationItem[]>({
+    queryKey: ["medications", "items", includeInactive],
+    queryFn: () =>
+      apiFetch(
+        `/medications/items${includeInactive ? "?includeInactive=true" : ""}`,
+      ),
+  });
+}
+
+export function useMedicationIntakes(
+  start?: string,
+  end?: string,
+  itemId?: number,
+) {
+  const params = new URLSearchParams();
+  if (start) params.set("start", start);
+  if (end) params.set("end", end);
+  if (itemId != null) params.set("itemId", String(itemId));
+  const query = params.toString();
+  return useQuery<MedicationIntake[]>({
+    queryKey: ["medications", "intakes", start ?? null, end ?? null, itemId ?? null],
+    queryFn: () => apiFetch(`/medications/intakes${query ? `?${query}` : ""}`),
+  });
+}
+
+export function useCreateMedicationItem() {
+  const queryClient = useQueryClient();
+  return useMutation<MedicationItem, Error, CreateMedicationItemBody>({
+    mutationFn: (body) =>
+      apiFetch("/medications/items", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["medications", "items"] });
+    },
+  });
+}
+
+export function useUpdateMedicationItem() {
+  const queryClient = useQueryClient();
+  return useMutation<
+    MedicationItem,
+    Error,
+    { id: number; body: UpdateMedicationItemBody }
+  >({
+    mutationFn: ({ id, body }) =>
+      apiFetch(`/medications/items/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["medications", "items"] });
+    },
+  });
+}
+
+export function useArchiveMedicationItem() {
+  const queryClient = useQueryClient();
+  return useMutation<void, Error, number>({
+    mutationFn: (id) =>
+      apiFetch<void>(`/medications/items/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["medications", "items"] });
+    },
+  });
+}
+
+export function useLogMedicationIntake() {
+  const queryClient = useQueryClient();
+  return useMutation<MedicationIntake, Error, CreateMedicationIntakeBody>({
+    mutationFn: (body) =>
+      apiFetch("/medications/intakes", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["medications", "intakes"] });
+    },
+  });
+}
+
+export function useDeleteMedicationIntake() {
+  const queryClient = useQueryClient();
+  return useMutation<void, Error, number>({
+    mutationFn: (id) =>
+      apiFetch<void>(`/medications/intakes/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["medications", "intakes"] });
     },
   });
 }

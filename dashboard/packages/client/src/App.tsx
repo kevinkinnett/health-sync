@@ -6,6 +6,7 @@ import { Explore } from "./pages/Explore";
 import { Ingest } from "./pages/Ingest";
 import { Settings } from "./pages/Settings";
 import { Supplements } from "./pages/Supplements";
+import { Medications } from "./pages/Medications";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -26,6 +27,7 @@ export default function App() {
             <Route path="/explore" element={<Explore />} />
             <Route path="/ingest" element={<Ingest />} />
             <Route path="/supplements" element={<Supplements />} />
+            <Route path="/medications" element={<Medications />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
