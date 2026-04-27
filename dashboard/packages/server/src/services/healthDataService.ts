@@ -189,8 +189,14 @@ export class HealthDataService {
           )
         : null;
 
-    // Day-of-week patterns from all available data
-    const dayOfWeek = computeDayOfWeek(allActivity);
+    // Day-of-week patterns from all available data, rotated so the bars
+    // line up with the rolling current-period window (period start on the
+    // left, period end on the right). Without this the chart reads in
+    // fixed Sun→Sat calendar order even though the date-range pill shows a
+    // rolling Tue→Mon (or whichever) window — the visual mismatch reads
+    // like a bug to anyone scanning quickly.
+    const startDow = new Date(currentStart + "T00:00:00Z").getUTCDay();
+    const dayOfWeek = computeDayOfWeek(allActivity, startDow);
 
     // Generate highlights
     const highlights = generateHighlights(
@@ -587,7 +593,10 @@ function compareMetric(
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-function computeDayOfWeek(activity: ActivityDay[]): DayOfWeekAvg[] {
+function computeDayOfWeek(
+  activity: ActivityDay[],
+  startDow = 0,
+): DayOfWeekAvg[] {
   const buckets: { steps: number[]; active: number[] }[] = Array.from(
     { length: 7 },
     () => ({ steps: [], active: [] }),
@@ -602,12 +611,21 @@ function computeDayOfWeek(activity: ActivityDay[]): DayOfWeekAvg[] {
     );
   }
 
-  return buckets.map((b, i) => ({
-    dow: i,
-    dayName: DAY_NAMES[i],
-    avgSteps: Math.round(avg(b.steps)),
-    avgActiveMinutes: Math.round(avg(b.active)),
-  }));
+  // Rotate the seven buckets so the result reads chronologically:
+  // index 0 = `startDow`, index 6 = the day-of-week six days later.
+  // The numeric `dow` field is preserved as the canonical 0..6 (Sun..Sat)
+  // identifier — only the array ORDER changes.
+  const result: DayOfWeekAvg[] = [];
+  for (let offset = 0; offset < 7; offset++) {
+    const i = (startDow + offset) % 7;
+    result.push({
+      dow: i,
+      dayName: DAY_NAMES[i],
+      avgSteps: Math.round(avg(buckets[i].steps)),
+      avgActiveMinutes: Math.round(avg(buckets[i].active)),
+    });
+  }
+  return result;
 }
 
 function generateHighlights(
