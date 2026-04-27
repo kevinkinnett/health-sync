@@ -9,3 +9,14 @@ venv/
 *.tmp
 .mypy_cache/
 .ruff_cache/
+
+# Node / Vite / pnpm — only valid inside dashboard/, never at the repo root
+node_modules/
+.vite/
+dist/
+.turbo/
+
+# Playwright MCP screenshot artefacts
+.playwright-mcp/
+*.png
+
