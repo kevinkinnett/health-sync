@@ -15,13 +15,12 @@ const subNav = [
 ];
 
 /**
- * Wraps every `/analytics/*` route. Renders the section header and
- * the horizontal pill-tab sub-nav (using {@link NavLink} so each pill
- * is a real, deep-linkable route — refresh and browser back/forward
- * stay on the active sub-screen).
- *
- * The pill styling exactly matches the previous in-page tab strip
- * inside `Explore.tsx` to preserve visual continuity.
+ * Wraps every `/analytics/*` route. On desktop the left sidebar is
+ * the canonical nav for each sub-screen, so the in-page pill strip is
+ * hidden at `lg:` breakpoint and only the section header + tagline
+ * stay visible. On smaller viewports — where the sidebar collapses to
+ * the bottom dock — the pill sub-nav reappears so users still have a
+ * deep-linkable way to switch between metric views.
  */
 export function AnalyticsLayout() {
   return (
@@ -35,7 +34,7 @@ export function AnalyticsLayout() {
             Deep-dive metric views, records, correlations, and intake insights.
           </p>
         </div>
-        <nav className="flex flex-wrap gap-1 p-1.5 bg-surface-container-low rounded-2xl border border-outline-variant/10">
+        <nav className="lg:hidden flex flex-wrap gap-1 p-1.5 bg-surface-container-low rounded-2xl border border-outline-variant/10">
           {subNav.map((tab) => (
             <NavLink
               key={tab.to}
