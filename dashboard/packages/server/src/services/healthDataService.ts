@@ -498,60 +498,55 @@ export class HealthDataService {
 
     const records: PersonalRecord[] = [];
 
-    // Best step day
-    const bestSteps = activity
-      .filter((d) => d.steps != null)
-      .sort((a, b) => (b.steps ?? 0) - (a.steps ?? 0))[0];
-    if (bestSteps?.steps) {
-      records.push({ metric: "steps", label: "Most Steps", value: bestSteps.steps, unit: "steps", date: bestSteps.date });
+    // Steps & distance & sleep duration & efficiency: Fitbit's data here is
+    // reliable, and a real personal best is by definition a tail value.
+    // Don't filter — just pick the max.
+    const bestSteps = pickMaxBy(activity, (d) => d.steps);
+    if (bestSteps?.value != null) {
+      records.push({ metric: "steps", label: "Most Steps", value: bestSteps.value, unit: "steps", date: bestSteps.date });
     }
 
-    // Best distance
-    const bestDist = activity
-      .filter((d) => d.distanceKm != null)
-      .sort((a, b) => (b.distanceKm ?? 0) - (a.distanceKm ?? 0))[0];
-    if (bestDist?.distanceKm) {
-      records.push({ metric: "distance", label: "Longest Distance", value: Math.round(bestDist.distanceKm * 100) / 100, unit: "km", date: bestDist.date });
+    const bestDist = pickMaxBy(activity, (d) => d.distanceKm);
+    if (bestDist?.value != null) {
+      records.push({ metric: "distance", label: "Longest Distance", value: Math.round(bestDist.value * 100) / 100, unit: "km", date: bestDist.date });
     }
 
-    // Best active minutes
-    const bestActive = activity
-      .map((d) => ({ ...d, activeMin: (d.minutesFairlyActive ?? 0) + (d.minutesVeryActive ?? 0) }))
-      .sort((a, b) => b.activeMin - a.activeMin)[0];
-    if (bestActive && bestActive.activeMin > 0) {
-      records.push({ metric: "activeMin", label: "Most Active Minutes", value: bestActive.activeMin, unit: "min", date: bestActive.date });
+    // Active minutes: Fitbit's HR-zone classifier can fail in clusters
+    // (e.g. the March 2026 anomaly inflated this 30-50x baseline). Real
+    // workout days produce active minutes in proportion to step count
+    // (~80-150 steps per active minute). Filter out days where the ratio
+    // is physiologically impossible — guards against future glitches too.
+    const cleanActivity = activity.filter(isPhysicallyPlausibleActivity);
+    const bestActive = pickMaxBy(cleanActivity, (d) =>
+      (d.minutesFairlyActive ?? 0) + (d.minutesVeryActive ?? 0),
+    );
+    if (bestActive && bestActive.value > 0) {
+      records.push({ metric: "activeMin", label: "Most Active Minutes", value: bestActive.value, unit: "min", date: bestActive.date });
     }
 
-    // Best calories
-    const bestCal = activity
-      .filter((d) => d.caloriesOut != null)
-      .sort((a, b) => (b.caloriesOut ?? 0) - (a.caloriesOut ?? 0))[0];
-    if (bestCal?.caloriesOut) {
-      records.push({ metric: "calories", label: "Most Calories", value: bestCal.caloriesOut, unit: "cal", date: bestCal.date });
+    // "Most Calories" intentionally omitted: Fitbit's HR-driven caloriesOut
+    // is the most polluted metric, and "biggest activity day" is already
+    // captured by Most Active Minutes anyway.
+
+    const bestSleep = pickMaxBy(sleep, (d) => d.totalMinutesAsleep);
+    if (bestSleep?.value != null) {
+      records.push({ metric: "sleep", label: "Longest Sleep", value: bestSleep.value, unit: "min", date: bestSleep.date });
     }
 
-    // Best sleep
-    const bestSleep = sleep
-      .filter((d) => d.totalMinutesAsleep != null)
-      .sort((a, b) => (b.totalMinutesAsleep ?? 0) - (a.totalMinutesAsleep ?? 0))[0];
-    if (bestSleep?.totalMinutesAsleep) {
-      records.push({ metric: "sleep", label: "Longest Sleep", value: bestSleep.totalMinutesAsleep, unit: "min", date: bestSleep.date });
+    const bestEff = pickMaxBy(sleep, (d) => d.efficiency);
+    if (bestEff?.value != null) {
+      records.push({ metric: "efficiency", label: "Best Sleep Efficiency", value: bestEff.value, unit: "%", date: bestEff.date });
     }
 
-    // Best efficiency
-    const bestEff = sleep
-      .filter((d) => d.efficiency != null)
-      .sort((a, b) => (b.efficiency ?? 0) - (a.efficiency ?? 0))[0];
-    if (bestEff?.efficiency) {
-      records.push({ metric: "efficiency", label: "Best Sleep Efficiency", value: bestEff.efficiency, unit: "%", date: bestEff.date });
-    }
-
-    // Lowest RHR
-    const bestRhr = heartRate
-      .filter((d) => d.restingHeartRate != null)
-      .sort((a, b) => (a.restingHeartRate ?? 999) - (b.restingHeartRate ?? 999))[0];
-    if (bestRhr?.restingHeartRate) {
-      records.push({ metric: "rhr", label: "Lowest Resting HR", value: bestRhr.restingHeartRate, unit: "bpm", date: bestRhr.date });
+    // Lowest RHR — apply a hard floor at 35 bpm. Sub-35 readings are sensor
+    // artefacts (device fell off, torn strap, etc.); even elite endurance
+    // athletes typically don't sustain a true RHR below ~35.
+    const cleanHr = heartRate.filter(
+      (d) => d.restingHeartRate == null || d.restingHeartRate >= MIN_PLAUSIBLE_RHR_BPM,
+    );
+    const bestRhr = pickMinBy(cleanHr, (d) => d.restingHeartRate);
+    if (bestRhr?.value != null) {
+      records.push({ metric: "rhr", label: "Lowest Resting HR", value: bestRhr.value, unit: "bpm", date: bestRhr.date });
     }
 
     // Streaks
@@ -759,4 +754,54 @@ function computeStreak<T extends { date: string }>(
   }
 
   return { current, best };
+}
+
+// --- Record-picking helpers -----------------------------------------------
+
+function pickMaxBy<T extends { date: string }>(
+  rows: T[],
+  getValue: (d: T) => number | null | undefined,
+): { date: string; value: number } | null {
+  let best: { date: string; value: number } | null = null;
+  for (const row of rows) {
+    const v = getValue(row);
+    if (v == null) continue;
+    if (best === null || v > best.value) best = { date: row.date, value: v };
+  }
+  return best;
+}
+
+function pickMinBy<T extends { date: string }>(
+  rows: T[],
+  getValue: (d: T) => number | null | undefined,
+): { date: string; value: number } | null {
+  let best: { date: string; value: number } | null = null;
+  for (const row of rows) {
+    const v = getValue(row);
+    if (v == null) continue;
+    if (best === null || v < best.value) best = { date: row.date, value: v };
+  }
+  return best;
+}
+
+/**
+ * Sustained moderate-vigorous activity costs steps. ~100 steps/min is a
+ * brisk walk and ~150-180 a run, but Fitbit also counts post-exercise HR
+ * recovery as "active" — so the boundary needs slack. Empirically, on this
+ * dataset's bad-data cluster (March 2026 HR-zone glitch) every garbage day
+ * has steps/active-min ≤ 25, while every real workout day has ≥ 28. A
+ * threshold of 30 cleanly separates them and survives normal interval and
+ * long-hike days where the ratio dips into the 30s.
+ */
+const MIN_STEPS_PER_ACTIVE_MIN = 30;
+
+/** Hard floor for resting HR — anything lower is sensor error. */
+const MIN_PLAUSIBLE_RHR_BPM = 35;
+
+function isPhysicallyPlausibleActivity(d: ActivityDay): boolean {
+  const activeMin = (d.minutesFairlyActive ?? 0) + (d.minutesVeryActive ?? 0);
+  if (activeMin === 0) return true; // nothing to scrutinise
+  // No step count means we can't sanity-check — let it through.
+  if (d.steps == null) return true;
+  return d.steps >= activeMin * MIN_STEPS_PER_ACTIVE_MIN;
 }
