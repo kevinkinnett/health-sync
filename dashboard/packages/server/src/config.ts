@@ -13,6 +13,13 @@ export interface Config {
     token: string;
     workspace: string;
   };
+  llm: {
+    /** Base URL for the OpenAI-compatible proxy (no trailing slash). */
+    baseUrl: string;
+    apiKey: string;
+    /** Model name to request from the proxy for dossier generation. */
+    dossierModel: string;
+  };
 }
 
 function requireEnv(name: string): string {
@@ -38,6 +45,13 @@ export function loadConfig(): Config {
       baseUrl: requireEnv("WINDMILL_BASE_URL"),
       token: requireEnv("WINDMILL_TOKEN"),
       workspace: process.env.WINDMILL_WORKSPACE ?? "claw",
+    },
+    llm: {
+      baseUrl: (
+        process.env.LLM_API_URL ?? "https://claude-code.tail322ce1.ts.net/v1"
+      ).replace(/\/+$/, ""),
+      apiKey: requireEnv("LLM_API_KEY"),
+      dossierModel: process.env.LLM_MODEL_DOSSIER ?? "qwen3-max-2026-01-23",
     },
   };
 }

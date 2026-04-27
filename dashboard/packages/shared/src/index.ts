@@ -63,3 +63,11 @@ export type {
   UpdateMedicationItemBody,
   CreateMedicationIntakeBody,
 } from "./types/medication.js";
+export type {
+  DossierItemType,
+  DossierSectionKey,
+  DossierSource,
+  DossierSection,
+  DossierContent,
+  DossierEntry,
+} from "./types/dossier.js";

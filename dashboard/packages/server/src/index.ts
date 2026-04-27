@@ -15,18 +15,23 @@ import { ExerciseLogRepository } from "./repositories/exerciseLogRepo.js";
 import { IngestRepository } from "./repositories/ingestRepo.js";
 import { SupplementRepository } from "./repositories/supplementRepo.js";
 import { MedicationRepository } from "./repositories/medicationRepo.js";
+import { DossierRepository } from "./repositories/dossierRepo.js";
 import { HealthDataService } from "./services/healthDataService.js";
 import { IngestService } from "./services/ingestService.js";
 import { SupplementService } from "./services/supplementService.js";
 import { MedicationService } from "./services/medicationService.js";
+import { LlmClient } from "./services/llmClient.js";
+import { DossierService } from "./services/dossierService.js";
 import { HealthController } from "./controllers/healthController.js";
 import { IngestController } from "./controllers/ingestController.js";
 import { SupplementController } from "./controllers/supplementController.js";
 import { MedicationController } from "./controllers/medicationController.js";
+import { DossierController } from "./controllers/dossierController.js";
 import { createHealthRoutes } from "./routes/health.js";
 import { createIngestRoutes } from "./routes/ingest.js";
 import { createSupplementRoutes } from "./routes/supplement.js";
 import { createMedicationRoutes } from "./routes/medication.js";
+import { createDossierRoutes } from "./routes/dossier.js";
 
 const config = loadConfig();
 const pool = createPool(config.db);
@@ -45,10 +50,12 @@ const exerciseLogRepo = new ExerciseLogRepository(pool);
 const ingestRepo = new IngestRepository(pool);
 const supplementRepo = new SupplementRepository(pool);
 const medicationRepo = new MedicationRepository(pool);
+const dossierRepo = new DossierRepository(pool);
 
 // Ensure user-input tables exist before serving traffic
 await supplementRepo.ensureTables();
 await medicationRepo.ensureTables();
+await dossierRepo.ensureTables();
 
 // Services
 const healthDataService = new HealthDataService(
@@ -62,12 +69,24 @@ const healthDataService = new HealthDataService(
 const ingestService = new IngestService(ingestRepo, config.windmill);
 const supplementService = new SupplementService(supplementRepo);
 const medicationService = new MedicationService(medicationRepo);
+const llmClient = new LlmClient({
+  baseUrl: config.llm.baseUrl,
+  apiKey: config.llm.apiKey,
+});
+const dossierService = new DossierService(
+  dossierRepo,
+  supplementService,
+  medicationService,
+  llmClient,
+  { model: config.llm.dossierModel },
+);
 
 // Controllers
 const healthController = new HealthController(healthDataService);
 const ingestController = new IngestController(ingestService);
 const supplementController = new SupplementController(supplementService);
 const medicationController = new MedicationController(medicationService);
+const dossierController = new DossierController(dossierService);
 
 // App
 const app: Express = express();
@@ -90,6 +109,7 @@ app.use("/api/health", createHealthRoutes(healthController));
 app.use("/api/ingest", createIngestRoutes(ingestController));
 app.use("/api/supplements", createSupplementRoutes(supplementController));
 app.use("/api/medications", createMedicationRoutes(medicationController));
+app.use("/api/dossier", createDossierRoutes(dossierController));
 
 // Serve client static files in production (single-container mode)
 // In Docker: dist/public/  In dev: ../../client/dist/

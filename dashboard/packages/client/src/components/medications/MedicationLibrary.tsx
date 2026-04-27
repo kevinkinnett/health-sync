@@ -6,6 +6,10 @@ import {
   useUpdateMedicationItem,
   useArchiveMedicationItem,
 } from "../../api/queries";
+import {
+  DossierDrawer,
+  type DossierDrawerTarget,
+} from "../dossier/DossierDrawer";
 
 const inputClass =
   "w-full rounded-lg bg-surface-container-lowest border border-outline-variant/20 px-3 py-2 text-sm text-on-surface focus:outline-none focus:ring-1 focus:ring-primary";
@@ -142,9 +146,11 @@ function ItemForm({
 function ItemEditCard({
   item,
   onCancel,
+  onOpenDossier,
 }: {
   item: MedicationItem;
   onCancel: () => void;
+  onOpenDossier: () => void;
 }) {
   const [form, setForm] = useState<ItemFormState>(fromItem(item));
   const update = useUpdateMedicationItem();
@@ -193,13 +199,22 @@ function ItemEditCard({
             </button>
           </div>
         ) : (
-          <button
-            onClick={() => setConfirming(true)}
-            className="text-xs text-outline hover:text-error transition-colors flex items-center gap-1"
-          >
-            <span className="material-symbols-outlined text-sm">archive</span>
-            Archive
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setConfirming(true)}
+              className="text-xs text-outline hover:text-error transition-colors flex items-center gap-1"
+            >
+              <span className="material-symbols-outlined text-sm">archive</span>
+              Archive
+            </button>
+            <button
+              onClick={onOpenDossier}
+              className="text-xs text-outline hover:text-primary transition-colors flex items-center gap-1"
+            >
+              <span className="material-symbols-outlined text-sm">menu_book</span>
+              View dossier
+            </button>
+          </div>
         )}
         <div className="flex gap-2">
           <button
@@ -270,17 +285,49 @@ function NewItemCard({ onClose }: { onClose: () => void }) {
   );
 }
 
-function ItemCard({ item }: { item: MedicationItem }) {
+function ItemCard({
+  item,
+  onOpenDossier,
+}: {
+  item: MedicationItem;
+  onOpenDossier: () => void;
+}) {
   const [editing, setEditing] = useState(false);
   if (editing) {
-    return <ItemEditCard item={item} onCancel={() => setEditing(false)} />;
+    return (
+      <ItemEditCard
+        item={item}
+        onCancel={() => setEditing(false)}
+        onOpenDossier={onOpenDossier}
+      />
+    );
   }
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={() => setEditing(true)}
-      className="bg-surface-container-high hover:bg-surface-container-highest rounded-xl p-5 text-left transition-colors group"
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          setEditing(true);
+        }
+      }}
+      className="bg-surface-container-high hover:bg-surface-container-highest rounded-xl p-5 text-left transition-colors group cursor-pointer relative"
     >
-      <div className="flex items-start justify-between mb-2">
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onOpenDossier();
+        }}
+        aria-label="View dossier"
+        title="View dossier"
+        className="absolute top-3 right-3 h-8 w-8 flex items-center justify-center rounded-lg text-outline hover:text-primary hover:bg-primary/10 transition-colors"
+      >
+        <span className="material-symbols-outlined text-base">menu_book</span>
+      </button>
+      <div className="flex items-start justify-between mb-2 pr-9">
         <span
           className="material-symbols-outlined text-tertiary"
           style={{ fontVariationSettings: "'FILL' 1", fontSize: 28 }}
@@ -308,7 +355,7 @@ function ItemCard({ item }: { item: MedicationItem }) {
           {item.notes}
         </p>
       )}
-    </button>
+    </div>
   );
 }
 
@@ -340,9 +387,21 @@ export function MedicationLibrary() {
   const items = useMedicationItems(true);
   const [adding, setAdding] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const [dossierTarget, setDossierTarget] =
+    useState<DossierDrawerTarget | null>(null);
 
   const active = items.data?.filter((i) => i.isActive) ?? [];
   const archived = items.data?.filter((i) => !i.isActive) ?? [];
+
+  function openDossier(item: MedicationItem) {
+    setDossierTarget({
+      type: "medication",
+      id: item.id,
+      itemName: item.name,
+      itemBrand: item.brand,
+      itemForm: item.form,
+    });
+  }
 
   return (
     <div className="space-y-6">
@@ -380,7 +439,11 @@ export function MedicationLibrary() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {active.map((item) => (
-            <ItemCard key={item.id} item={item} />
+            <ItemCard
+              key={item.id}
+              item={item}
+              onOpenDossier={() => openDossier(item)}
+            />
           ))}
         </div>
       )}
@@ -407,6 +470,11 @@ export function MedicationLibrary() {
           )}
         </div>
       )}
+
+      <DossierDrawer
+        target={dossierTarget}
+        onClose={() => setDossierTarget(null)}
+      />
     </div>
   );
 }
