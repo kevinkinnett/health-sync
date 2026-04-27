@@ -74,12 +74,19 @@ export class LlmClient {
     const url = `${this.cfg.baseUrl}/chat/completions`;
     const start = Date.now();
 
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    // The local Claude proxy doesn't require auth — only attach the bearer
+    // header if a key is actually configured. This avoids sending an
+    // empty `Bearer ` header that some HTTP servers reject as malformed.
+    if (this.cfg.apiKey) {
+      headers.Authorization = `Bearer ${this.cfg.apiKey}`;
+    }
+
     const response = await fetch(url, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${this.cfg.apiKey}`,
-      },
+      headers,
       body: JSON.stringify(req),
     });
     const duration = Date.now() - start;

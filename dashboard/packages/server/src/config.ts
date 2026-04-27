@@ -48,9 +48,17 @@ export function loadConfig(): Config {
     },
     llm: {
       baseUrl: (
-        process.env.LLM_API_URL ?? "https://claude-code.tail322ce1.ts.net/v1"
+        // The Claude proxy is exposed on the container's :4000 (Tailscale
+        // Serve maps :4000 → 127.0.0.1:4001 inside the container). The
+        // root :443 host serves a different app (a Claude-Code-built UI),
+        // not the OpenAI-compatible /v1 endpoint.
+        process.env.LLM_API_URL ??
+        "https://claude-code.tail322ce1.ts.net:4000/v1"
       ).replace(/\/+$/, ""),
-      apiKey: requireEnv("LLM_API_KEY"),
+      // Optional — the local Claude proxy doesn't enforce auth. Leave empty
+      // (or set any string) when pointing at a self-hosted proxy that
+      // doesn't validate bearer tokens.
+      apiKey: process.env.LLM_API_KEY ?? "",
       dossierModel: process.env.LLM_MODEL_DOSSIER ?? "qwen3-max-2026-01-23",
     },
   };
