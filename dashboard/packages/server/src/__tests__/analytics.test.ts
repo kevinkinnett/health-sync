@@ -51,6 +51,7 @@ class FakeSupplementRepo {
   async listIngredientByDay(
     start: string,
     end: string,
+    _userTz: string,
     ingredientId?: number,
   ) {
     return this.ingredientByDay
@@ -501,5 +502,104 @@ describe("Analytics medications", () => {
       "/api/analytics/medications/correlations/999",
     );
     expect(res.status).toBe(404);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Timezone-aware bucketing — guards the original 1199-step-gap bug
+// ---------------------------------------------------------------------------
+
+describe("Analytics TZ bucketing", () => {
+  it("buckets a late-evening Eastern intake into the user's calendar day", async () => {
+    // Build a service explicitly configured for Eastern.
+    const service = new AnalyticsService(
+      supRepo as never,
+      medRepo as never,
+      actRepo as never,
+      sleepRepo as never,
+      hrRepo as never,
+      hrvRepo as never,
+      { userTimezone: "America/New_York" },
+    );
+    const controller = new AnalyticsController(service, {
+      userTimezone: "America/New_York",
+    });
+    const tzApp = express();
+    tzApp.use(express.json());
+    tzApp.use("/api/analytics", createAnalyticsRoutes(controller));
+
+    supRepo.items.set(1, makeSupplementItem(1, "Anxie-T"));
+    // 8:30 PM EDT on 2026-04-26 == 00:30 UTC on 2026-04-27. Naive UTC
+    // bucketing would file this as 2026-04-27 (the user's "tomorrow"),
+    // hiding it from a query for the user's "today" of 2026-04-26.
+    supRepo.intakes.push({
+      id: 1,
+      itemId: 1,
+      itemName: "Anxie-T",
+      takenAt: "2026-04-27T00:30:00.000Z",
+      amount: 1,
+      unit: "dose",
+      notes: null,
+      createdAt: "2026-04-27T00:30:00.000Z",
+      ingredients: [],
+    });
+
+    const res = await request(tzApp).get(
+      "/api/analytics/supplements/intake-by-day?start=2026-04-26&end=2026-04-26",
+    );
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].date).toBe("2026-04-26");
+    expect(res.body[0].count).toBe(1);
+  });
+
+  it("uses the user's calendar today (not UTC's) when start/end are omitted", async () => {
+    // Mock "now" to a moment where UTC and Eastern disagree on the date.
+    const realNow = Date.now;
+    Date.now = () => new Date("2026-04-28T03:00:00.000Z").getTime();
+    try {
+      const service = new AnalyticsService(
+        supRepo as never,
+        medRepo as never,
+        actRepo as never,
+        sleepRepo as never,
+        hrRepo as never,
+        hrvRepo as never,
+        { userTimezone: "America/New_York" },
+      );
+      const controller = new AnalyticsController(service, {
+        userTimezone: "America/New_York",
+      });
+      const tzApp = express();
+      tzApp.use(express.json());
+      tzApp.use("/api/analytics", createAnalyticsRoutes(controller));
+
+      supRepo.items.set(1, makeSupplementItem(1, "Anxie-T"));
+      // Intake at 11pm Eastern on Apr 27 — should still be on Apr 27
+      // even though it's already Apr 28 in UTC.
+      supRepo.intakes.push({
+        id: 1,
+        itemId: 1,
+        itemName: "Anxie-T",
+        takenAt: "2026-04-28T03:00:00.000Z",
+        amount: 1,
+        unit: "dose",
+        notes: null,
+        createdAt: "2026-04-28T03:00:00.000Z",
+        ingredients: [],
+      });
+
+      const res = await request(tzApp).get(
+        "/api/analytics/supplements/intake-by-day",
+      );
+      expect(res.status).toBe(200);
+      // The default range is "last 30 days" — end should be 2026-04-27
+      // (Eastern's today) and the late-evening intake should be in.
+      const dates = (res.body as Array<{ date: string }>).map((r) => r.date);
+      expect(dates).toContain("2026-04-27");
+      expect(dates).not.toContain("2026-04-28");
+    } finally {
+      Date.now = realNow;
+    }
   });
 });

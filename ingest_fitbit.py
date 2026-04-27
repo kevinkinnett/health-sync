@@ -19,8 +19,9 @@ Range-based types are fetched first since they're vastly more efficient
 import base64
 import json
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Optional
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import psycopg
 import requests
@@ -135,6 +136,48 @@ class RateLimitError(Exception):
     def __init__(self, retry_after: int):
         self.retry_after = retry_after
         super().__init__(f"Rate limited, retry after {retry_after}s")
+
+
+# ---------------------------------------------------------------------------
+# Timezone resolution
+# ---------------------------------------------------------------------------
+
+def get_profile_timezone(creds: dict[str, Any]) -> Optional[str]:
+    """
+    Fetch the user's Fitbit profile timezone (an IANA name like
+    `America/New_York`). Returns None if the call fails or the field is
+    missing — the caller should fall back to a sensible default.
+
+    Why: every Fitbit "daily" endpoint buckets data by *the user's profile
+    timezone*, not UTC. If we compute "today" as `datetime.now(UTC).date()`
+    we may ask Fitbit for a date that hasn't started yet for the user — and
+    on the day after, the script's state cursor has already passed that
+    date, so the under-fetched day is silently abandoned. Using the profile
+    TZ keeps the script's notion of "today" aligned with Fitbit's.
+    """
+    try:
+        data = fitbit_get(creds, "/1/user/-/profile.json")
+    except (requests.HTTPError, RateLimitError) as exc:
+        print(f"  [profile] Could not fetch profile timezone: {exc}")
+        return None
+    tz = data.get("user", {}).get("timezone")
+    if not isinstance(tz, str) or not tz:
+        return None
+    return tz
+
+
+def today_in_tz(tz_name: str) -> date:
+    """
+    Returns the calendar `date` of "now" as observed in `tz_name`. Uses
+    `zoneinfo` (stdlib, system tzdata) so DST transitions resolve correctly.
+    Falls back to UTC if `tz_name` is unknown to the system.
+    """
+    try:
+        zi = ZoneInfo(tz_name)
+    except ZoneInfoNotFoundError:
+        print(f"  [tz] Unknown zone {tz_name!r}; falling back to UTC")
+        zi = timezone.utc
+    return datetime.now(zi).date()
 
 
 # ---------------------------------------------------------------------------
@@ -295,6 +338,12 @@ def ensure_tables(conn: psycopg.Connection) -> None:
                 details                 JSONB
             )
         """)
+        # Backfill the `details` column on tables that pre-date its addition,
+        # so the timezone-drift detection works on existing deployments.
+        cur.execute("""
+            ALTER TABLE universe.fitbit_ingest_state
+            ADD COLUMN IF NOT EXISTS details JSONB
+        """)
     conn.commit()
 
 
@@ -369,14 +418,23 @@ def update_state(
     earliest_date: str,
     backfill_complete: bool,
     run_id: int,
+    profile_tz: Optional[str] = None,
 ) -> None:
+    """
+    Upsert the per-data-type ingest state. When `profile_tz` is supplied,
+    it's merged into the `details` JSONB so later runs can detect a
+    timezone change since the last successful sync (which would suggest
+    re-backfilling, since calendar-day buckets are TZ-dependent).
+    """
+    details_json = json.dumps({"profile_tz": profile_tz}) if profile_tz else None
     with conn.cursor() as cur:
         cur.execute(
             """
             INSERT INTO universe.fitbit_ingest_state
                 (data_type, latest_fetched_date, earliest_fetched_date,
-                 backfill_complete, last_success_at_utc, last_run_id, updated_at_utc)
-            VALUES (%s, %s, %s, %s, NOW(), %s, NOW())
+                 backfill_complete, last_success_at_utc, last_run_id,
+                 updated_at_utc, details)
+            VALUES (%s, %s, %s, %s, NOW(), %s, NOW(), %s::jsonb)
             ON CONFLICT (data_type) DO UPDATE SET
                 latest_fetched_date = GREATEST(
                     universe.fitbit_ingest_state.latest_fetched_date,
@@ -389,11 +447,37 @@ def update_state(
                 backfill_complete = EXCLUDED.backfill_complete,
                 last_success_at_utc = NOW(),
                 last_run_id = EXCLUDED.last_run_id,
-                updated_at_utc = NOW()
+                updated_at_utc = NOW(),
+                details = COALESCE(
+                    universe.fitbit_ingest_state.details,
+                    '{}'::jsonb
+                ) || COALESCE(EXCLUDED.details, '{}'::jsonb)
             """,
-            (data_type, latest_date, earliest_date, backfill_complete, run_id),
+            (data_type, latest_date, earliest_date, backfill_complete,
+             run_id, details_json),
         )
     conn.commit()
+
+
+def get_last_profile_tz(conn: psycopg.Connection) -> Optional[str]:
+    """
+    Returns the most-recently-recorded `profile_tz` across all data types,
+    or None if no run has stamped one yet. Used to detect TZ drift since
+    the previous run so we can warn the user that calendar buckets may
+    have shifted.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT details->>'profile_tz' AS profile_tz
+            FROM universe.fitbit_ingest_state
+            WHERE details ? 'profile_tz'
+            ORDER BY updated_at_utc DESC
+            LIMIT 1
+            """
+        )
+        row = cur.fetchone()
+        return row[0] if row else None
 
 
 # ===========================================================================
@@ -852,14 +936,28 @@ def main(
     # Config
     backfill_days: Optional[int] = None,
     max_requests_per_run: int = 120,
+    # Timezone override — when set, skips the /profile.json round-trip.
+    # Useful for testing or when the Fitbit profile TZ is known-stable.
+    user_timezone: Optional[str] = None,
 ) -> dict[str, Any]:
     resolved_db = resolve_db(db, db_resource_path)
     fitbit_path = fitbit_resource_path or DEFAULT_FITBIT_RESOURCE_PATH
     creds = resolve_fitbit_creds(fitbit_path)
     creds = refresh_token_if_needed(creds, fitbit_path)
 
+    # Resolve "today" in the user's Fitbit profile TZ rather than UTC.
+    # Fitbit's date-keyed endpoints (activity, sleep, HRV, etc.) bucket by
+    # the user's local calendar day — asking for a date in UTC's "today"
+    # before it's begun in the user's zone returns a partial / empty day,
+    # which the state cursor then skips past on the next run.
+    profile_tz = user_timezone or get_profile_timezone(creds)
+    if not profile_tz:
+        profile_tz = "UTC"
+        print("  [tz] No profile timezone available; defaulting to UTC")
+    print(f"  [tz] Using user timezone: {profile_tz}")
+
     backfill = backfill_days if backfill_days is not None else DEFAULT_BACKFILL_DAYS
-    today = datetime.now(timezone.utc).date()
+    today = today_in_tz(profile_tz)
     backfill_start = today - timedelta(days=backfill)
 
     # Build enabled map
@@ -890,6 +988,18 @@ def main(
         ensure_tables(conn)
         run_id = create_ingest_run(conn)
         print(f"Ingest run {run_id} started. Enabled types: {sorted(enabled)}")
+
+        # Detect Fitbit profile-TZ drift across runs. If the user's profile
+        # TZ changes (travel, manual edit), calendar buckets won't be
+        # consistent with previously-ingested days — flag it so the operator
+        # can decide whether to re-backfill the boundary window.
+        previous_tz = get_last_profile_tz(conn)
+        if previous_tz and previous_tz != profile_tz:
+            print(
+                f"  [tz] WARNING: profile TZ changed from {previous_tz} to "
+                f"{profile_tz}. Calendar buckets may be inconsistent across "
+                f"the boundary; consider re-backfilling the affected days."
+            )
 
         # =============================================================
         # PHASE 1: Range-based types (cheap — ~1 request per 30 days)
@@ -937,6 +1047,7 @@ def main(
                         earliest_date=range_start.isoformat(),
                         backfill_complete=(chunk_end >= today),
                         run_id=run_id,
+                        profile_tz=profile_tz,
                     )
                     chunk_start = chunk_end + timedelta(days=1)
                 except RateLimitError:
@@ -992,6 +1103,7 @@ def main(
                         earliest_date=after_date,
                         backfill_complete=False,  # hard to know without checking
                         run_id=run_id,
+                        profile_tz=profile_tz,
                     )
                 type_summaries["exercise_log"] = {
                     "rows": rows, "errors": 0,
@@ -1056,6 +1168,7 @@ def main(
                         earliest_date=tc["earliest"].isoformat(),
                         backfill_complete=(tc["current"] >= today),
                         run_id=run_id,
+                        profile_tz=profile_tz,
                     )
                     tc["current"] += timedelta(days=1)
                     if tc["current"] <= today:
@@ -1103,6 +1216,8 @@ def main(
         "database": resolved_db.get("dbname"),
         "run_id": run_id,
         "status": status,
+        "profile_tz": profile_tz,
+        "today_in_profile_tz": today.isoformat(),
         "requests_used": request_count,
         "total_rows_upserted": total_rows,
         "error_count": error_count,

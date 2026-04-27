@@ -35,6 +35,7 @@ import { createSupplementRoutes } from "./routes/supplement.js";
 import { createMedicationRoutes } from "./routes/medication.js";
 import { createDossierRoutes } from "./routes/dossier.js";
 import { createAnalyticsRoutes } from "./routes/analytics.js";
+import { createConfigRoutes } from "./routes/config.js";
 
 const config = loadConfig();
 const pool = createPool(config.db);
@@ -90,15 +91,20 @@ const analyticsService = new AnalyticsService(
   sleepRepo,
   heartRateRepo,
   hrvRepo,
+  { userTimezone: config.userTimezone },
 );
 
 // Controllers
-const healthController = new HealthController(healthDataService);
+const healthController = new HealthController(healthDataService, {
+  userTimezone: config.userTimezone,
+});
 const ingestController = new IngestController(ingestService);
 const supplementController = new SupplementController(supplementService);
 const medicationController = new MedicationController(medicationService);
 const dossierController = new DossierController(dossierService);
-const analyticsController = new AnalyticsController(analyticsService);
+const analyticsController = new AnalyticsController(analyticsService, {
+  userTimezone: config.userTimezone,
+});
 
 // App
 const app: Express = express();
@@ -117,6 +123,7 @@ app.get("/api/health-check", async (_req, res) => {
 });
 
 // Routes
+app.use("/api/config", createConfigRoutes({ userTimezone: config.userTimezone }));
 app.use("/api/health", createHealthRoutes(healthController));
 app.use("/api/ingest", createIngestRoutes(ingestController));
 app.use("/api/supplements", createSupplementRoutes(supplementController));

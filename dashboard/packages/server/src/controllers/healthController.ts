@@ -1,9 +1,23 @@
 import type { Request, Response } from "express";
 import type { HealthDataService } from "../services/healthDataService.js";
 import { logger } from "../logger.js";
+import { todayInTz, addDays } from "../services/userTz.js";
 
 export class HealthController {
-  constructor(private service: HealthDataService) {}
+  /**
+   * IANA timezone — used to compute the default "last 30 days" window
+   * against the user's calendar rather than UTC midnight, so a request
+   * made just after midnight Eastern doesn't accidentally roll into
+   * tomorrow's UTC date.
+   */
+  private readonly tz: string;
+
+  constructor(
+    private service: HealthDataService,
+    opts: { userTimezone: string } = { userTimezone: "UTC" },
+  ) {
+    this.tz = opts.userTimezone;
+  }
 
   async getSummary(_req: Request, res: Response): Promise<void> {
     try {
@@ -17,7 +31,7 @@ export class HealthController {
 
   async getActivity(req: Request, res: Response): Promise<void> {
     try {
-      const { start, end } = parseDateRange(req);
+      const { start, end } = parseDateRange(req, this.tz);
       const data = await this.service.getActivity(start, end);
       res.json(data);
     } catch (err) {
@@ -28,7 +42,7 @@ export class HealthController {
 
   async getSleep(req: Request, res: Response): Promise<void> {
     try {
-      const { start, end } = parseDateRange(req);
+      const { start, end } = parseDateRange(req, this.tz);
       const data = await this.service.getSleep(start, end);
       res.json(data);
     } catch (err) {
@@ -39,7 +53,7 @@ export class HealthController {
 
   async getHeartRate(req: Request, res: Response): Promise<void> {
     try {
-      const { start, end } = parseDateRange(req);
+      const { start, end } = parseDateRange(req, this.tz);
       const data = await this.service.getHeartRate(start, end);
       res.json(data);
     } catch (err) {
@@ -50,7 +64,7 @@ export class HealthController {
 
   async getWeight(req: Request, res: Response): Promise<void> {
     try {
-      const { start, end } = parseDateRange(req);
+      const { start, end } = parseDateRange(req, this.tz);
       const data = await this.service.getWeight(start, end);
       res.json(data);
     } catch (err) {
@@ -61,7 +75,7 @@ export class HealthController {
 
   async getHrv(req: Request, res: Response): Promise<void> {
     try {
-      const { start, end } = parseDateRange(req);
+      const { start, end } = parseDateRange(req, this.tz);
       const data = await this.service.getHrv(start, end);
       res.json(data);
     } catch (err) {
@@ -112,7 +126,7 @@ export class HealthController {
 
   async getExerciseLogs(req: Request, res: Response): Promise<void> {
     try {
-      const { start, end } = parseDateRange(req);
+      const { start, end } = parseDateRange(req, this.tz);
       const data = await this.service.getExerciseLogs(start, end);
       res.json(data);
     } catch (err) {
@@ -122,19 +136,22 @@ export class HealthController {
   }
 }
 
-function parseDateRange(req: Request): { start: string; end: string } {
+/**
+ * Parses `start` and `end` query params as `YYYY-MM-DD`. When both are
+ * absent, defaults to the last 30 days computed in the user's timezone
+ * — this matters around midnight, where UTC's "today" can be a day
+ * ahead of the user's local "today".
+ */
+function parseDateRange(
+  req: Request,
+  tz: string,
+): { start: string; end: string } {
   const start = req.query.start as string | undefined;
   const end = req.query.end as string | undefined;
 
   if (!start || !end) {
-    // Default to last 30 days
-    const now = new Date();
-    const thirtyDaysAgo = new Date(now);
-    thirtyDaysAgo.setDate(now.getDate() - 30);
-    return {
-      start: thirtyDaysAgo.toISOString().slice(0, 10),
-      end: now.toISOString().slice(0, 10),
-    };
+    const today = todayInTz(tz);
+    return { start: addDays(today, -30), end: today };
   }
 
   return { start, end };

@@ -4,6 +4,7 @@ import {
   type AnalyticsService,
 } from "../services/analyticsService.js";
 import { logger } from "../logger.js";
+import { todayInTz, addDays } from "../services/userTz.js";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_LAG_DAYS = 7;
@@ -14,7 +15,19 @@ const MAX_LAG_DAYS = 7;
  * so all routes share a consistent failure shape.
  */
 export class AnalyticsController {
-  constructor(private service: AnalyticsService) {}
+  /**
+   * IANA timezone — only used when the caller omits `start`/`end` so we
+   * can compute "the last 30 days" against the user's calendar rather
+   * than the server's UTC midnight.
+   */
+  private readonly tz: string;
+
+  constructor(
+    private service: AnalyticsService,
+    opts: { userTimezone: string } = { userTimezone: "UTC" },
+  ) {
+    this.tz = opts.userTimezone;
+  }
 
   // ---- Supplements ----------------------------------------------------------
 
@@ -25,7 +38,7 @@ export class AnalyticsController {
         res.status(400).json({ error: "Invalid itemId" });
         return;
       }
-      const range = parseDateRange(req);
+      const range = parseDateRange(req, this.tz);
       if ("error" in range) {
         res.status(400).json({ error: range.error });
         return;
@@ -43,7 +56,7 @@ export class AnalyticsController {
 
   async getSupplementIntakeByDay(req: Request, res: Response): Promise<void> {
     try {
-      const range = parseDateRange(req);
+      const range = parseDateRange(req, this.tz);
       if ("error" in range) {
         res.status(400).json({ error: range.error });
         return;
@@ -66,7 +79,7 @@ export class AnalyticsController {
 
   async getIngredientByDay(req: Request, res: Response): Promise<void> {
     try {
-      const range = parseDateRange(req);
+      const range = parseDateRange(req, this.tz);
       if ("error" in range) {
         res.status(400).json({ error: range.error });
         return;
@@ -120,7 +133,7 @@ export class AnalyticsController {
         res.status(400).json({ error: "Invalid itemId" });
         return;
       }
-      const range = parseDateRange(req);
+      const range = parseDateRange(req, this.tz);
       if ("error" in range) {
         res.status(400).json({ error: range.error });
         return;
@@ -138,7 +151,7 @@ export class AnalyticsController {
 
   async getMedicationIntakeByDay(req: Request, res: Response): Promise<void> {
     try {
-      const range = parseDateRange(req);
+      const range = parseDateRange(req, this.tz);
       if ("error" in range) {
         res.status(400).json({ error: range.error });
         return;
@@ -224,26 +237,22 @@ function parseLag(raw: unknown): number | "invalid" {
 
 /**
  * Parses `start` and `end` query parameters as `YYYY-MM-DD` strings.
- * Defaults to the last 30 days when both are absent (matching the
- * default behaviour of the existing health endpoints). Returns an
- * `{ error }` object when either is present but malformed so the
+ * Defaults to the last 30 days when both are absent — computed in the
+ * user's timezone so "today" is the user's today, not UTC's. Returns
+ * an `{ error }` object when either is present but malformed so the
  * caller can return a 400.
  */
 function parseDateRange(
   req: Request,
+  tz: string,
 ):
   | { start: string; end: string }
   | { error: string } {
   const start = req.query.start as string | undefined;
   const end = req.query.end as string | undefined;
   if (!start && !end) {
-    const now = new Date();
-    const thirty = new Date(now);
-    thirty.setUTCDate(now.getUTCDate() - 30);
-    return {
-      start: thirty.toISOString().slice(0, 10),
-      end: now.toISOString().slice(0, 10),
-    };
+    const today = todayInTz(tz);
+    return { start: addDays(today, -30), end: today };
   }
   if (!start || !end) {
     return { error: "Both start and end are required when one is provided" };

@@ -325,8 +325,10 @@ export class SupplementRepository {
 
   /**
    * Per-ingredient daily totals across every supplement that contains
-   * the ingredient. The window is half-open at the upper bound on the
-   * `taken_at` timestamp, but bucketed by `taken_at::date` (UTC).
+   * the ingredient. The window is bounded on the TIMESTAMPTZ
+   * `taken_at`, and rows are bucketed into the user's local calendar
+   * day via `AT TIME ZONE $userTz` — so an evening intake at 8 PM EDT
+   * stacks against today's bar, not tomorrow's.
    *
    * Pass `ingredientId` to filter to a single ingredient — useful when
    * the UI wants to drill into one substance. Otherwise returns rows
@@ -338,6 +340,7 @@ export class SupplementRepository {
   async listIngredientByDay(
     start: string,
     end: string,
+    userTz: string,
     ingredientId?: number,
   ): Promise<
     Array<{
@@ -352,8 +355,10 @@ export class SupplementRepository {
       `i.taken_at >= $1`,
       `i.taken_at <= $2`,
     ];
-    const values: unknown[] = [start, end];
-    let n = 3;
+    // $3 is the user timezone (used only inside the SELECT/GROUP BY,
+    // not in any predicate). Subsequent params start at $4.
+    const values: unknown[] = [start, end, userTz];
+    let n = 4;
     if (ingredientId != null) {
       conditions.push(`iing.ingredient_id = $${n++}`);
       values.push(ingredientId);
@@ -362,7 +367,7 @@ export class SupplementRepository {
     // Group by ingredient *and* unit so mixed units (mg vs mcg, etc.)
     // never get silently summed across each other.
     const { rows } = await this.pool.query(
-      `SELECT to_char(i.taken_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS date,
+      `SELECT to_char(i.taken_at AT TIME ZONE $3, 'YYYY-MM-DD') AS date,
               iing.ingredient_id,
               iing.ingredient_name,
               iing.unit,

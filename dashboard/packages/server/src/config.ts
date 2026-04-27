@@ -1,5 +1,15 @@
 export interface Config {
   port: number;
+  /**
+   * IANA timezone name (e.g. `America/New_York`) representing the *user's*
+   * local zone. Used everywhere we bucket TIMESTAMPTZ values into calendar
+   * days — adherence calendars, lag correlations, default date ranges, etc.
+   *
+   * Always an IANA name (never a fixed `±HH:MM` offset) so DST transitions
+   * are handled automatically by both Postgres `AT TIME ZONE` and JS
+   * `Intl.DateTimeFormat`. Validated at boot by `assertValidTimezone`.
+   */
+  userTimezone: string;
   db: {
     host: string;
     port: number;
@@ -30,9 +40,29 @@ function requireEnv(name: string): string {
   return value;
 }
 
+/**
+ * Throws if `tz` is not a valid IANA timezone identifier. We probe via
+ * `Intl.DateTimeFormat` because the constructor rejects unknown zones — that
+ * gives us a check that works in any modern Node without needing the (newer)
+ * `Intl.supportedValuesOf("timeZone")` API.
+ */
+function assertValidTimezone(tz: string): void {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: tz }).format(new Date());
+  } catch {
+    throw new Error(
+      `Invalid USER_TIMEZONE: "${tz}". Expected an IANA name like "America/New_York".`,
+    );
+  }
+}
+
 export function loadConfig(): Config {
+  const userTimezone = process.env.USER_TIMEZONE ?? "America/New_York";
+  assertValidTimezone(userTimezone);
+
   return {
     port: parseInt(process.env.PORT ?? "3001", 10),
+    userTimezone,
     db: {
       host: requireEnv("DB_HOST"),
       port: parseInt(process.env.DB_PORT ?? "5432", 10),

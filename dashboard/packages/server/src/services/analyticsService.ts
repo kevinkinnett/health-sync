@@ -11,6 +11,7 @@ import type { SleepRepository } from "../repositories/sleepRepo.js";
 import type { HeartRateRepository } from "../repositories/heartRateRepo.js";
 import type { HrvRepository } from "../repositories/hrvRepo.js";
 import { describeCorrelation, pearson, shiftDate } from "./stats.js";
+import { formatDateInTz, tzDayStartUtc, tzDayEndUtc } from "./userTz.js";
 
 /**
  * Validation error surfaced to the controller as a 404. Used when the
@@ -48,6 +49,14 @@ const MIN_PAIR_DAYS = 7;
  * has to think about formatting precision.
  */
 export class AnalyticsService {
+  /**
+   * IANA timezone (e.g. `America/New_York`). All TIMESTAMPTZ→day
+   * bucketing in this service buckets according to this zone, not UTC,
+   * so the user's evening intakes don't bleed into the next calendar
+   * day.
+   */
+  private readonly tz: string;
+
   constructor(
     private supplementRepo: SupplementRepository,
     private medicationRepo: MedicationRepository,
@@ -55,7 +64,10 @@ export class AnalyticsService {
     private sleepRepo: SleepRepository,
     private heartRateRepo: HeartRateRepository,
     private hrvRepo: HrvRepository,
-  ) {}
+    opts: { userTimezone: string } = { userTimezone: "UTC" },
+  ) {
+    this.tz = opts.userTimezone;
+  }
 
   // ---------------------------------------------------------------------------
   // Supplements
@@ -71,11 +83,11 @@ export class AnalyticsService {
       throw new AnalyticsNotFoundError(`Supplement item ${itemId} not found`);
     }
     const intakes = await this.supplementRepo.listIntakes(
-      toRangeStart(start),
-      toRangeEnd(end),
+      tzDayStartUtc(start, this.tz),
+      tzDayEndUtc(end, this.tz),
       itemId,
     );
-    return buildAdherence(itemId, item.name, start, end, intakes);
+    return buildAdherence(itemId, item.name, start, end, intakes, this.tz);
   }
 
   async getSupplementIntakeByDay(
@@ -84,11 +96,11 @@ export class AnalyticsService {
     itemId?: number,
   ): Promise<IntakeByDay[]> {
     const intakes = await this.supplementRepo.listIntakes(
-      toRangeStart(start),
-      toRangeEnd(end),
+      tzDayStartUtc(start, this.tz),
+      tzDayEndUtc(end, this.tz),
       itemId,
     );
-    return rollupIntakeByDay(intakes);
+    return rollupIntakeByDay(intakes, this.tz);
   }
 
   async getIngredientByDay(
@@ -97,8 +109,9 @@ export class AnalyticsService {
     ingredientId?: number,
   ): Promise<IngredientByDay[]> {
     return this.supplementRepo.listIngredientByDay(
-      toRangeStart(start),
-      toRangeEnd(end),
+      tzDayStartUtc(start, this.tz),
+      tzDayEndUtc(end, this.tz),
+      this.tz,
       ingredientId,
     );
   }
@@ -119,7 +132,7 @@ export class AnalyticsService {
       undefined,
       itemId,
     );
-    const intakeDays = bucketIntakesByDay(intakes);
+    const intakeDays = bucketIntakesByDay(intakes, this.tz);
     const shifted = shiftIntakeDays(intakeDays, lagDays);
     const pairs = await this.computeMetricCorrelations(shifted, item.name);
     return {
@@ -144,11 +157,11 @@ export class AnalyticsService {
       throw new AnalyticsNotFoundError(`Medication item ${itemId} not found`);
     }
     const intakes = await this.medicationRepo.listIntakes(
-      toRangeStart(start),
-      toRangeEnd(end),
+      tzDayStartUtc(start, this.tz),
+      tzDayEndUtc(end, this.tz),
       itemId,
     );
-    return buildAdherence(itemId, item.name, start, end, intakes);
+    return buildAdherence(itemId, item.name, start, end, intakes, this.tz);
   }
 
   async getMedicationIntakeByDay(
@@ -157,11 +170,11 @@ export class AnalyticsService {
     itemId?: number,
   ): Promise<IntakeByDay[]> {
     const intakes = await this.medicationRepo.listIntakes(
-      toRangeStart(start),
-      toRangeEnd(end),
+      tzDayStartUtc(start, this.tz),
+      tzDayEndUtc(end, this.tz),
       itemId,
     );
-    return rollupIntakeByDay(intakes);
+    return rollupIntakeByDay(intakes, this.tz);
   }
 
   async getMedicationCorrelations(
@@ -177,7 +190,7 @@ export class AnalyticsService {
       undefined,
       itemId,
     );
-    const intakeDays = bucketIntakesByDay(intakes);
+    const intakeDays = bucketIntakesByDay(intakes, this.tz);
     const shifted = shiftIntakeDays(intakeDays, lagDays);
     const pairs = await this.computeMetricCorrelations(shifted, item.name);
     return {
@@ -283,20 +296,6 @@ export class AnalyticsService {
 // Module-private helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Widens a `YYYY-MM-DD` to a midnight-UTC ISO timestamp so the repo's
- * `i.taken_at >= $start` comparison against TIMESTAMPTZ data works
- * correctly for callers who think in calendar days.
- */
-function toRangeStart(date: string): string {
-  return `${date}T00:00:00.000Z`;
-}
-
-/** Widens a `YYYY-MM-DD` to end-of-day so `<= $end` includes the full day. */
-function toRangeEnd(date: string): string {
-  return `${date}T23:59:59.999Z`;
-}
-
 interface IntakeRow {
   itemId: number;
   itemName: string;
@@ -306,14 +305,21 @@ interface IntakeRow {
 }
 
 /**
- * Buckets a list of intake rows by UTC calendar day, returning a
- * Map<date, doseCount>. Used as the input to the lag-shift and the
+ * Buckets a list of intake rows by *user-local* calendar day, returning
+ * a Map<date, doseCount>. Used as the input to the lag-shift and the
  * adherence calculation.
+ *
+ * Always pass the user's IANA timezone (`tz`) — never rely on the
+ * server's local zone or UTC. An evening intake at 20:00 EDT must
+ * bucket as the same day, not the following UTC day.
  */
-function bucketIntakesByDay(intakes: IntakeRow[]): Map<string, number> {
+function bucketIntakesByDay(
+  intakes: IntakeRow[],
+  tz: string,
+): Map<string, number> {
   const out = new Map<string, number>();
   for (const i of intakes) {
-    const day = i.takenAt.slice(0, 10);
+    const day = formatDateInTz(i.takenAt, tz);
     out.set(day, (out.get(day) ?? 0) + 1);
   }
   return out;
@@ -363,13 +369,15 @@ function numericSeries<T>(
 
 /**
  * Aggregates a list of intake rows into per-day, per-item totals
- * suitable for charting. Sorted ascending by date (then item name to
- * keep the order stable when multiple items share a day).
+ * suitable for charting. Buckets by user-local day (so an evening
+ * intake doesn't bleed into tomorrow's bar). Sorted ascending by date
+ * (then item name to keep the order stable when multiple items share
+ * a day).
  */
-function rollupIntakeByDay(intakes: IntakeRow[]): IntakeByDay[] {
+function rollupIntakeByDay(intakes: IntakeRow[], tz: string): IntakeByDay[] {
   const byKey = new Map<string, IntakeByDay>();
   for (const i of intakes) {
-    const date = i.takenAt.slice(0, 10);
+    const date = formatDateInTz(i.takenAt, tz);
     const key = `${date}|${i.itemId}|${i.unit}`;
     const cur = byKey.get(key);
     if (cur) {
@@ -394,10 +402,10 @@ function rollupIntakeByDay(intakes: IntakeRow[]): IntakeByDay[] {
 
 /**
  * Builds a {@link SupplementAdherence} for the given window. The
- * algorithm walks every UTC day from `start` to `end`, marking days
- * with at least one intake. Streaks are computed against the dense
- * day list so a missing date breaks a streak even if no intake row
- * exists for it.
+ * algorithm walks every calendar day from `start` to `end`, marking
+ * days (in the user's timezone) with at least one intake. Streaks are
+ * computed against the dense day list so a missing date breaks a
+ * streak even if no intake row exists for it.
  */
 function buildAdherence(
   itemId: number,
@@ -405,8 +413,9 @@ function buildAdherence(
   start: string,
   end: string,
   intakes: IntakeRow[],
+  tz: string,
 ): SupplementAdherence {
-  const counts = bucketIntakesByDay(intakes);
+  const counts = bucketIntakesByDay(intakes, tz);
   const totalDoses = intakes.length;
   const days = enumerateDays(start, end);
   const daily = days.map((date) => ({ date, doses: counts.get(date) ?? 0 }));

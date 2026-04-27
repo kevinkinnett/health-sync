@@ -1,5 +1,7 @@
+import { useEffect } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useDateRangeStore, type PresetRange } from "../stores/dateRangeStore";
+import { useUserTimezone } from "../api/queries";
 
 const presets: { label: string; value: PresetRange }[] = [
   { label: "7D", value: "7d" },
@@ -256,7 +258,23 @@ function BottomNav() {
   );
 }
 
+/**
+ * Reconciles the date-range store's TZ with the server-configured user
+ * TZ once `/api/config` resolves. Until then the store uses the browser
+ * TZ as a sensible default — for users in their home zone the two match,
+ * but if they ever differ (travel, shared accounts) the store will shift
+ * to the configured zone on first config load.
+ */
+function useTzReconciliation(): void {
+  const tz = useUserTimezone();
+  const setTz = useDateRangeStore((s) => s.setTz);
+  useEffect(() => {
+    setTz(tz);
+  }, [tz, setTz]);
+}
+
 export function Layout() {
+  useTzReconciliation();
   return (
     <div className="min-h-screen bg-surface">
       <TopBar />

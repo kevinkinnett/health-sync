@@ -77,3 +77,4 @@ export type {
   IngredientByDay,
   IntakeCorrelations,
 } from "./types/analytics.js";
+export type { AppConfig } from "./types/config.js";
