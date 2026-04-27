@@ -11,21 +11,66 @@ import {
 } from "recharts";
 import type { SleepDay } from "@health-dashboard/shared";
 import { useChartTheme } from "../../stores/themeStore";
+import { useUserTimezone } from "../../api/queries";
 
-function timeToMinutes(timeStr: string): number | null {
+// Internal Y-axis units: minutes since 6:00 PM in the user's timezone.
+// 0   = 6:00 PM
+// 360 = 12:00 AM (midnight)
+// 720 = 6:00 AM
+// 1080 = noon (rare for sleep — reserved for late-day naps)
+//
+// The 6 PM anchor places typical bedtimes (8 PM – 1 AM = 120–420)
+// and wake times (5 AM – 9 AM = 660–900) on a single non-wrapping
+// continuous axis, so the chart never has to render two cross-midnight
+// labels at the same numeric position. This was the cause of the
+// "two hours off" wraparound in the previous implementation.
+const ANCHOR_HOUR = 18; // 6 PM
+const MINUTES_IN_DAY = 1440;
+
+interface WallClock {
+  hour: number;
+  minute: number;
+}
+
+function getWallClock(timeStr: string, tz: string): WallClock | null {
   if (!timeStr) return null;
   const d = new Date(timeStr);
   if (isNaN(d.getTime())) return null;
-  let mins = d.getUTCHours() * 60 + d.getUTCMinutes();
-  // Normalize bedtimes: if before noon, add 24h (e.g., 1am = 25*60)
-  if (mins < 720) mins += 1440;
-  return mins;
+  // `Intl.DateTimeFormat` resolves the wall-clock value in the IANA
+  // zone Fitbit's profile is set to (configured server-side and exposed
+  // via /api/config). Using `getUTCHours()` here only worked by accident
+  // when the server stored naive timestamps as UTC; the new ingest path
+  // stores correct instants, so we must extract the correct wall-clock
+  // here.
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    hour: "numeric",
+    minute: "numeric",
+    hourCycle: "h23",
+  }).formatToParts(d);
+  const hStr = parts.find((p) => p.type === "hour")?.value ?? "0";
+  const mStr = parts.find((p) => p.type === "minute")?.value ?? "0";
+  const hour = parseInt(hStr, 10);
+  const minute = parseInt(mStr, 10);
+  if (Number.isNaN(hour) || Number.isNaN(minute)) return null;
+  return { hour, minute };
 }
 
-function minutesToTimeLabel(mins: number): string {
-  const normalized = mins % 1440;
-  const h = Math.floor(normalized / 60);
-  const m = normalized % 60;
+function wallClockToAnchored(wc: WallClock): number {
+  // Map (hour, minute) → minutes since 6 PM, wrapping forward only.
+  const raw = wc.hour * 60 + wc.minute;
+  const anchored = raw - ANCHOR_HOUR * 60;
+  return anchored >= 0 ? anchored : anchored + MINUTES_IN_DAY;
+}
+
+function anchoredToLabel(mins: number): string {
+  // Convert "minutes since 6 PM" back to a 12-hour wall-clock label.
+  // We deliberately do NOT modulo MINUTES_IN_DAY again — the input
+  // is already in [0, MINUTES_IN_DAY) by construction, so the label
+  // is unambiguous within a single sleep cycle.
+  const wallclock = (mins + ANCHOR_HOUR * 60) % MINUTES_IN_DAY;
+  const h = Math.floor(wallclock / 60);
+  const m = wallclock % 60;
   const period = h >= 12 ? "PM" : "AM";
   const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
   return `${h12}:${String(m).padStart(2, "0")} ${period}`;
@@ -47,22 +92,19 @@ interface Props {
 
 export function SleepTimingChart({ data }: Props) {
   const ct = useChartTheme();
+  const tz = useUserTimezone();
 
   const bedtimes: { date: string; time: number }[] = [];
   const waketimes: { date: string; time: number }[] = [];
 
   for (const d of data) {
     if (d.mainSleepStartTime) {
-      const mins = timeToMinutes(d.mainSleepStartTime);
-      if (mins != null) bedtimes.push({ date: d.date, time: mins });
+      const wc = getWallClock(d.mainSleepStartTime, tz);
+      if (wc) bedtimes.push({ date: d.date, time: wallClockToAnchored(wc) });
     }
     if (d.mainSleepEndTime) {
-      const mins = timeToMinutes(d.mainSleepEndTime);
-      if (mins != null) {
-        // Wake times are typically morning, normalize to 0-1440
-        const wakeMins = mins >= 1440 ? mins - 1440 : mins;
-        waketimes.push({ date: d.date, time: wakeMins });
-      }
+      const wc = getWallClock(d.mainSleepEndTime, tz);
+      if (wc) waketimes.push({ date: d.date, time: wallClockToAnchored(wc) });
     }
   }
 
@@ -109,9 +151,9 @@ export function SleepTimingChart({ data }: Props) {
 
       {/* Avg times */}
       <div className="flex gap-4 mb-3 text-xs text-on-surface-variant">
-        <span>Avg bedtime: <span className="font-medium text-on-surface">{minutesToTimeLabel(Math.round(avgBedtime))}</span></span>
+        <span>Avg bedtime: <span className="font-medium text-on-surface">{anchoredToLabel(Math.round(avgBedtime))}</span></span>
         {avgWaketime != null && (
-          <span>Avg wake: <span className="font-medium text-on-surface">{minutesToTimeLabel(Math.round(avgWaketime))}</span></span>
+          <span>Avg wake: <span className="font-medium text-on-surface">{anchoredToLabel(Math.round(avgWaketime))}</span></span>
         )}
         <span>Bedtime spread: <span className="font-medium text-on-surface">{Math.round(bedConsistency.stdDev)} min</span></span>
       </div>
@@ -130,14 +172,14 @@ export function SleepTimingChart({ data }: Props) {
             dataKey="time"
             domain={[minTime, maxTime]}
             tick={ct.tick}
-            tickFormatter={(v: number) => minutesToTimeLabel(Math.round(v))}
+            tickFormatter={(v: number) => anchoredToLabel(Math.round(v))}
             width={65}
           />
           <Tooltip
             contentStyle={ct.tooltip.contentStyle}
             labelStyle={ct.tooltip.labelStyle}
             itemStyle={ct.tooltip.itemStyle}
-            formatter={(value: number) => [minutesToTimeLabel(Math.round(value))]}
+            formatter={(value: number) => [anchoredToLabel(Math.round(value))]}
             labelFormatter={(_: unknown, payload: Array<{ payload?: { date?: string } }>) =>
               payload?.[0]?.payload?.date ?? ""
             }

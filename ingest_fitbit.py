@@ -45,6 +45,13 @@ MAX_RANGE_DAYS = 30  # max days per range API request
 # empty on first attempt is permanently lost — the cursor advances past it and never
 # revisits. Re-fetches are upsert-safe via ON CONFLICT.
 RECHECK_DAYS = 14
+# Recent-day window where the activity fetcher cross-checks the daily summary
+# against the per-15-min intraday endpoint and keeps the larger step count.
+# Fitbit's daily summary occasionally lags the watch's most recent sync —
+# the intraday dataset reflects the freshest data Fitbit holds, so the
+# greater value always represents reality more accurately. Bounded so we
+# don't burn API budget chasing already-stable older days.
+INTRADAY_FALLBACK_DAYS = 14
 
 # Types fetched one day at a time. Sleep was previously here but moved to RANGE_TYPES
 # because Fitbit's per-day sleep endpoint /1.2/user/-/sleep/date/{date}.json silently
@@ -178,6 +185,57 @@ def today_in_tz(tz_name: str) -> date:
         print(f"  [tz] Unknown zone {tz_name!r}; falling back to UTC")
         zi = timezone.utc
     return datetime.now(zi).date()
+
+
+def parse_fitbit_local_dt(ts: Optional[str], tz_name: str) -> Optional[datetime]:
+    """
+    Parse a naive ISO timestamp string from Fitbit and stamp it with the
+    user's profile timezone so psycopg stores it as the correct TIMESTAMPTZ.
+
+    Why this exists: Fitbit's API returns timestamps like
+    `"2026-04-26T21:19:00.000"` with no offset and no `Z` suffix — the value
+    is in the user's profile-configured local time. If we hand the raw string
+    to a TIMESTAMPTZ column, Postgres assumes UTC and the wall-clock value
+    silently shifts by the profile's UTC offset. Re-stamping the parsed
+    naive datetime with `ZoneInfo(tz_name)` produces a tz-aware datetime
+    that maps to the actual instant Fitbit meant.
+
+    Handles:
+      - `"YYYY-MM-DDTHH:MM:SS"` (Fitbit's typical format)
+      - `"YYYY-MM-DDTHH:MM:SS.fff"` (with milliseconds — Fitbit sleep API)
+      - `"YYYY-MM-DDTHH:MM:SS+ZZ:ZZ"` / `"...Z"` (already tz-aware — pass through)
+    Returns None for empty/invalid input.
+    """
+    if not ts:
+        return None
+    s = ts.strip()
+    if not s:
+        return None
+    # If the string already carries explicit tz info, trust it and parse as-is.
+    has_offset = (
+        s.endswith("Z")
+        or (len(s) >= 6 and (s[-6] in "+-" and s[-3] == ":"))
+        or (len(s) >= 5 and s[-5] in "+-" and s[-3:].isdigit())
+    )
+    if has_offset:
+        try:
+            normalized = s.replace("Z", "+00:00")
+            return datetime.fromisoformat(normalized)
+        except ValueError:
+            return None
+    # Naive value → stamp with profile tz.
+    # Strip fractional seconds for cross-version compat with fromisoformat.
+    if "." in s:
+        s = s.split(".", 1)[0]
+    try:
+        naive = datetime.fromisoformat(s)
+    except ValueError:
+        return None
+    try:
+        zi = ZoneInfo(tz_name)
+    except ZoneInfoNotFoundError:
+        zi = timezone.utc
+    return naive.replace(tzinfo=zi)
 
 
 # ---------------------------------------------------------------------------
@@ -480,11 +538,133 @@ def get_last_profile_tz(conn: psycopg.Connection) -> Optional[str]:
         return row[0] if row else None
 
 
+SLEEP_TZ_BACKFILL_KEY = "__sleep_tz_backfill__"
+
+
+def backfill_sleep_timestamps_once(conn: psycopg.Connection, profile_tz: str) -> int:
+    """
+    One-time correction for historical sleep rows that were stored with naive
+    Fitbit timestamps silently interpreted as UTC. Re-stamps each
+    `main_sleep_start_time` / `main_sleep_end_time` so its WALL-CLOCK value
+    is interpreted as `profile_tz` instead of UTC.
+
+    The transformation is `(ts AT TIME ZONE 'UTC') AT TIME ZONE profile_tz`:
+      1. `AT TIME ZONE 'UTC'` strips the (broken) tz, yielding a naive
+         timestamp equal to the wall-clock value Fitbit originally returned.
+      2. `AT TIME ZONE profile_tz` re-attaches the correct zone, producing
+         the actual UTC instant the user experienced.
+
+    Idempotent: stamps a sentinel row in `fitbit_ingest_state` keyed by
+    `__sleep_tz_backfill__` with `details->>'profile_tz'` so re-runs
+    against the same zone are no-ops. Note: if the user's profile zone
+    changes later we don't re-run automatically — the rolling RECHECK_DAYS
+    window will heal recent days from the next ingest, and any fresh
+    backfill across an older zone change has to be a manual SQL operation.
+
+    Returns the number of rows updated (0 when the sentinel says we've
+    already done this work).
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT details->>'profile_tz'
+            FROM universe.fitbit_ingest_state
+            WHERE data_type = %s
+            """,
+            (SLEEP_TZ_BACKFILL_KEY,),
+        )
+        row = cur.fetchone()
+        if row and row[0] == profile_tz:
+            return 0
+        # Recent days will be re-fetched cleanly by the rolling recheck
+        # window with the now-correct ingest path, so we only touch days
+        # outside that window. (Touching them anyway would still be safe
+        # but would fight with the upsert that's about to overwrite them.)
+        cur.execute(
+            """
+            UPDATE universe.fitbit_sleep_daily
+            SET
+                main_sleep_start_time = (main_sleep_start_time AT TIME ZONE 'UTC')
+                                          AT TIME ZONE %(tz)s,
+                main_sleep_end_time   = (main_sleep_end_time   AT TIME ZONE 'UTC')
+                                          AT TIME ZONE %(tz)s,
+                fetched_at = NOW()
+            WHERE
+                date < (CURRENT_DATE - %(recheck)s::int)
+                AND (main_sleep_start_time IS NOT NULL OR main_sleep_end_time IS NOT NULL)
+            """,
+            {"tz": profile_tz, "recheck": RECHECK_DAYS},
+        )
+        updated = cur.rowcount or 0
+        cur.execute(
+            """
+            INSERT INTO universe.fitbit_ingest_state
+                (data_type, details, updated_at_utc)
+            VALUES (%s, %s::jsonb, NOW())
+            ON CONFLICT (data_type) DO UPDATE SET
+                details = EXCLUDED.details,
+                updated_at_utc = NOW()
+            """,
+            (
+                SLEEP_TZ_BACKFILL_KEY,
+                json.dumps({
+                    "profile_tz": profile_tz,
+                    "rows_updated": updated,
+                }),
+            ),
+        )
+    conn.commit()
+    return updated
+
+
 # ===========================================================================
 # DAILY FETCHERS (1 request per day, existing)
 # ===========================================================================
 
-def fetch_and_upsert_activity(conn: psycopg.Connection, creds: dict, date_str: str) -> int:
+def fetch_intraday_steps_sum(creds: dict[str, Any], date_str: str) -> Optional[int]:
+    """
+    Fetch the per-15-minute intraday step series for `date_str` and sum it.
+
+    Why: Fitbit's daily-summary endpoint can report a stale total when the
+    watch has synced fresh data the Web API hasn't yet rolled into the
+    summary. The intraday endpoint reflects the latest data Fitbit holds,
+    so summing it gives a true-up value to compare against the summary.
+
+    Returns the total step count, or None if the call fails or the dataset
+    is missing. Caller decides what to do with None vs a real number.
+    """
+    try:
+        data = fitbit_get(
+            creds,
+            f"/1/user/-/activities/tracker/steps/date/{date_str}/1d/15min.json",
+        )
+    except (requests.HTTPError, RateLimitError) as exc:
+        print(f"  [intraday] {date_str} fetch failed ({exc}); skipping")
+        return None
+    intraday = data.get("activities-tracker-steps-intraday", {})
+    dataset = intraday.get("dataset", [])
+    if not isinstance(dataset, list) or not dataset:
+        return None
+    total = 0
+    for point in dataset:
+        v = point.get("value") if isinstance(point, dict) else None
+        if isinstance(v, int):
+            total += v
+        elif isinstance(v, str):
+            try:
+                total += int(v)
+            except ValueError:
+                continue
+        elif isinstance(v, float):
+            total += int(v)
+    return total
+
+
+def fetch_and_upsert_activity(
+    conn: psycopg.Connection, creds: dict, date_str: str,
+    today: Optional[date] = None,
+    profile_tz: str = "UTC",  # noqa: ARG001 — accepted for dispatch parity
+) -> int:
     data = fitbit_get(creds, f"/1/user/-/activities/date/{date_str}.json")
     s = data.get("summary", {})
     distances = s.get("distances", [])
@@ -492,6 +672,38 @@ def fetch_and_upsert_activity(conn: psycopg.Connection, creds: dict, date_str: s
         (d["distance"] for d in distances if d.get("activity") == "total"), None
     )
     distance_km = float(total_dist) if total_dist is not None else None
+
+    summary_steps = s.get("steps")
+
+    # Intraday-sum fallback for recent days. Within INTRADAY_FALLBACK_DAYS,
+    # also pull the per-15-min step dataset and use whichever is larger:
+    # the summary endpoint sometimes lags the watch's last sync, so the
+    # intraday total is the freshest value Fitbit has. Steps only ever
+    # increase across syncs, so taking the max never overshoots reality.
+    final_steps = summary_steps
+    if today is not None and summary_steps is not None:
+        try:
+            target_date = date.fromisoformat(date_str)
+            within_window = (today - target_date).days <= INTRADAY_FALLBACK_DAYS
+        except ValueError:
+            within_window = False
+        if within_window:
+            intraday_sum = fetch_intraday_steps_sum(creds, date_str)
+            if intraday_sum is not None and intraday_sum > summary_steps:
+                print(
+                    f"  [activity] {date_str}: intraday sum {intraday_sum} "
+                    f"> summary {summary_steps}; using intraday total."
+                )
+                final_steps = intraday_sum
+                # Stash both values in raw_jsonb so the discrepancy is
+                # visible if anyone audits the row later.
+                data = {
+                    **data,
+                    "_dashboard_intraday": {
+                        "intraday_step_sum": intraday_sum,
+                        "summary_step_count": summary_steps,
+                    },
+                }
 
     with conn.cursor() as cur:
         cur.execute(
@@ -511,7 +723,7 @@ def fetch_and_upsert_activity(conn: psycopg.Connection, creds: dict, date_str: s
                 minutes_very_active = EXCLUDED.minutes_very_active,
                 raw_jsonb = EXCLUDED.raw_jsonb, fetched_at = NOW()
             """,
-            (date_str, s.get("steps"), s.get("caloriesOut"), s.get("caloriesBMR"),
+            (date_str, final_steps, s.get("caloriesOut"), s.get("caloriesBMR"),
              s.get("activityCalories"), distance_km, s.get("floors"),
              s.get("sedentaryMinutes"), s.get("lightlyActiveMinutes"),
              s.get("fairlyActiveMinutes"), s.get("veryActiveMinutes"),
@@ -521,7 +733,11 @@ def fetch_and_upsert_activity(conn: psycopg.Connection, creds: dict, date_str: s
     return 1
 
 
-def fetch_and_upsert_heart_rate(conn: psycopg.Connection, creds: dict, date_str: str) -> int:
+def fetch_and_upsert_heart_rate(
+    conn: psycopg.Connection, creds: dict, date_str: str,
+    today: Optional[date] = None,  # noqa: ARG001 — accepted for dispatch parity
+    profile_tz: str = "UTC",  # noqa: ARG001 — accepted for dispatch parity
+) -> int:
     data = fitbit_get(creds, f"/1/user/-/activities/heart/date/{date_str}/1d.json")
     hr_list = data.get("activities-heart", [])
     if not hr_list:
@@ -559,7 +775,11 @@ def fetch_and_upsert_heart_rate(conn: psycopg.Connection, creds: dict, date_str:
     return 1
 
 
-def fetch_and_upsert_body_weight(conn: psycopg.Connection, creds: dict, date_str: str) -> int:
+def fetch_and_upsert_body_weight(
+    conn: psycopg.Connection, creds: dict, date_str: str,
+    today: Optional[date] = None,  # noqa: ARG001 — accepted for dispatch parity
+    profile_tz: str = "UTC",  # noqa: ARG001 — accepted for dispatch parity
+) -> int:
     data = fitbit_get(creds, f"/1/user/-/body/log/weight/date/{date_str}.json")
     entries = data.get("weight", [])
     if not entries:
@@ -598,6 +818,7 @@ DAILY_FETCHERS = {
 
 def fetch_and_upsert_sleep_range(
     conn: psycopg.Connection, creds: dict, start: str, end: str,
+    profile_tz: str = "UTC",
 ) -> int:
     """
     GET /1.2/user/-/sleep/date/{start}/{end}.json → {sleep: [...], summary: {...}}.
@@ -605,6 +826,10 @@ def fetch_and_upsert_sleep_range(
     silently returns empty for many dates that have sleep data (confirmed 2026-04-26).
     Multiple records can exist per date (main sleep + naps); we upsert one row per date
     using aggregated stage minutes and the main_sleep record for start/end times.
+
+    `profile_tz` is required for correct storage of `startTime` / `endTime`: Fitbit
+    returns them as naive local strings; without an explicit zone they would be
+    silently interpreted as UTC and lose 4–5 hours of accuracy.
     """
     data = fitbit_get(creds, f"/1.2/user/-/sleep/date/{start}/{end}.json")
     sleep_records = data.get("sleep", [])
@@ -668,8 +893,8 @@ def fetch_and_upsert_sleep_range(
                     bucket["minutes_rem"] or None,
                     bucket["minutes_wake"] or None,
                     main_rec.get("efficiency"),
-                    main_rec.get("startTime"),
-                    main_rec.get("endTime"),
+                    parse_fitbit_local_dt(main_rec.get("startTime"), profile_tz),
+                    parse_fitbit_local_dt(main_rec.get("endTime"), profile_tz),
                     json.dumps({"sleep": bucket["all_records"]}),
                 ),
             )
@@ -680,6 +905,7 @@ def fetch_and_upsert_sleep_range(
 
 def fetch_and_upsert_spo2_range(
     conn: psycopg.Connection, creds: dict, start: str, end: str,
+    profile_tz: str = "UTC",  # noqa: ARG001 — accepted for dispatch parity
 ) -> int:
     """GET /1/user/-/spo2/date/{start}/{end}.json → array of daily entries."""
     data = fitbit_get(creds, f"/1/user/-/spo2/date/{start}/{end}.json")
@@ -709,6 +935,7 @@ def fetch_and_upsert_spo2_range(
 
 def fetch_and_upsert_hrv_range(
     conn: psycopg.Connection, creds: dict, start: str, end: str,
+    profile_tz: str = "UTC",  # noqa: ARG001 — accepted for dispatch parity
 ) -> int:
     """GET /1/user/-/hrv/date/{start}/{end}.json → {hrv: [{dateTime, value}]}."""
     data = fitbit_get(creds, f"/1/user/-/hrv/date/{start}/{end}.json")
@@ -737,6 +964,7 @@ def fetch_and_upsert_hrv_range(
 
 def fetch_and_upsert_br_range(
     conn: psycopg.Connection, creds: dict, start: str, end: str,
+    profile_tz: str = "UTC",  # noqa: ARG001 — accepted for dispatch parity
 ) -> int:
     """GET /1/user/-/br/date/{start}/{end}.json → {br: [{dateTime, value}]}."""
     data = fitbit_get(creds, f"/1/user/-/br/date/{start}/{end}.json")
@@ -765,6 +993,7 @@ def fetch_and_upsert_br_range(
 
 def fetch_and_upsert_temp_range(
     conn: psycopg.Connection, creds: dict, start: str, end: str,
+    profile_tz: str = "UTC",  # noqa: ARG001 — accepted for dispatch parity
 ) -> int:
     """GET /1/user/-/temp/skin/date/{start}/{end}.json → {tempSkin: [{dateTime, value}]}."""
     data = fitbit_get(creds, f"/1/user/-/temp/skin/date/{start}/{end}.json")
@@ -793,6 +1022,7 @@ def fetch_and_upsert_temp_range(
 
 def fetch_and_upsert_cardio_range(
     conn: psycopg.Connection, creds: dict, start: str, end: str,
+    profile_tz: str = "UTC",  # noqa: ARG001 — accepted for dispatch parity
 ) -> int:
     """GET /1/user/-/cardioscore/date/{start}/{end}.json → {cardioScore: [{dateTime, value}]}."""
     data = fitbit_get(creds, f"/1/user/-/cardioscore/date/{start}/{end}.json")
@@ -1001,6 +1231,17 @@ def main(
                 f"the boundary; consider re-backfilling the affected days."
             )
 
+        # One-time correction of historical sleep timestamps. Earlier ingest
+        # runs wrote naive Fitbit timestamps into TIMESTAMPTZ columns, which
+        # silently labels them as UTC and drops 4–5 hours of accuracy. This
+        # is a no-op after the first successful run for a given profile_tz.
+        sleep_backfill_count = backfill_sleep_timestamps_once(conn, profile_tz)
+        if sleep_backfill_count:
+            print(
+                f"  [tz] Re-stamped {sleep_backfill_count} historical sleep "
+                f"rows into {profile_tz}."
+            )
+
         # =============================================================
         # PHASE 1: Range-based types (cheap — ~1 request per 30 days)
         # =============================================================
@@ -1037,7 +1278,9 @@ def main(
                 print(f"[{data_type}] Fetching range {start_str} to {end_str}")
 
                 try:
-                    fetched = RANGE_FETCHERS[data_type](conn, creds, start_str, end_str)
+                    fetched = RANGE_FETCHERS[data_type](
+                        conn, creds, start_str, end_str, profile_tz=profile_tz,
+                    )
                     rows += fetched
                     total_rows += fetched
                     request_count += 1
@@ -1158,7 +1401,9 @@ def main(
                     continue
                 date_str = tc["current"].isoformat()
                 try:
-                    rows = DAILY_FETCHERS[data_type](conn, creds, date_str)
+                    rows = DAILY_FETCHERS[data_type](
+                        conn, creds, date_str, today=today, profile_tz=profile_tz,
+                    )
                     tc["rows"] += rows
                     total_rows += rows
                     request_count += 1
