@@ -10,7 +10,7 @@ const presets: { label: string; value: PresetRange }[] = [
 
 const navItems = [
   { to: "/", label: "Dashboard", icon: "dashboard", end: true },
-  { to: "/explore", label: "Analytics", icon: "query_stats" },
+  { to: "/analytics", label: "Analytics", icon: "query_stats" },
   { to: "/ingest", label: "Data Pipeline", icon: "settings_input_component" },
   { to: "/supplements", label: "Supplements", icon: "medication" },
   { to: "/medications", label: "Medications", icon: "prescriptions" },

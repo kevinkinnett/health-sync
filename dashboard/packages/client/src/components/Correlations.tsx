@@ -1,7 +1,5 @@
 import { useState } from "react";
 import {
-  ScatterChart,
-  Scatter,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -13,91 +11,17 @@ import {
 } from "recharts";
 import type {
   CorrelationsData,
-  CorrelationPair,
   ActivityBucket,
 } from "@health-dashboard/shared";
 import { useChartTheme } from "../stores/themeStore";
-
-function CorrelationBadge({ r }: { r: number }) {
-  const abs = Math.abs(r);
-  let label: string;
-  let color: string;
-  if (abs >= 0.7) {
-    label = "Strong";
-    color = "bg-secondary/10 text-secondary";
-  } else if (abs >= 0.4) {
-    label = "Moderate";
-    color = "bg-primary/10 text-primary";
-  } else if (abs >= 0.2) {
-    label = "Weak";
-    color = "bg-surface-container-highest text-on-surface-variant";
-  } else {
-    label = "None";
-    color = "bg-surface-container-high text-outline";
-  }
-
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold tabular-nums ${color}`}>
-      r = {r.toFixed(2)} ({label})
-    </span>
-  );
-}
-
-function ScatterPanel({ pair }: { pair: CorrelationPair }) {
-  const ct = useChartTheme();
-
-  return (
-    <div className="bg-surface-container rounded-xl p-5">
-      <div className="flex items-center justify-between mb-1">
-        <h3 className="text-sm font-headline font-semibold text-on-surface">
-          {pair.xLabel} vs {pair.yLabel}
-        </h3>
-        <CorrelationBadge r={pair.correlation} />
-      </div>
-      <p className="text-xs text-on-surface-variant mb-3">
-        {pair.insight}
-      </p>
-      <div className="h-48">
-        <ResponsiveContainer width="100%" height="100%">
-          <ScatterChart margin={{ top: 5, right: 5, bottom: 20, left: 5 }}>
-            <CartesianGrid stroke={ct.grid} strokeDasharray="3 3" />
-            <XAxis
-              type="number"
-              dataKey="x"
-              name={pair.xLabel}
-              tick={ct.tick}
-              label={{ value: pair.xLabel, position: "bottom", offset: 5, ...ct.tick }}
-            />
-            <YAxis
-              type="number"
-              dataKey="y"
-              name={pair.yLabel}
-              tick={ct.tick}
-              width={45}
-            />
-            <Tooltip
-              cursor={{ strokeDasharray: "3 3" }}
-              contentStyle={ct.tooltip.contentStyle}
-              labelStyle={ct.tooltip.labelStyle}
-              itemStyle={ct.tooltip.itemStyle}
-              formatter={(value: number) => [value.toLocaleString()]}
-              labelFormatter={() => ""}
-            />
-            <Scatter
-              data={pair.points}
-              fill="#8083ff"
-              fillOpacity={0.6}
-              r={3}
-            />
-          </ScatterChart>
-        </ResponsiveContainer>
-      </div>
-    </div>
-  );
-}
+import { ScatterPanel } from "./charts/ScatterPanel";
 
 const BUCKET_COLORS = ["#464554", "#c0c1ff", "#4edea3"];
-const BUCKET_BORDERS = ["border-outline-variant", "border-primary", "border-secondary"];
+const BUCKET_BORDERS = [
+  "border-outline-variant",
+  "border-primary",
+  "border-secondary",
+];
 
 function ActivitySleepBuckets({ buckets }: { buckets: ActivityBucket[] }) {
   const ct = useChartTheme();
@@ -124,11 +48,15 @@ function ActivitySleepBuckets({ buckets }: { buckets: ActivityBucket[] }) {
             <div className="text-2xl font-headline font-bold tabular-nums text-on-surface mt-1">
               {Math.floor(b.avgSleepMin / 60)}h {b.avgSleepMin % 60}m
             </div>
-            <p className="text-xs text-on-surface-variant mt-1">Avg. Sleep Duration</p>
+            <p className="text-xs text-on-surface-variant mt-1">
+              Avg. Sleep Duration
+            </p>
             <div className="mt-3 space-y-1">
               <div className="flex justify-between text-xs">
                 <span className="text-outline">Deep Sleep</span>
-                <span className="tabular-nums text-on-surface">{b.avgDeepMin}m</span>
+                <span className="tabular-nums text-on-surface">
+                  {b.avgDeepMin}m
+                </span>
               </div>
               <div className="w-full h-1 bg-surface-container-highest rounded-full">
                 <div
@@ -145,8 +73,15 @@ function ActivitySleepBuckets({ buckets }: { buckets: ActivityBucket[] }) {
       </div>
       <div className="h-32">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={validBuckets} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
-            <CartesianGrid stroke={ct.grid} strokeDasharray="3 3" vertical={false} />
+          <BarChart
+            data={validBuckets}
+            margin={{ top: 5, right: 5, bottom: 5, left: 5 }}
+          >
+            <CartesianGrid
+              stroke={ct.grid}
+              strokeDasharray="3 3"
+              vertical={false}
+            />
             <XAxis dataKey="label" tick={ct.tick} />
             <YAxis tick={ct.tick} width={40} />
             <Tooltip
@@ -166,8 +101,20 @@ function ActivitySleepBuckets({ buckets }: { buckets: ActivityBucket[] }) {
   );
 }
 
-export function Correlations({ data }: { data: CorrelationsData }) {
-  const [expanded, setExpanded] = useState(false);
+/**
+ * Cross-metric correlation grid. The Dashboard view caps the visible
+ * pairs at two with an expand-to-reveal toggle, while the dedicated
+ * `/analytics/correlations` page passes `expandedByDefault` so all
+ * pairs render up-front.
+ */
+export function Correlations({
+  data,
+  expandedByDefault = false,
+}: {
+  data: CorrelationsData;
+  expandedByDefault?: boolean;
+}) {
+  const [expanded, setExpanded] = useState(expandedByDefault);
 
   const sortedPairs = [...data.pairs].sort(
     (a, b) => Math.abs(b.correlation) - Math.abs(a.correlation),
@@ -187,18 +134,24 @@ export function Correlations({ data }: { data: CorrelationsData }) {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {visiblePairs.map((pair) => (
-          <ScatterPanel key={`${pair.xMetric}-${pair.yMetric}`} pair={pair} />
+          <ScatterPanel
+            key={`${pair.xMetric}-${pair.yMetric}`}
+            title={`${pair.xLabel} vs ${pair.yLabel}`}
+            insight={pair.insight}
+            correlation={pair.correlation}
+            points={pair.points}
+            xAxisLabel={pair.xLabel}
+            yAxisLabel={pair.yLabel}
+          />
         ))}
       </div>
 
-      {sortedPairs.length > 2 && (
+      {!expandedByDefault && sortedPairs.length > 2 && (
         <button
           onClick={() => setExpanded(!expanded)}
           className="text-xs text-primary hover:text-primary-container font-bold uppercase tracking-wider"
         >
-          {expanded
-            ? "Show fewer"
-            : `Show ${sortedPairs.length - 2} more`}
+          {expanded ? "Show fewer" : `Show ${sortedPairs.length - 2} more`}
         </button>
       )}
 

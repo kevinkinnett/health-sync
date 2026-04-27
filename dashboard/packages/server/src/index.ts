@@ -22,16 +22,19 @@ import { SupplementService } from "./services/supplementService.js";
 import { MedicationService } from "./services/medicationService.js";
 import { LlmClient } from "./services/llmClient.js";
 import { DossierService } from "./services/dossierService.js";
+import { AnalyticsService } from "./services/analyticsService.js";
 import { HealthController } from "./controllers/healthController.js";
 import { IngestController } from "./controllers/ingestController.js";
 import { SupplementController } from "./controllers/supplementController.js";
 import { MedicationController } from "./controllers/medicationController.js";
 import { DossierController } from "./controllers/dossierController.js";
+import { AnalyticsController } from "./controllers/analyticsController.js";
 import { createHealthRoutes } from "./routes/health.js";
 import { createIngestRoutes } from "./routes/ingest.js";
 import { createSupplementRoutes } from "./routes/supplement.js";
 import { createMedicationRoutes } from "./routes/medication.js";
 import { createDossierRoutes } from "./routes/dossier.js";
+import { createAnalyticsRoutes } from "./routes/analytics.js";
 
 const config = loadConfig();
 const pool = createPool(config.db);
@@ -80,6 +83,14 @@ const dossierService = new DossierService(
   llmClient,
   { model: config.llm.dossierModel },
 );
+const analyticsService = new AnalyticsService(
+  supplementRepo,
+  medicationRepo,
+  activityRepo,
+  sleepRepo,
+  heartRateRepo,
+  hrvRepo,
+);
 
 // Controllers
 const healthController = new HealthController(healthDataService);
@@ -87,6 +98,7 @@ const ingestController = new IngestController(ingestService);
 const supplementController = new SupplementController(supplementService);
 const medicationController = new MedicationController(medicationService);
 const dossierController = new DossierController(dossierService);
+const analyticsController = new AnalyticsController(analyticsService);
 
 // App
 const app: Express = express();
@@ -110,6 +122,7 @@ app.use("/api/ingest", createIngestRoutes(ingestController));
 app.use("/api/supplements", createSupplementRoutes(supplementController));
 app.use("/api/medications", createMedicationRoutes(medicationController));
 app.use("/api/dossier", createDossierRoutes(dossierController));
+app.use("/api/analytics", createAnalyticsRoutes(analyticsController));
 
 // Serve client static files in production (single-container mode)
 // In Docker: dist/public/  In dev: ../../client/dist/

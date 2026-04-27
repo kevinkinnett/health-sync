@@ -23,6 +23,7 @@ import type { HeartRateRepository } from "../repositories/heartRateRepo.js";
 import type { WeightRepository } from "../repositories/weightRepo.js";
 import type { HrvRepository } from "../repositories/hrvRepo.js";
 import type { ExerciseLogRepository } from "../repositories/exerciseLogRepo.js";
+import { avg, describeCorrelation, pearson, shiftDate } from "./stats.js";
 
 export class HealthDataService {
   constructor(
@@ -572,18 +573,6 @@ export class HealthDataService {
   }
 }
 
-function shiftDate(dateStr: string, days: number): string {
-  const d = new Date(dateStr + "T00:00:00Z");
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-}
-
-function avg(values: (number | null)[]): number {
-  const valid = values.filter((v): v is number => v != null);
-  if (valid.length === 0) return 0;
-  return valid.reduce((a, b) => a + b, 0) / valid.length;
-}
-
 function compareMetric(
   current: (number | null)[],
   previous: (number | null)[],
@@ -693,41 +682,6 @@ function generateHighlights(
   }
 
   return highlights;
-}
-
-function pearson(xs: number[], ys: number[]): number {
-  const n = xs.length;
-  if (n < 2) return 0;
-  const meanX = xs.reduce((a, b) => a + b, 0) / n;
-  const meanY = ys.reduce((a, b) => a + b, 0) / n;
-  let num = 0;
-  let denX = 0;
-  let denY = 0;
-  for (let i = 0; i < n; i++) {
-    const dx = xs[i] - meanX;
-    const dy = ys[i] - meanY;
-    num += dx * dy;
-    denX += dx * dx;
-    denY += dy * dy;
-  }
-  const den = Math.sqrt(denX * denY);
-  return den === 0 ? 0 : Math.round((num / den) * 1000) / 1000;
-}
-
-function describeCorrelation(r: number, xName: string, yName: string): string {
-  const abs = Math.abs(r);
-  let strength: string;
-  if (abs >= 0.7) strength = "strong";
-  else if (abs >= 0.4) strength = "moderate";
-  else if (abs >= 0.2) strength = "weak";
-  else return `No meaningful correlation between ${xName} and ${yName}`;
-
-  const direction = r > 0 ? "positive" : "negative";
-  const meaning =
-    r > 0
-      ? `more ${xName} tends to go with more ${yName}`
-      : `more ${xName} tends to go with less ${yName}`;
-  return `${strength.charAt(0).toUpperCase() + strength.slice(1)} ${direction} correlation (r=${r.toFixed(2)}): ${meaning}`;
 }
 
 function computeStreak<T extends { date: string }>(

@@ -71,3 +71,9 @@ export type {
   DossierContent,
   DossierEntry,
 } from "./types/dossier.js";
+export type {
+  SupplementAdherence,
+  IntakeByDay,
+  IngredientByDay,
+  IntakeCorrelations,
+} from "./types/analytics.js";

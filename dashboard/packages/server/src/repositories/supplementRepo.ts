@@ -323,6 +323,66 @@ export class SupplementRepository {
     return (rowCount ?? 0) > 0;
   }
 
+  /**
+   * Per-ingredient daily totals across every supplement that contains
+   * the ingredient. The window is half-open at the upper bound on the
+   * `taken_at` timestamp, but bucketed by `taken_at::date` (UTC).
+   *
+   * Pass `ingredientId` to filter to a single ingredient — useful when
+   * the UI wants to drill into one substance. Otherwise returns rows
+   * for every ingredient logged in the window.
+   *
+   * Sorted ascending by date then ingredient name so the stacked-area
+   * chart can consume rows without a second sort.
+   */
+  async listIngredientByDay(
+    start: string,
+    end: string,
+    ingredientId?: number,
+  ): Promise<
+    Array<{
+      date: string;
+      ingredientId: number;
+      ingredientName: string;
+      totalAmount: number;
+      unit: string;
+    }>
+  > {
+    const conditions: string[] = [
+      `i.taken_at >= $1`,
+      `i.taken_at <= $2`,
+    ];
+    const values: unknown[] = [start, end];
+    let n = 3;
+    if (ingredientId != null) {
+      conditions.push(`iing.ingredient_id = $${n++}`);
+      values.push(ingredientId);
+    }
+    const where = `WHERE ${conditions.join(" AND ")}`;
+    // Group by ingredient *and* unit so mixed units (mg vs mcg, etc.)
+    // never get silently summed across each other.
+    const { rows } = await this.pool.query(
+      `SELECT to_char(i.taken_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS date,
+              iing.ingredient_id,
+              iing.ingredient_name,
+              iing.unit,
+              SUM(iing.amount)::numeric AS total_amount
+       FROM supplement.intake i
+       JOIN supplement.intake_ingredient iing ON iing.intake_id = i.id
+       ${where}
+       GROUP BY date, iing.ingredient_id, iing.ingredient_name, iing.unit
+       ORDER BY date, iing.ingredient_name`,
+      values,
+    );
+    return rows.map((r) => ({
+      date: r.date as string,
+      ingredientId: Number(r.ingredient_id),
+      ingredientName: r.ingredient_name as string,
+      totalAmount: Number(r.total_amount),
+      unit: r.unit as string,
+    }));
+  }
+
   // ---------------------------------------------------------------------------
   // Ingredient catalog
   // ---------------------------------------------------------------------------
