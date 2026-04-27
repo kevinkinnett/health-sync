@@ -304,13 +304,15 @@ export class DossierService {
 // Prompt construction
 // ----------------------------------------------------------------------------
 
-const SYSTEM_PROMPT = [
-  "You are building a reference dossier for a personal health tracker.",
-  "Use whatever web tools (WebSearch, WebFetch) you have available to gather authoritative information from sources like NIH ODS, DailyMed, Examine.com, Cochrane, Drugs.com, and the manufacturer's product page.",
-  "Reply with a SINGLE fenced ```json code block matching the schema in the user message — no preamble, no explanation outside the block.",
-  "Every section's body should reference the relevant sources by number, e.g. \"Vitamin D supports calcium absorption [1].\".",
-  "Always include a one-sentence non-medical-advice disclaimer in the `disclaimer` field.",
-].join(" ");
+// IMPORTANT: keep this short and pure ASCII.
+//
+// The proxy shells out to `claude -p --system-prompt <STR>`, and the long
+// argv variant gets interpreted by the shell — so backticks, em-dashes,
+// curly quotes, and `$` will mangle the call (we hit a 500 from triple
+// backticks getting parsed as command substitution). All real instruction
+// content lives in the first user message instead, which goes via stdin.
+const SYSTEM_PROMPT =
+  "You build structured reference dossiers using web research. Output exactly one fenced JSON code block matching the schema in the user message. Include nothing before or after the JSON block.";
 
 const SCHEMA_DESCRIPTION = `JSON schema (TypeScript):
 {
@@ -363,10 +365,21 @@ function buildPrompt(
   }
 
   lines.push("");
+  lines.push(
+    "Use the WebSearch and WebFetch tools available to you to gather authoritative information. Preferred sources: NIH ODS, DailyMed, Examine.com, Cochrane, Drugs.com, and the manufacturer's product page when the brand is known.",
+  );
+  lines.push("");
   lines.push(SCHEMA_DESCRIPTION);
   lines.push("");
   lines.push(
-    "Respond with ONLY the fenced ```json block. Cite at least 3 distinct sources.",
+    "Citation rules: every section body must cite the sources it draws from as bracketed numbers like [1] or [2, 3], where the number matches a `sources[].id`. Cite at least 3 distinct sources across the dossier.",
+  );
+  lines.push(
+    "Disclaimer rule: include a one-sentence non-medical-advice statement in the `disclaimer` field.",
+  );
+  lines.push("");
+  lines.push(
+    "Respond with ONLY a single fenced ```json code block. No prose before or after.",
   );
 
   return [
