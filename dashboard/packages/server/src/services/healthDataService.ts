@@ -488,11 +488,23 @@ export class HealthDataService {
       });
     }
 
+    // Rotate the columns so today's day-of-week sits in the RIGHTMOST cell.
+    // Without this the table renders in fixed Sun→Sat calendar order, but
+    // the rest of the dashboard treats "today" as the most recent point in
+    // a rolling 7-day window — so the heatmap header and the WeeklyInsights
+    // bars would tell different stories about the same week. Aligning to
+    // the rolling window keeps the right edge as "now" everywhere.
+    const latestDow =
+      activity.length > 0
+        ? new Date(activity[0].date + "T00:00:00Z").getUTCDay()
+        : 0;
+    const startDow = (latestDow + 1) % 7;
+
     return {
-      dayNames: DAY_NAMES,
-      rows,
+      dayNames: rotateDow(DAY_NAMES, startDow),
+      rows: rows.map((r) => ({ ...r, values: rotateDow(r.values, startDow) })),
       totalDays: activity.filter((d) => d.steps != null).length,
-      dayCounts,
+      dayCounts: rotateDow(dayCounts, startDow),
     };
   }
 
@@ -592,6 +604,20 @@ function compareMetric(
 }
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/**
+ * Rotate a length-7 array so index 0 becomes `startDow` and indices wrap
+ * around mod 7. Used to align day-of-week visualisations with the rolling
+ * window the rest of the dashboard uses (today on the right, oldest on
+ * the left) instead of fixed Sun→Sat calendar order.
+ */
+function rotateDow<T>(arr: readonly T[], startDow: number): T[] {
+  const out: T[] = [];
+  for (let offset = 0; offset < 7; offset++) {
+    out.push(arr[(startDow + offset) % 7]);
+  }
+  return out;
+}
 
 function computeDayOfWeek(
   activity: ActivityDay[],
