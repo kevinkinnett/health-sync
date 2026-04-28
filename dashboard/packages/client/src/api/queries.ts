@@ -1,4 +1,9 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query";
 import type {
   HealthSummary,
   WeeklyInsights,
@@ -40,6 +45,47 @@ import type {
 } from "@health-dashboard/shared";
 import { apiFetch } from "./client";
 import { useDateRangeStore } from "../stores/dateRangeStore";
+
+// ---------------------------------------------------------------------------
+// Cache invalidation helpers
+// ---------------------------------------------------------------------------
+//
+// Every "domain" mutation needs to tell React Query which cached queries
+// are now stale. Doing this per-mutation is how the dashboard avoids
+// going stale-screen-by-stale-screen as new charts get added.
+//
+// A supplement intake doesn't just affect the supplements page — it
+// changes adherence, intake-by-day, ingredient rollups, and every
+// correlation pair on the analytics screen. They all live under
+// different query-key prefixes (`["supplements", …]` vs
+// `["analytics", "supplements", …]`); the helpers below invalidate the
+// whole blast radius in one call.
+//
+// Rule of thumb: any mutation that touches a domain should call the
+// matching helper rather than inline `invalidateQueries`. Over-
+// invalidation is cheap (refetches happen lazily on next access);
+// under-invalidation forces the user to hit refresh.
+
+function invalidateSupplements(qc: QueryClient): void {
+  qc.invalidateQueries({ queryKey: ["supplements"] });
+  qc.invalidateQueries({ queryKey: ["analytics", "supplements"] });
+}
+
+function invalidateMedications(qc: QueryClient): void {
+  qc.invalidateQueries({ queryKey: ["medications"] });
+  qc.invalidateQueries({ queryKey: ["analytics", "medications"] });
+}
+
+/**
+ * After a fresh ingest run, every health-metric series, weekly insight,
+ * records leaderboard, day-of-week heatmap, and analytics correlation is
+ * potentially stale (correlations consume health data too).
+ */
+function invalidateAfterIngest(qc: QueryClient): void {
+  qc.invalidateQueries({ queryKey: ["ingest"] });
+  qc.invalidateQueries({ queryKey: ["health"] });
+  qc.invalidateQueries({ queryKey: ["analytics"] });
+}
 
 /**
  * Fetches the user's IANA timezone (and any future runtime config) from
@@ -204,7 +250,7 @@ export function useTriggerIngest() {
     mutationFn: () =>
       apiFetch("/ingest/trigger", { method: "POST" }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["ingest"] });
+      invalidateAfterIngest(queryClient);
     },
   });
 }
@@ -248,7 +294,7 @@ export function useCreateSupplementItem() {
         body: JSON.stringify(body),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["supplements", "items"] });
+      invalidateSupplements(queryClient);
     },
   });
 }
@@ -266,7 +312,7 @@ export function useUpdateSupplementItem() {
         body: JSON.stringify(body),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["supplements", "items"] });
+      invalidateSupplements(queryClient);
     },
   });
 }
@@ -277,7 +323,7 @@ export function useArchiveSupplementItem() {
     mutationFn: (id) =>
       apiFetch<void>(`/supplements/items/${id}`, { method: "DELETE" }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["supplements", "items"] });
+      invalidateSupplements(queryClient);
     },
   });
 }
@@ -291,12 +337,7 @@ export function useLogSupplementIntake() {
         body: JSON.stringify(body),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["supplements", "intakes"] });
-      // Analytics queries (adherence, correlations, ingredient-by-day,
-      // intake-by-day) live under a separate ["analytics", "supplements", …]
-      // namespace and won't refetch otherwise — the analytics screen would
-      // show pre-mutation data until a manual refresh.
-      queryClient.invalidateQueries({ queryKey: ["analytics", "supplements"] });
+      invalidateSupplements(queryClient);
     },
   });
 }
@@ -307,8 +348,7 @@ export function useDeleteSupplementIntake() {
     mutationFn: (id) =>
       apiFetch<void>(`/supplements/intakes/${id}`, { method: "DELETE" }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["supplements", "intakes"] });
-      queryClient.invalidateQueries({ queryKey: ["analytics", "supplements"] });
+      invalidateSupplements(queryClient);
     },
   });
 }
@@ -335,9 +375,7 @@ export function useCreateSupplementIngredient() {
         body: JSON.stringify(body),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["supplements", "ingredients"],
-      });
+      invalidateSupplements(queryClient);
     },
   });
 }
@@ -355,9 +393,7 @@ export function useUpdateSupplementIngredient() {
         body: JSON.stringify(body),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["supplements", "ingredients"],
-      });
+      invalidateSupplements(queryClient);
     },
   });
 }
@@ -368,9 +404,7 @@ export function useDeleteSupplementIngredient() {
     mutationFn: (id) =>
       apiFetch<void>(`/supplements/ingredients/${id}`, { method: "DELETE" }),
     onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["supplements", "ingredients"],
-      });
+      invalidateSupplements(queryClient);
     },
   });
 }
@@ -388,11 +422,9 @@ export function useSetSupplementItemIngredients() {
         body: JSON.stringify(body),
       }),
     onSuccess: () => {
-      // Both items (ingredients embedded) and ingredients list may change
-      queryClient.invalidateQueries({ queryKey: ["supplements", "items"] });
-      queryClient.invalidateQueries({
-        queryKey: ["supplements", "ingredients"],
-      });
+      // Items (ingredients embedded), ingredients list, and the
+      // ingredient-by-day analytics rollup all change together.
+      invalidateSupplements(queryClient);
     },
   });
 }
@@ -436,7 +468,7 @@ export function useCreateMedicationItem() {
         body: JSON.stringify(body),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["medications", "items"] });
+      invalidateMedications(queryClient);
     },
   });
 }
@@ -454,7 +486,7 @@ export function useUpdateMedicationItem() {
         body: JSON.stringify(body),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["medications", "items"] });
+      invalidateMedications(queryClient);
     },
   });
 }
@@ -465,7 +497,7 @@ export function useArchiveMedicationItem() {
     mutationFn: (id) =>
       apiFetch<void>(`/medications/items/${id}`, { method: "DELETE" }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["medications", "items"] });
+      invalidateMedications(queryClient);
     },
   });
 }
@@ -479,12 +511,7 @@ export function useLogMedicationIntake() {
         body: JSON.stringify(body),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["medications", "intakes"] });
-      // Analytics queries (adherence, correlations, intake-by-day) live
-      // under a separate ["analytics", "medications", …] namespace and
-      // won't refetch otherwise — the analytics screen would show
-      // pre-mutation data until a manual refresh.
-      queryClient.invalidateQueries({ queryKey: ["analytics", "medications"] });
+      invalidateMedications(queryClient);
     },
   });
 }
@@ -495,8 +522,7 @@ export function useDeleteMedicationIntake() {
     mutationFn: (id) =>
       apiFetch<void>(`/medications/intakes/${id}`, { method: "DELETE" }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["medications", "intakes"] });
-      queryClient.invalidateQueries({ queryKey: ["analytics", "medications"] });
+      invalidateMedications(queryClient);
     },
   });
 }
