@@ -292,6 +292,11 @@ export function useLogSupplementIntake() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["supplements", "intakes"] });
+      // Analytics queries (adherence, correlations, ingredient-by-day,
+      // intake-by-day) live under a separate ["analytics", "supplements", …]
+      // namespace and won't refetch otherwise — the analytics screen would
+      // show pre-mutation data until a manual refresh.
+      queryClient.invalidateQueries({ queryKey: ["analytics", "supplements"] });
     },
   });
 }
@@ -303,6 +308,7 @@ export function useDeleteSupplementIntake() {
       apiFetch<void>(`/supplements/intakes/${id}`, { method: "DELETE" }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["supplements", "intakes"] });
+      queryClient.invalidateQueries({ queryKey: ["analytics", "supplements"] });
     },
   });
 }
@@ -474,6 +480,11 @@ export function useLogMedicationIntake() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["medications", "intakes"] });
+      // Analytics queries (adherence, correlations, intake-by-day) live
+      // under a separate ["analytics", "medications", …] namespace and
+      // won't refetch otherwise — the analytics screen would show
+      // pre-mutation data until a manual refresh.
+      queryClient.invalidateQueries({ queryKey: ["analytics", "medications"] });
     },
   });
 }
@@ -485,6 +496,7 @@ export function useDeleteMedicationIntake() {
       apiFetch<void>(`/medications/intakes/${id}`, { method: "DELETE" }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["medications", "intakes"] });
+      queryClient.invalidateQueries({ queryKey: ["analytics", "medications"] });
     },
   });
 }
