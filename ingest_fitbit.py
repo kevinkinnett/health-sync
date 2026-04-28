@@ -32,7 +32,7 @@ import wmill
 # ---------------------------------------------------------------------------
 PROVIDER = "fitbit"
 JOB_NAME = "fitbit_ingest"
-DEFAULT_DB_RESOURCE_PATH = "u/kevin/universe_dev_db"
+DEFAULT_DB_RESOURCE_PATH = "u/kevin/universe_db"
 DEFAULT_FITBIT_RESOURCE_PATH = "u/kevin/fitbit_oauth"
 BASE_URL = "https://api.fitbit.com"
 TOKEN_URL = "https://api.fitbit.com/oauth2/token"
@@ -52,6 +52,14 @@ RECHECK_DAYS = 14
 # greater value always represents reality more accurately. Bounded so we
 # don't burn API budget chasing already-stable older days.
 INTRADAY_FALLBACK_DAYS = 14
+# Fallback IANA zone used when the user's Fitbit profile zone can't be auto-detected.
+# /1/user/-/profile.json requires the `profile` OAuth scope, which the current token
+# was not granted. Until the user re-authorizes with that scope, every run would
+# otherwise default to UTC and silently mis-stamp every naive Fitbit timestamp by
+# the user's UTC offset. This constant is the operator's known home zone — a
+# dramatically safer default than UTC for a single-user personal pipeline. The
+# `user_timezone` arg still overrides this if passed explicitly.
+DEFAULT_FALLBACK_TZ = "America/New_York"
 
 # Types fetched one day at a time. Sleep was previously here but moved to RANGE_TYPES
 # because Fitbit's per-day sleep endpoint /1.2/user/-/sleep/date/{date}.json silently
@@ -1182,8 +1190,14 @@ def main(
     # which the state cursor then skips past on the next run.
     profile_tz = user_timezone or get_profile_timezone(creds)
     if not profile_tz:
-        profile_tz = "UTC"
-        print("  [tz] No profile timezone available; defaulting to UTC")
+        profile_tz = DEFAULT_FALLBACK_TZ
+        print(
+            f"  [tz] Profile zone unavailable (Fitbit /profile.json typically "
+            f"requires the `profile` OAuth scope, which is not granted on this "
+            f"token); falling back to {DEFAULT_FALLBACK_TZ}. Override at runtime "
+            f"by passing user_timezone=..., or re-authorize Fitbit with profile "
+            f"scope to enable auto-detection."
+        )
     print(f"  [tz] Using user timezone: {profile_tz}")
 
     backfill = backfill_days if backfill_days is not None else DEFAULT_BACKFILL_DAYS
