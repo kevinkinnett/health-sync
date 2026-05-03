@@ -1,45 +1,89 @@
-import { useHealthCheck } from "../api/queries";
+import { useHealthCheck, useIngestState } from "../api/queries";
 import { useUnitsStore } from "../stores/unitsStore";
 import type { UnitSystem } from "../lib/units";
 
-const connectedSources = [
-  { name: "Fitbit", icon: "watch", color: "#00B0B9", connected: true, lastSync: "14m ago" },
-  { name: "Apple Health", icon: "ios", color: "#ffffff", connected: false, lastSync: null },
-  { name: "Garmin Connect", icon: "watch", color: "#908fa0", connected: false, lastSync: null },
-];
+/**
+ * Compact human-friendly "synced N ago" string from a UTC timestamp.
+ * Falls back to "—" when the timestamp is missing.
+ */
+function formatRelativeAgo(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const ms = Date.now() - new Date(iso).getTime();
+  if (Number.isNaN(ms) || ms < 0) return "—";
+  const min = Math.floor(ms / 60_000);
+  if (min < 1) return "just now";
+  if (min < 60) return `${min}m ago`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  return `${d}d ago`;
+}
 
-function SourceCard({
-  source,
-}: {
-  source: typeof connectedSources[number];
-}) {
+/**
+ * Read-only status display for connected ingest sources. Driven by the
+ * real ingest_state rows so "last synced" is honest, not hardcoded.
+ *
+ * Source connections themselves are managed in Windmill (OAuth tokens
+ * live there as resources), not in this UI — wiring up
+ * connect/disconnect from the dashboard would require a sizeable auth
+ * flow that doesn't yet exist. For now this card just reports the
+ * truth: which sources are feeding the database and when each last
+ * succeeded.
+ */
+function SourceStatusCard() {
+  const ingest = useIngestState();
+  const states = ingest.data ?? [];
+  // Latest successful run across all Fitbit data types is the
+  // best "last sync" signal we have.
+  const lastSyncIso = states
+    .map((s) => s.lastSuccessAtUtc)
+    .filter((v): v is string => Boolean(v))
+    .sort()
+    .pop() ?? null;
+  const connected = lastSyncIso != null;
+
   return (
-    <div
-      className={`bg-surface-container-high p-5 rounded-xl flex items-center justify-between group hover:bg-surface-bright transition-all ${
-        !source.connected ? "opacity-60" : ""
-      }`}
-    >
-      <div className="flex items-center gap-4">
-        <div className="w-12 h-12 rounded-lg bg-surface-container-lowest flex items-center justify-center border border-outline-variant/10">
-          <span className="material-symbols-outlined" style={{ color: source.color }}>
-            {source.icon}
+    <div className="bg-surface-container rounded-xl p-8 border border-outline-variant/10">
+      <header className="mb-6">
+        <h3 className="font-headline text-xl font-bold text-on-surface">
+          Data Sources
+        </h3>
+        <p className="text-outline text-sm">
+          Live ingest state for connected health peripherals. Connections
+          are managed in Windmill — this card is read-only.
+        </p>
+      </header>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div
+          className={`bg-surface-container-high p-5 rounded-xl flex items-center gap-4 ${
+            connected ? "" : "opacity-60"
+          }`}
+        >
+          <div className="w-12 h-12 rounded-lg bg-surface-container-lowest flex items-center justify-center border border-outline-variant/10">
+            <span
+              className="material-symbols-outlined"
+              style={{ color: "#00B0B9" }}
+            >
+              watch
+            </span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="font-semibold text-on-surface">Fitbit</div>
+            <div className="text-[11px] text-outline font-mono tabular-nums">
+              {connected ? `Synced ${formatRelativeAgo(lastSyncIso)}` : "No syncs yet"}
+            </div>
+          </div>
+          <span
+            className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${
+              connected
+                ? "bg-secondary/10 text-secondary"
+                : "bg-outline-variant/10 text-outline"
+            }`}
+          >
+            {connected ? "Live" : "Idle"}
           </span>
         </div>
-        <div>
-          <div className="font-semibold text-on-surface">{source.name}</div>
-          <div className="text-[11px] text-outline font-mono tabular-nums">
-            {source.connected ? `Synced ${source.lastSync}` : "Not connected"}
-          </div>
-        </div>
       </div>
-      <label className="relative inline-flex items-center cursor-pointer">
-        <input
-          type="checkbox"
-          className="sr-only peer"
-          defaultChecked={source.connected}
-        />
-        <div className="w-10 h-5 bg-surface-container-lowest rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-secondary" />
-      </label>
     </div>
   );
 }
@@ -211,80 +255,7 @@ export function Settings() {
 
         {/* Right column */}
         <section className="lg:col-span-8 space-y-6">
-          {/* Connected Sources */}
-          <div className="bg-surface-container rounded-xl p-8 border border-outline-variant/10">
-            <header className="flex justify-between items-center mb-6">
-              <div>
-                <h3 className="font-headline text-xl font-bold text-on-surface">
-                  Connected Sources
-                </h3>
-                <p className="text-outline text-sm">
-                  Cloud-sync state for health peripherals.
-                </p>
-              </div>
-              <button className="text-primary font-semibold text-sm hover:underline">
-                Add Service
-              </button>
-            </header>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {connectedSources.map((source) => (
-                <SourceCard key={source.name} source={source} />
-              ))}
-            </div>
-          </div>
-
-          {/* Data Management */}
-          <div className="bg-surface-container rounded-xl p-8 border border-outline-variant/10">
-            <header className="mb-6">
-              <h3 className="font-headline text-xl font-bold text-on-surface">
-                Data Management
-              </h3>
-              <p className="text-outline text-sm">
-                Configure data retention and export settings.
-              </p>
-            </header>
-            <div className="space-y-4">
-              <div className="flex flex-col md:flex-row md:items-center gap-4 p-4 rounded-lg bg-surface-container-low border border-outline-variant/5">
-                <div className="flex-1">
-                  <div className="text-sm font-bold text-on-surface-variant uppercase tracking-tighter mb-1">
-                    Data Retention
-                  </div>
-                  <p className="text-sm text-on-surface">
-                    Keep historical data for up to{" "}
-                    <select className="bg-surface-container-lowest border-none text-primary font-bold rounded-md py-1 text-sm focus:ring-1 focus:ring-primary mx-1">
-                      <option>1 year</option>
-                      <option>2 years</option>
-                      <option selected>5 years</option>
-                      <option>Forever</option>
-                    </select>
-                  </p>
-                </div>
-              </div>
-              <div className="flex flex-col md:flex-row md:items-center gap-4 p-4 rounded-lg bg-surface-container-low border border-outline-variant/5">
-                <div className="flex-1">
-                  <div className="text-sm font-bold text-on-surface-variant uppercase tracking-tighter mb-1">
-                    Export Format
-                  </div>
-                  <p className="text-sm text-on-surface">
-                    Default export format:{" "}
-                    <select className="bg-surface-container-lowest border-none text-primary font-bold rounded-md py-1 text-sm focus:ring-1 focus:ring-primary mx-1">
-                      <option selected>CSV</option>
-                      <option>JSON</option>
-                      <option>Parquet</option>
-                    </select>
-                  </p>
-                </div>
-              </div>
-            </div>
-            <div className="pt-6 flex justify-end gap-4">
-              <button className="px-6 py-2.5 text-sm font-bold text-outline hover:text-on-surface transition-colors">
-                Reset Defaults
-              </button>
-              <button className="px-8 py-2.5 bg-linear-to-br from-primary to-primary-container text-on-primary-fixed font-bold rounded-lg shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all">
-                Save Config
-              </button>
-            </div>
-          </div>
+          <SourceStatusCard />
         </section>
       </div>
     </div>
