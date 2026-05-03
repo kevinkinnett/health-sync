@@ -1,16 +1,28 @@
 import type { RecordsData, PersonalRecord, Streak } from "@health-dashboard/shared";
+import { useUnits } from "../stores/unitsStore";
+import {
+  formatDistance,
+  type UnitSystem,
+} from "../lib/units";
 
-function formatValue(record: PersonalRecord): string {
+function formatValue(record: PersonalRecord, units: UnitSystem): string {
   if (record.unit === "min" && record.value >= 60) {
     const h = Math.floor(record.value / 60);
     const m = record.value % 60;
     return `${h}h ${m}m`;
   }
-  if (record.unit === "km") return `${record.value} km`;
+  // Server reports distance records in km; convert to user's chosen system.
+  if (record.unit === "km") return formatDistance(record.value, units, 1);
   return record.value.toLocaleString();
 }
 
-function RecordCard({ record }: { record: PersonalRecord }) {
+function RecordCard({
+  record,
+  units,
+}: {
+  record: PersonalRecord;
+  units: UnitSystem;
+}) {
   return (
     <div className="flex items-center gap-3 rounded-lg bg-surface-container-low p-3">
       <div className="flex-1 min-w-0">
@@ -18,7 +30,7 @@ function RecordCard({ record }: { record: PersonalRecord }) {
           {record.label}
         </div>
         <div className="text-lg font-bold font-headline tabular-nums text-on-surface">
-          {formatValue(record)}
+          {formatValue(record, units)}
           {record.unit !== "min" && record.unit !== "km" && (
             <span className="text-xs text-outline ml-1 font-normal">
               {record.unit}
@@ -65,6 +77,7 @@ function StreakBar({ streak }: { streak: Streak }) {
 }
 
 export function PersonalRecords({ data }: { data: RecordsData }) {
+  const units = useUnits();
   return (
     <div className="bg-surface-container rounded-xl p-6">
       <h2 className="text-lg font-headline font-semibold text-on-surface mb-4">
@@ -73,7 +86,7 @@ export function PersonalRecords({ data }: { data: RecordsData }) {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
         {data.records.map((r) => (
-          <RecordCard key={r.metric} record={r} />
+          <RecordCard key={r.metric} record={r} units={units} />
         ))}
       </div>
 

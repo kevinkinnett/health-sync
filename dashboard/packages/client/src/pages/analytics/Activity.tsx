@@ -1,9 +1,12 @@
 import { useActivity } from "../../api/queries";
 import { ActivityChart } from "../../components/charts/ActivityChart";
 import { DataTable, tdClass, tdRightClass, trClass } from "../../components/DataTable";
+import { useUnits } from "../../stores/unitsStore";
+import { formatDistance } from "../../lib/units";
 
 export function AnalyticsActivity() {
   const activity = useActivity();
+  const units = useUnits();
   if (!activity.data) return null;
   return (
     <div className="space-y-4">
@@ -28,7 +31,7 @@ export function AnalyticsActivity() {
                 {(d.minutesFairlyActive ?? 0) + (d.minutesVeryActive ?? 0)}
               </td>
               <td className={tdRightClass}>
-                {d.distanceKm?.toFixed(1) ?? "---"} km
+                {formatDistance(d.distanceKm, units, 1)}
               </td>
             </tr>
           ))}

@@ -1,4 +1,6 @@
 import { useHealthCheck } from "../api/queries";
+import { useUnitsStore } from "../stores/unitsStore";
+import type { UnitSystem } from "../lib/units";
 
 const connectedSources = [
   { name: "Fitbit", icon: "watch", color: "#00B0B9", connected: true, lastSync: "14m ago" },
@@ -38,6 +40,67 @@ function SourceCard({
         />
         <div className="w-10 h-5 bg-surface-container-lowest rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-secondary" />
       </label>
+    </div>
+  );
+}
+
+/**
+ * Display-only preference for measurement system. Stored in localStorage
+ * via `useUnitsStore`; the canonical values in the DB and the API stay
+ * in metric (kg, km) regardless. Flipping this re-renders every screen
+ * that uses `formatWeight` / `formatDistance` / etc. — no refetch
+ * needed since nothing about the data changes.
+ */
+function UnitsCard() {
+  const { units, setUnits } = useUnitsStore();
+  const options: { value: UnitSystem; label: string; sub: string }[] = [
+    { value: "imperial", label: "Imperial", sub: "lb · mi · °F" },
+    { value: "metric", label: "Metric", sub: "kg · km · °C" },
+  ];
+
+  return (
+    <div className="bg-surface-container rounded-xl p-6 border border-outline-variant/10">
+      <header className="mb-5">
+        <h3 className="font-headline text-xl font-bold text-on-surface flex items-center gap-2">
+          <span className="material-symbols-outlined text-primary">straighten</span>
+          Units
+        </h3>
+        <p className="text-outline text-sm">
+          Switch the dashboard between imperial and metric. Stored data
+          is unchanged — this only affects how values are displayed.
+        </p>
+      </header>
+      <div
+        role="radiogroup"
+        aria-label="Measurement units"
+        className="grid grid-cols-2 gap-3"
+      >
+        {options.map((opt) => {
+          const active = units === opt.value;
+          return (
+            <button
+              key={opt.value}
+              role="radio"
+              aria-checked={active}
+              onClick={() => setUnits(opt.value)}
+              className={`flex flex-col items-start gap-1 rounded-lg p-4 border text-left transition-all ${
+                active
+                  ? "bg-primary/10 border-primary text-on-surface"
+                  : "bg-surface-container-low border-outline-variant/10 text-outline hover:bg-surface-container hover:text-on-surface"
+              }`}
+            >
+              <span className="font-bold text-sm uppercase tracking-wider">
+                {opt.label}
+              </span>
+              <span
+                className={`text-xs font-mono ${active ? "text-primary" : "text-outline"}`}
+              >
+                {opt.sub}
+              </span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -142,6 +205,7 @@ export function Settings() {
         {/* Left column */}
         <section className="lg:col-span-4 space-y-6">
           <SystemHealthCard />
+          <UnitsCard />
           <ApiConfigCard />
         </section>
 

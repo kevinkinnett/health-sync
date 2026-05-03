@@ -13,6 +13,8 @@ import {
   useHeartRate,
   useWeight,
 } from "../api/queries";
+import { useUnits } from "../stores/unitsStore";
+import { convertWeight, weightUnitLabel } from "../lib/units";
 
 export function Dashboard() {
   const summary = useHealthSummary();
@@ -21,6 +23,7 @@ export function Dashboard() {
   const sleep = useSleep();
   const heartRate = useHeartRate();
   const weight = useWeight();
+  const units = useUnits();
 
   if (summary.isLoading) {
     return (
@@ -73,8 +76,12 @@ export function Dashboard() {
         />
         <StatCard
           title="Body Mass"
-          value={s?.weight.latest?.weightKg ?? null}
-          unit="kg"
+          value={
+            s?.weight.latest?.weightKg != null
+              ? Number(convertWeight(s.weight.latest.weightKg, units)?.toFixed(1))
+              : null
+          }
+          unit={weightUnitLabel(units)}
           sparkline={s?.weight.sparkline ?? []}
           color="#c0c1ff"
           icon="scale"

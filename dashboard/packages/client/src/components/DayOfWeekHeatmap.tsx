@@ -1,4 +1,10 @@
 import type { DayOfWeekHeatmapData, DayOfWeekHeatmapRow } from "@health-dashboard/shared";
+import { useUnits } from "../stores/unitsStore";
+import {
+  convertDistance,
+  distanceUnitLabel,
+  type UnitSystem,
+} from "../lib/units";
 
 // Map metric type to accent color hue for the heatmap
 function getColorForMetric(metric: string): { r0: number; g0: number; b0: number; r1: number; g1: number; b1: number } {
@@ -23,7 +29,15 @@ function interpolateColor(t: number, metric: string): string {
   return `rgb(${r}, ${g}, ${b})`;
 }
 
-function CellValue({ row, dayIndex }: { row: DayOfWeekHeatmapRow; dayIndex: number }) {
+function CellValue({
+  row,
+  dayIndex,
+  units,
+}: {
+  row: DayOfWeekHeatmapRow;
+  dayIndex: number;
+  units: UnitSystem;
+}) {
   const val = row.values[dayIndex];
   if (val == null) {
     return (
@@ -31,14 +45,20 @@ function CellValue({ row, dayIndex }: { row: DayOfWeekHeatmapRow; dayIndex: numb
     );
   }
 
+  // Color interpolation uses a normalized ratio, which is invariant
+  // under unit conversion — so we don't need to convert min/max.
   const range = row.max - row.min;
   const t = range === 0 ? 0.5 : (val - row.min) / range;
   const bg = interpolateColor(t, row.metric);
   const isBold = t > 0.8;
 
+  const displayUnit = row.unit === "km" ? distanceUnitLabel(units) : row.unit;
+  const displayVal =
+    row.unit === "km" ? (convertDistance(val, units) ?? val) : val;
+
   const formatted =
     row.unit === "km"
-      ? val.toFixed(1)
+      ? displayVal.toFixed(1)
       : row.unit === "min" && val >= 60
         ? `${Math.floor(val / 60)}h${val % 60}m`
         : val.toLocaleString();
@@ -47,7 +67,7 @@ function CellValue({ row, dayIndex }: { row: DayOfWeekHeatmapRow; dayIndex: numb
     <td
       className={`px-4 py-4 text-center tabular-nums ${isBold ? "font-bold" : ""}`}
       style={{ backgroundColor: bg }}
-      title={`${row.label}: ${formatted} ${row.unit}`}
+      title={`${row.label}: ${formatted} ${displayUnit}`}
     >
       {formatted}
     </td>
@@ -55,6 +75,7 @@ function CellValue({ row, dayIndex }: { row: DayOfWeekHeatmapRow; dayIndex: numb
 }
 
 export function DayOfWeekHeatmap({ data }: { data: DayOfWeekHeatmapData }) {
+  const units = useUnits();
   return (
     <div className="bg-surface-container rounded-xl overflow-hidden">
       <div className="p-6 border-b border-outline-variant/10 flex items-center justify-between">
@@ -91,10 +112,12 @@ export function DayOfWeekHeatmap({ data }: { data: DayOfWeekHeatmapData }) {
               <tr key={row.metric} className="border-b border-outline-variant/5">
                 <td className="px-6 py-4 font-medium text-on-surface">
                   {row.label}
-                  <span className="text-outline ml-1 text-xs">{row.unit}</span>
+                  <span className="text-outline ml-1 text-xs">
+                    {row.unit === "km" ? distanceUnitLabel(units) : row.unit}
+                  </span>
                 </td>
                 {data.dayNames.map((_, i) => (
-                  <CellValue key={i} row={row} dayIndex={i} />
+                  <CellValue key={i} row={row} dayIndex={i} units={units} />
                 ))}
               </tr>
             ))}

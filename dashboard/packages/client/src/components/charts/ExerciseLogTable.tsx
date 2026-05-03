@@ -1,4 +1,6 @@
 import type { ExerciseLog } from "@health-dashboard/shared";
+import { useUnits } from "../../stores/unitsStore";
+import { formatDistanceWithSourceUnit } from "../../lib/units";
 
 interface Props {
   data: ExerciseLog[];
@@ -13,11 +15,6 @@ function formatDuration(ms: number | null): string {
     return `${h}h ${m}m`;
   }
   return `${totalMin}m`;
-}
-
-function formatDistance(dist: number | null, unit: string | null): string {
-  if (dist == null || dist === 0) return "---";
-  return `${dist.toFixed(2)} ${unit ?? ""}`.trim();
 }
 
 /** Group exercises by activity name and compute summary stats */
@@ -42,6 +39,7 @@ function computeSummary(data: ExerciseLog[]) {
 
 export function ExerciseLogTable({ data }: Props) {
   const summary = computeSummary(data);
+  const units = useUnits();
 
   return (
     <div className="space-y-4">
@@ -153,7 +151,11 @@ export function ExerciseLogTable({ data }: Props) {
                     {e.averageHeartRate ? `${e.averageHeartRate} bpm` : "---"}
                   </td>
                   <td className="text-right py-1.5 px-2 text-on-surface">
-                    {formatDistance(e.distance, e.distanceUnit)}
+                    {formatDistanceWithSourceUnit(
+                      e.distance,
+                      e.distanceUnit,
+                      units,
+                    )}
                   </td>
                   <td className="text-right py-1.5 px-2 text-on-surface">
                     {e.steps?.toLocaleString() ?? "---"}
