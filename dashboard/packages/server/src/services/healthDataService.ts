@@ -508,7 +508,7 @@ export class HealthDataService {
     };
   }
 
-  async getRecords(): Promise<RecordsData> {
+  async getRecords(today?: string): Promise<RecordsData> {
     const [activity, sleep, heartRate] = await Promise.all([
       this.activityRepo.findLatest(200),
       this.sleepRepo.findLatest(200),
@@ -573,18 +573,31 @@ export class HealthDataService {
 
     // Steps streak: consecutive days >= 5000 steps
     const sortedActivity = [...activity].sort((a, b) => a.date.localeCompare(b.date));
-    const stepsStreak = computeStreak(sortedActivity, (d) => (d.steps ?? 0) >= 5000);
+    const stepsStreak = computeStreak(
+      sortedActivity,
+      (d) => (d.steps ?? 0) >= 5000,
+      today,
+    );
     streaks.push({ label: "5k+ Steps", ...stepsStreak, unit: "days" });
 
     // Active streak: consecutive days with >= 10 active minutes
-    const activeStreak = computeStreak(sortedActivity, (d) =>
-      ((d.minutesFairlyActive ?? 0) + (d.minutesVeryActive ?? 0)) >= 10,
+    const activeStreak = computeStreak(
+      sortedActivity,
+      (d) =>
+        ((d.minutesFairlyActive ?? 0) + (d.minutesVeryActive ?? 0)) >= 10,
+      today,
     );
     streaks.push({ label: "10+ Active Min", ...activeStreak, unit: "days" });
 
-    // Sleep streak: consecutive days >= 7 hours sleep
+    // Sleep streak: consecutive days >= 7 hours sleep. (Sleep is logged
+    // against the wake-up date, so today's entry only appears after the
+    // morning sync — the today-skip still applies if it lands at 0.)
     const sortedSleep = [...sleep].sort((a, b) => a.date.localeCompare(b.date));
-    const sleepStreak = computeStreak(sortedSleep, (d) => (d.totalMinutesAsleep ?? 0) >= 420);
+    const sleepStreak = computeStreak(
+      sortedSleep,
+      (d) => (d.totalMinutesAsleep ?? 0) >= 420,
+      today,
+    );
     streaks.push({ label: "7+ Hours Sleep", ...sleepStreak, unit: "days" });
 
     return { records, streaks };
@@ -728,9 +741,24 @@ function generateHighlights(
   return highlights;
 }
 
+/**
+ * Compute current and best streak of consecutive days satisfying `test`.
+ *
+ * `today` (YYYY-MM-DD in the user's calendar) lets the current-streak
+ * walk skip an in-progress final day: Fitbit reports the running total
+ * for "today" as soon as the date rolls over, so a 5 AM check would
+ * see steps=0 and break a real streak. When the most recent row is
+ * today AND fails the test, treat it as "data not yet in" rather than
+ * a streak failure. A failing yesterday still breaks the streak — only
+ * today gets the benefit of the doubt.
+ *
+ * `best` is unaffected: a passing today contributes to it, and a
+ * failing today resets the running counter without rewriting history.
+ */
 function computeStreak<T extends { date: string }>(
   sorted: T[],
   test: (d: T) => boolean,
+  today?: string,
 ): { current: number; best: number } {
   let current = 0;
   let best = 0;
@@ -744,9 +772,15 @@ function computeStreak<T extends { date: string }>(
       streak = 0;
     }
   }
-  // Current streak counts backwards from the end
+
+  // Current streak counts backwards from the end. If the very last
+  // entry is today and fails the test, treat it as in-progress.
+  let i = sorted.length - 1;
+  if (today && i >= 0 && sorted[i].date === today && !test(sorted[i])) {
+    i--;
+  }
   current = 0;
-  for (let i = sorted.length - 1; i >= 0; i--) {
+  for (; i >= 0; i--) {
     if (test(sorted[i])) current++;
     else break;
   }

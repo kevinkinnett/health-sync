@@ -86,7 +86,10 @@ export class HealthController {
 
   async getRecords(_req: Request, res: Response): Promise<void> {
     try {
-      const data = await this.service.getRecords();
+      // Pass "today" in the user's calendar so the streak walker can
+      // skip an in-progress final day rather than counting partial-data
+      // zeroes as a streak failure.
+      const data = await this.service.getRecords(todayInTz(this.tz));
       res.json(data);
     } catch (err) {
       logger.error({ err }, "Failed to fetch records");
