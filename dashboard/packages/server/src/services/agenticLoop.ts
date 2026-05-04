@@ -124,7 +124,9 @@ export async function runAgenticLoop(
         enable_thinking: opts.enableThinking,
         thinking_budget: opts.thinkingBudget,
       },
-      { task: opts.task },
+      // Retry once on transient 5xx — the local Claude proxy sometimes
+      // returns 500 with subprocess errors that self-heal on retry.
+      { task: opts.task, retries: 2 },
     );
 
     const choice = response.choices[0];

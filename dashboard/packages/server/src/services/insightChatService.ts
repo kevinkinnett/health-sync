@@ -12,6 +12,12 @@ import {
 import type { LlmClient, ChatMessage } from "./llmClient.js";
 import { runAgenticLoop } from "./agenticLoop.js";
 
+/**
+ * Short system prompt — kept lean because the local Claude proxy
+ * shell-marshals `--system-prompt "..."` and breaks on long payloads.
+ * The grounding rules live in `CHAT_GROUNDING_PRELUDE` and are
+ * prepended to the FIRST user message of every conversation.
+ */
 const CHAT_SYSTEM_PROMPT = `
 You are a personal health analyst with access to the user's complete
 Fitbit + supplements + medications data through a registered set of
@@ -27,9 +33,9 @@ closest tool that could.
 Be direct, factual, and quantitative. Use markdown sparingly — short
 paragraphs, bullets when listing > 2 items, tables only when comparing
 > 3 numeric columns. Round consistently. Quote exact item names.
-
-${GROUNDING_RULES}
 `.trim();
+
+const CHAT_GROUNDING_PRELUDE = `${GROUNDING_RULES}\n\n---\n\n`;
 
 export interface ChatTurnResult {
   conversationId: string;
@@ -75,9 +81,24 @@ export class InsightChatService {
     // prior rounds) so the model has grounded context, not narrative
     // recap.
     const history = await this.repo.getFullConversation(conversationId);
+    const replayed = history.map((r) => this.toChatMessage(r));
+    // Prepend the grounding rules to the FIRST user message rather than
+    // baking them into the system prompt. The proxy's shell-arg path
+    // for --system-prompt fails on large payloads; the user-message
+    // body has no such limit.
+    const firstUserIdx = replayed.findIndex((m) => m.role === "user");
+    if (firstUserIdx >= 0) {
+      const original = replayed[firstUserIdx].content ?? "";
+      if (!original.includes("DATA-GROUNDING RULES")) {
+        replayed[firstUserIdx] = {
+          ...replayed[firstUserIdx],
+          content: `${CHAT_GROUNDING_PRELUDE}${original}`,
+        };
+      }
+    }
     const messages: ChatMessage[] = [
       { role: "system", content: CHAT_SYSTEM_PROMPT },
-      ...history.map((r) => this.toChatMessage(r)),
+      ...replayed,
     ];
 
     const result = await runAgenticLoop({

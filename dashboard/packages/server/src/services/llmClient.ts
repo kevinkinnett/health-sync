@@ -121,6 +121,22 @@ export interface LlmCallOptions {
   task: LlmTask;
   /** Aborts the upstream request after `timeoutMs` (default 5min). */
   timeoutMs?: number;
+  /**
+   * Retry the request on transient 5xx errors. Off by default.
+   * Insights / Chat opt in because the local Claude proxy occasionally
+   * returns 500 with shell-related errors that recover on retry.
+   * Backoff is 500ms × 2^attempt, capped at 4s between attempts.
+   */
+  retries?: number;
+}
+
+const TRANSIENT_BACKOFF_MS = [500, 1500, 4000];
+
+function isTransientError(err: unknown): boolean {
+  // 5xx from the proxy is the documented self-recovering case.
+  if (err instanceof LlmHttpError && err.status >= 500) return true;
+  // Aborted (timeout) is NOT retryable — the underlying call is dead.
+  return false;
 }
 
 export class LlmClient {
@@ -129,6 +145,32 @@ export class LlmClient {
   async chatCompletion(
     req: ChatCompletionRequest,
     opts: LlmCallOptions = { task: "chat" },
+  ): Promise<ChatCompletionResponse> {
+    const retries = Math.max(0, opts.retries ?? 0);
+    let attempt = 0;
+    while (true) {
+      try {
+        return await this.callOnce(req, opts);
+      } catch (err) {
+        if (attempt < retries && isTransientError(err)) {
+          const backoff =
+            TRANSIENT_BACKOFF_MS[Math.min(attempt, TRANSIENT_BACKOFF_MS.length - 1)];
+          logger.warn(
+            { attempt: attempt + 1, retries, task: opts.task, backoffMs: backoff },
+            "LLM transient error, retrying",
+          );
+          await new Promise((r) => setTimeout(r, backoff));
+          attempt++;
+          continue;
+        }
+        throw err;
+      }
+    }
+  }
+
+  private async callOnce(
+    req: ChatCompletionRequest,
+    opts: LlmCallOptions,
   ): Promise<ChatCompletionResponse> {
     const url = `${this.cfg.baseUrl}/chat/completions`;
     const start = Date.now();

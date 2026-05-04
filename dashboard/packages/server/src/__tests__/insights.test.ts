@@ -290,6 +290,46 @@ describe("runAgenticLoop", () => {
     expect(calls[1]).toBe("auto");
   });
 
+  it("retries the chatCompletion call on transient 5xx via the LlmClient retry path", async () => {
+    // Simulate a 500 the first time (proxy hiccup), success the second.
+    // The agentic loop opts callers in to retries=2 by default, so the
+    // round count remains 1 from the loop's perspective.
+    const { LlmHttpError } = await import("../services/llmClient.js");
+    let calls = 0;
+    const llm = {
+      chatCompletion: vi.fn(async () => {
+        calls++;
+        if (calls === 1) {
+          throw new LlmHttpError(500, "Command failed");
+        }
+        return textResponse("Recovered.");
+      }),
+    } as unknown as LlmClient;
+    // Wrap our fake llm with retry behaviour (mimicking the real one)
+    const llmWithRetry = {
+      chatCompletion: vi.fn(async (req, opts) => {
+        const retries = opts?.retries ?? 0;
+        let attempt = 0;
+        while (true) {
+          try {
+            return await llm.chatCompletion(req, opts);
+          } catch (err) {
+            const transient =
+              err instanceof LlmHttpError && err.status >= 500;
+            if (transient && attempt < retries) {
+              attempt++;
+              continue;
+            }
+            throw err;
+          }
+        }
+      }),
+    } as unknown as LlmClient;
+    const result = await runAgenticLoop(baseOpts({ llm: llmWithRetry }));
+    expect(calls).toBe(2);
+    expect(result.content).toBe("Recovered.");
+  });
+
   it("emits progress events with the tool names called in each round", async () => {
     const llm = makeLlm([
       toolResponse([
