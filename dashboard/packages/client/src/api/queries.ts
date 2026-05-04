@@ -716,3 +716,56 @@ export function useMedicationCorrelations(
     staleTime: 5 * 60 * 1000,
   });
 }
+
+// ---------------------------------------------------------------------------
+// API Console — usage stats for the v1 surface
+// ---------------------------------------------------------------------------
+
+/**
+ * Aggregate stats for the v1 API surface (last N hours). Drives the
+ * tiles on the API Console page (total calls, latency, error rate,
+ * top callers).
+ */
+export interface ApiLogStats {
+  windowHours: number;
+  totalCalls: number;
+  uniqueCallers: number;
+  avgDurationMs: number | null;
+  p95DurationMs: number | null;
+  errorCount: number;
+  errorRate: number;
+  byCaller: Array<{ caller: string | null; count: number }>;
+  byPath: Array<{ path: string; count: number; avgDurationMs: number }>;
+}
+
+export interface ApiLogRow {
+  id: number;
+  caller: string | null;
+  method: string;
+  path: string;
+  statusCode: number;
+  durationMs: number;
+  requestParams: Record<string, unknown> | null;
+  error: string | null;
+  createdAt: string;
+}
+
+export function useApiLogStats(windowHours = 24) {
+  return useQuery<ApiLogStats>({
+    queryKey: ["api-logs", "stats", windowHours],
+    queryFn: () =>
+      apiFetch(`/admin/api-logs/stats?windowHours=${windowHours}`),
+    // Refetch every 30s so the panel feels live without hammering.
+    refetchInterval: 30_000,
+  });
+}
+
+export function useRecentApiCalls(caller?: string, limit = 50) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (caller) params.set("caller", caller);
+  return useQuery<ApiLogRow[]>({
+    queryKey: ["api-logs", "recent", caller ?? null, limit],
+    queryFn: () => apiFetch(`/admin/api-logs/recent?${params.toString()}`),
+    refetchInterval: 30_000,
+  });
+}

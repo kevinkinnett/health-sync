@@ -2,9 +2,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import express, { type Express } from "express";
 import cors from "cors";
+import swaggerUi from "swagger-ui-express";
 import { loadConfig } from "./config.js";
 import { logger } from "./logger.js";
 import { requestLogger } from "./middleware/requestLogger.js";
+import { apiLogger } from "./middleware/apiLogger.js";
 import { createPool } from "./db.js";
 import { ActivityRepository } from "./repositories/activityRepo.js";
 import { SleepRepository } from "./repositories/sleepRepo.js";
@@ -16,6 +18,7 @@ import { IngestRepository } from "./repositories/ingestRepo.js";
 import { SupplementRepository } from "./repositories/supplementRepo.js";
 import { MedicationRepository } from "./repositories/medicationRepo.js";
 import { DossierRepository } from "./repositories/dossierRepo.js";
+import { ApiLogRepository } from "./repositories/apiLogRepo.js";
 import { HealthDataService } from "./services/healthDataService.js";
 import { IngestService } from "./services/ingestService.js";
 import { SupplementService } from "./services/supplementService.js";
@@ -36,6 +39,9 @@ import { createMedicationRoutes } from "./routes/medication.js";
 import { createDossierRoutes } from "./routes/dossier.js";
 import { createAnalyticsRoutes } from "./routes/analytics.js";
 import { createConfigRoutes } from "./routes/config.js";
+import { createApiLogRoutes } from "./routes/apiLogs.js";
+import { createV1Router } from "./api/v1/router.js";
+import { generateOpenApiSpec } from "./api/v1/openapi.js";
 
 const config = loadConfig();
 const pool = createPool(config.db);
@@ -55,11 +61,13 @@ const ingestRepo = new IngestRepository(pool);
 const supplementRepo = new SupplementRepository(pool);
 const medicationRepo = new MedicationRepository(pool);
 const dossierRepo = new DossierRepository(pool);
+const apiLogRepo = new ApiLogRepository(pool);
 
 // Ensure user-input tables exist before serving traffic
 await supplementRepo.ensureTables();
 await medicationRepo.ensureTables();
 await dossierRepo.ensureTables();
+await apiLogRepo.ensureTables();
 
 // Services
 const healthDataService = new HealthDataService(
@@ -122,7 +130,7 @@ app.get("/api/health-check", async (_req, res) => {
   }
 });
 
-// Routes
+// Routes (internal — drive the dashboard UI)
 app.use("/api/config", createConfigRoutes({ userTimezone: config.userTimezone }));
 app.use("/api/health", createHealthRoutes(healthController));
 app.use("/api/ingest", createIngestRoutes(ingestController));
@@ -130,6 +138,39 @@ app.use("/api/supplements", createSupplementRoutes(supplementController));
 app.use("/api/medications", createMedicationRoutes(medicationController));
 app.use("/api/dossier", createDossierRoutes(dossierController));
 app.use("/api/analytics", createAnalyticsRoutes(analyticsController));
+app.use("/api/admin/api-logs", createApiLogRoutes(apiLogRepo));
+
+// -----------------------------------------------------------------------
+// Public v1 API surface
+//
+// Versioned read-only REST mirror of the dashboard's data, intended for
+// scripts / scheduled jobs / MCP servers / phone shortcuts on the same
+// Tailscale network. Every call lands in `universe.api_log` via the
+// `apiLogger` middleware (fire-and-forget, never blocks the response).
+//
+// Three things are wired together from one source of truth (the
+// `buildV1Endpoints()` array):
+//   - GET /api/v1/<path>           — the actual endpoints
+//   - GET /api/v1/openapi.json     — raw OpenAPI 3.0 spec, for AI
+//                                    clients and code generators
+//   - GET /api/v1/docs             — interactive Swagger UI
+// -----------------------------------------------------------------------
+const openApiSpec = generateOpenApiSpec();
+app.get("/api/v1/openapi.json", (_req, res) => {
+  res.json(openApiSpec);
+});
+app.use("/api/v1/docs", swaggerUi.serve, swaggerUi.setup(openApiSpec));
+app.use(
+  "/api/v1",
+  apiLogger(apiLogRepo),
+  createV1Router({
+    userTimezone: config.userTimezone,
+    healthDataService,
+    analyticsService,
+    supplementService,
+    medicationService,
+  }),
+);
 
 // Serve client static files in production (single-container mode)
 // In Docker: dist/public/  In dev: ../../client/dist/

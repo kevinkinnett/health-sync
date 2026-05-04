@@ -79,6 +79,7 @@ const navSections: NavSectionDef[] = [
         label: "Data Pipeline",
         icon: "settings_input_component",
       },
+      { to: "/api-console", label: "API Console", icon: "api" },
       { to: "/settings", label: "Console Settings", icon: "settings" },
     ],
   },
