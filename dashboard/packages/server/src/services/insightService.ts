@@ -211,15 +211,21 @@ export class InsightService {
     const generationId = randomUUID();
     const allTools = buildHealthTools();
 
-    // Run categories with bounded concurrency. Six concurrent
-    // `claude -p` subprocess invocations were overwhelming the local
-    // proxy (some completions returned 500 with an empty `--tools`
-    // argv). Three at a time keeps the proxy happy and total wall
-    // time roughly the same since each category is mostly waiting on
-    // upstream model responses.
+    // Run categories sequentially. Concurrency > 1 races inside the
+    // local Claude proxy: when multiple `claude -p` subprocesses spawn
+    // at the same moment, the proxy's args-marshalling code emits a
+    // malformed cmdline for some of them (the `--tools  ` empty argv
+    // we've seen twice now in production failures). Lifestyle with 7
+    // tools succeeds when run alone but the first 2 of 3 simultaneous
+    // categories with 5 tools each fail — payload size isn't the
+    // discriminator, simultaneity is. Going serial trades wall-time
+    // (~3-6 min total) for reliability (all categories complete).
+    //
+    // Total time stays reasonable because each call is bounded by the
+    // 90s per-call timeout + 4min total budget per category.
     const results = await runWithConcurrency(
       HEALTH_CATEGORIES,
-      3,
+      1,
       async (cat) => {
         // Per-category curated tool list. Defaults to requiredTools
         // when relevantTools is omitted. Smaller list = smaller argv

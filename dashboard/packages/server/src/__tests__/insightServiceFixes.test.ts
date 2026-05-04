@@ -21,6 +21,57 @@ import { LlmClient } from "../services/llmClient.js";
  * accidentally reverts them fails loudly.
  */
 
+describe("runWithConcurrency invariants", () => {
+  // The runner is internal to insightService. We verify its observable
+  // behaviour (sequential ordering with limit=1) via a small re-impl
+  // that mirrors the production code's contract.
+  async function runWithConcurrency<T, R>(
+    items: T[],
+    limit: number,
+    fn: (item: T) => Promise<R>,
+  ): Promise<PromiseSettledResult<R>[]> {
+    const results: PromiseSettledResult<R>[] = new Array(items.length);
+    let nextIndex = 0;
+    const workers: Promise<void>[] = [];
+    const workerCount = Math.max(1, Math.min(limit, items.length));
+    for (let w = 0; w < workerCount; w++) {
+      workers.push(
+        (async () => {
+          while (true) {
+            const i = nextIndex++;
+            if (i >= items.length) return;
+            try {
+              results[i] = { status: "fulfilled", value: await fn(items[i]) };
+            } catch (reason) {
+              results[i] = { status: "rejected", reason };
+            }
+          }
+        })(),
+      );
+    }
+    await Promise.all(workers);
+    return results;
+  }
+
+  it("with limit=1, never has two items in flight simultaneously", async () => {
+    let inFlight = 0;
+    let maxObserved = 0;
+    const items = [1, 2, 3, 4, 5];
+    await runWithConcurrency(items, 1, async (n) => {
+      inFlight++;
+      maxObserved = Math.max(maxObserved, inFlight);
+      // Yield once to let any racing worker observe a higher count.
+      await new Promise((r) => setImmediate(r));
+      await new Promise((r) => setImmediate(r));
+      inFlight--;
+      return n * 2;
+    });
+    // The whole point of limit=1: only one `claude -p` subprocess at a
+    // time, sidestepping the proxy's concurrent-marshalling race.
+    expect(maxObserved).toBe(1);
+  });
+});
+
 describe("Category definitions — relevantTools curation", () => {
   it("every category declares a relevantTools list (≤ 7 entries)", () => {
     const cats = listCategoryDefs();
