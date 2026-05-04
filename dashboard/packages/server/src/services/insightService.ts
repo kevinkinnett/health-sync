@@ -249,10 +249,17 @@ export class InsightService {
             requiredTools: cat.requiredTools,
             executeTool: (name, args) =>
               executeHealthTool(name, args, this.v1Ctx),
-            maxRounds: 10,
+            maxRounds: 8,
             maxNags: 2,
             task: "insights",
             temperature: 0.3,
+            // Tighter timeouts so a hung proxy doesn't pin the job:
+            //   90s per upstream call, 4min total wall time per
+            //   category. Worst case a category gives up after ~4min
+            //   with a placeholder rather than spinning indefinitely.
+            callTimeoutMs: 90_000,
+            totalBudgetMs: 4 * 60_000,
+            label: `category=${cat.key}`,
             onProgress: (e) => options.onCategoryProgress?.(cat.key, e),
           });
 

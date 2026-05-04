@@ -11,6 +11,7 @@ import {
   looksLikeHallucinatedToolCall,
   sanitizeAssistantContent,
 } from "./groundingRules.js";
+import { logger } from "../logger.js";
 
 /**
  * Shared agentic tool-calling loop used by both Insights generation
@@ -59,6 +60,26 @@ export interface AgenticLoopOptions {
   temperature?: number;
   enableThinking?: boolean;
   thinkingBudget?: number;
+  /**
+   * Per-call upstream timeout (ms). Defaults to 90s — long enough for
+   * a healthy LLM completion to land, short enough that a stuck proxy
+   * is felt within seconds rather than minutes. Each retry resets the
+   * timeout, so total wall time is `(retries + 1) * timeoutMs` worst
+   * case. Use `totalBudgetMs` to bound the whole loop.
+   */
+  callTimeoutMs?: number;
+  /**
+   * Total wall-time budget for the entire loop (across all rounds and
+   * retries). When exceeded the loop emits a placeholder rather than
+   * spinning forever. Defaults to 5 minutes.
+   */
+  totalBudgetMs?: number;
+  /**
+   * Optional logging label so server logs show e.g. "category=sleep"
+   * alongside round/tools. Lets `pnpm logs | grep category=sleep`
+   * trace one category through the loop.
+   */
+  label?: string;
   /** Per-round progress callback for the UI. */
   onProgress?: (event: AgenticProgressEvent) => void;
 }
@@ -99,34 +120,82 @@ export async function runAgenticLoop(
 ): Promise<AgenticLoopResult> {
   const maxRounds = opts.maxRounds ?? 10;
   const maxNags = opts.maxNags ?? 2;
+  const callTimeoutMs = opts.callTimeoutMs ?? 90_000;
+  const totalBudgetMs = opts.totalBudgetMs ?? 5 * 60_000;
   const required = new Set(opts.requiredTools ?? []);
   const called = new Set<string>();
   const transcript: ChatMessage[] = [...opts.messages];
   const lastSignatures: string[] = [];
+  const label = opts.label ?? opts.task;
+  const loopStarted = Date.now();
   let nagsUsed = 0;
   let placeholder = false;
   let finalContent = "";
   let sanitized = false;
 
   for (let round = 1; round <= maxRounds; round++) {
+    if (Date.now() - loopStarted > totalBudgetMs) {
+      logger.warn(
+        {
+          label,
+          round,
+          elapsedMs: Date.now() - loopStarted,
+          totalBudgetMs,
+        },
+        "Agentic loop exceeded total wall-time budget; emitting placeholder",
+      );
+      placeholder = true;
+      finalContent = placeholderMessage([...required].filter((t) => !called.has(t)));
+      break;
+    }
+
     const stillMissing = [...required].filter((t) => !called.has(t));
     const toolChoice: ToolChoice = stillMissing.length > 0 ? "required" : "auto";
 
     opts.onProgress?.({ kind: "round-start", round, toolChoice });
+    logger.info(
+      { label, round, toolChoice, missing: stillMissing.length, called: called.size },
+      "Agentic round start",
+    );
 
-    const response: ChatCompletionResponse = await opts.llm.chatCompletion(
+    const roundStart = Date.now();
+    let response: ChatCompletionResponse;
+    try {
+      response = await opts.llm.chatCompletion(
+        {
+          model: opts.model,
+          messages: transcript,
+          tools: opts.tools,
+          tool_choice: toolChoice,
+          temperature: opts.temperature ?? 0.3,
+          enable_thinking: opts.enableThinking,
+          thinking_budget: opts.thinkingBudget,
+        },
+        // Retry on transient 5xx — the local Claude proxy sometimes
+        // returns 500 with subprocess errors that self-heal on retry.
+        // Per-call timeout is tighter than the upstream default so a
+        // hung subprocess doesn't pin the whole job for minutes.
+        { task: opts.task, retries: 2, timeoutMs: callTimeoutMs },
+      );
+    } catch (err) {
+      const durationMs = Date.now() - roundStart;
+      logger.warn(
+        { label, round, durationMs, err: (err as Error).message },
+        "Agentic round LLM call failed after retries; emitting placeholder",
+      );
+      placeholder = true;
+      finalContent = placeholderMessage([...required].filter((t) => !called.has(t)));
+      break;
+    }
+    logger.info(
       {
-        model: opts.model,
-        messages: transcript,
-        tools: opts.tools,
-        tool_choice: toolChoice,
-        temperature: opts.temperature ?? 0.3,
-        enable_thinking: opts.enableThinking,
-        thinking_budget: opts.thinkingBudget,
+        label,
+        round,
+        durationMs: Date.now() - roundStart,
+        toolCalls: response.choices[0]?.message?.tool_calls?.length ?? 0,
+        contentChars: (response.choices[0]?.message?.content ?? "").length,
       },
-      // Retry once on transient 5xx — the local Claude proxy sometimes
-      // returns 500 with subprocess errors that self-heal on retry.
-      { task: opts.task, retries: 2 },
+      "Agentic round complete",
     );
 
     const choice = response.choices[0];

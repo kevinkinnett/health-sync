@@ -290,6 +290,54 @@ describe("runAgenticLoop", () => {
     expect(calls[1]).toBe("auto");
   });
 
+  it("aborts with a placeholder when the total wall-time budget is exceeded", async () => {
+    // Each round takes "1 minute" of fake time. With a 2-min budget,
+    // the loop should bail before round 3 even starts.
+    const startWall = Date.now();
+    let now = startWall;
+    const dateNowSpy = vi.spyOn(Date, "now").mockImplementation(() => now);
+    try {
+      let calls = 0;
+      const llm = {
+        chatCompletion: vi.fn(async () => {
+          calls++;
+          // Each call advances the fake clock by 70 seconds.
+          now += 70_000;
+          return toolResponse([fakeToolCall(`c${calls}`, "query_records", {})]);
+        }),
+      } as unknown as LlmClient;
+      const result = await runAgenticLoop(
+        baseOpts({
+          llm,
+          totalBudgetMs: 2 * 60_000,
+          // No required tools so a final-text response is unblocked,
+          // but we'll never get one because every round returns tools.
+        }),
+      );
+      expect(result.placeholder).toBe(true);
+      expect(result.content).toMatch(/Unable to produce a grounded answer/);
+      // Should have stopped after at most 2 rounds (each took 70s, budget 120s).
+      expect(calls).toBeLessThanOrEqual(2);
+    } finally {
+      dateNowSpy.mockRestore();
+    }
+  });
+
+  it("emits a placeholder when the LLM call throws after retries", async () => {
+    const { LlmHttpError } = await import("../services/llmClient.js");
+    const llm = {
+      // The retry loop happens inside LlmClient.chatCompletion in real
+      // code; here we simulate that the wrapper has already exhausted
+      // retries and is throwing.
+      chatCompletion: vi.fn(async () => {
+        throw new LlmHttpError(500, "all retries exhausted");
+      }),
+    } as unknown as LlmClient;
+    const result = await runAgenticLoop(baseOpts({ llm }));
+    expect(result.placeholder).toBe(true);
+    expect(result.content).toMatch(/Unable to produce a grounded answer/);
+  });
+
   it("retries the chatCompletion call on transient 5xx via the LlmClient retry path", async () => {
     // Simulate a 500 the first time (proxy hiccup), success the second.
     // The agentic loop opts callers in to retries=2 by default, so the

@@ -134,6 +134,17 @@ function ReportsTab() {
     }
   }, [job.data, list]);
 
+  // If the polling endpoint returns 404 (server restarted, evicted the
+  // in-memory job state, etc.), clear the orphaned localStorage so the
+  // page doesn't poll a dead jobId forever.
+  useEffect(() => {
+    if (!persistedJob) return;
+    if (job.error) {
+      setPersistedJob(null);
+      localStorage.removeItem(JOB_STORAGE_KEY);
+    }
+  }, [persistedJob, job.error]);
+
   const generations = list.data ?? [];
   const activeSummary = generations[activeIndex];
   const detail = useInsightGeneration(activeSummary?.generationId ?? null);

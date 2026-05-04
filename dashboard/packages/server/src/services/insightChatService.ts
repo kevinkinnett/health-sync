@@ -114,6 +114,12 @@ export class InsightChatService {
       temperature: 0.3,
       enableThinking: true,
       thinkingBudget: 10000,
+      // Same shorter call timeout — chat users actively wait, so a
+      // hung proxy is the worst possible UX. Keep total budget
+      // generous since a chat can legitimately go through many rounds.
+      callTimeoutMs: 90_000,
+      totalBudgetMs: 5 * 60_000,
+      label: `chat=${conversationId}`,
     });
 
     // Persist any new turns appended during the loop.
