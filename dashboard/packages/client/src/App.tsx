@@ -6,6 +6,7 @@ import { Dashboard } from "./pages/Dashboard";
 import { Ingest } from "./pages/Ingest";
 import { Settings } from "./pages/Settings";
 import { ApiConsole } from "./pages/ApiConsole";
+import { Insights } from "./pages/Insights";
 import { Supplements } from "./pages/Supplements";
 import { Medications } from "./pages/Medications";
 import { AnalyticsOverview } from "./pages/analytics/Overview";
@@ -59,6 +60,7 @@ export default function App() {
             <Route path="/medications" element={<Medications />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/api-console" element={<ApiConsole />} />
+            <Route path="/insights" element={<Insights />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>

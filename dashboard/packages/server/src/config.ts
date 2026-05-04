@@ -29,6 +29,10 @@ export interface Config {
     apiKey: string;
     /** Model name to request from the proxy for dossier generation. */
     dossierModel: string;
+    /** Model used for the multi-category Insights agentic loop. */
+    insightsModel: string;
+    /** Model used for the open-ended Chat surface. */
+    chatModel: string;
   };
 }
 
@@ -90,6 +94,8 @@ export function loadConfig(): Config {
       // doesn't validate bearer tokens.
       apiKey: process.env.LLM_API_KEY ?? "",
       dossierModel: process.env.LLM_MODEL_DOSSIER ?? "qwen3-max-2026-01-23",
+      insightsModel: process.env.LLM_MODEL_INSIGHTS ?? "qwen3-max-2026-01-23",
+      chatModel: process.env.LLM_MODEL_CHAT ?? "qwen3-max-2026-01-23",
     },
   };
 }

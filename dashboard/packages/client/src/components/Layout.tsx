@@ -62,6 +62,7 @@ const navSections: NavSectionDef[] = [
         label: "Medications",
         icon: "prescriptions",
       },
+      { to: "/insights", label: "AI Insights", icon: "auto_awesome" },
     ],
   },
   {

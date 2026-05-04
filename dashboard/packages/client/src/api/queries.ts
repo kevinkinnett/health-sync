@@ -718,6 +718,175 @@ export function useMedicationCorrelations(
 }
 
 // ---------------------------------------------------------------------------
+// AI Insights + Chat
+// ---------------------------------------------------------------------------
+
+export interface InsightGenerationSummary {
+  generationId: string;
+  createdAt: string;
+  dateFrom: string;
+  dateTo: string;
+  categoryCount: number;
+}
+
+export interface InsightCategory {
+  key: string;
+  title: string;
+  content: string;
+}
+
+export interface InsightGeneration {
+  generationId: string;
+  dateFrom: string;
+  dateTo: string;
+  createdAt: string;
+  categories: InsightCategory[];
+}
+
+export type JobStatus = "pending" | "running" | "completed" | "failed";
+
+export interface InsightJob {
+  jobId: string;
+  status: JobStatus;
+  startedAt: string;
+  finishedAt?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  progress: number;
+  statusMessage: string;
+  categories: Array<{
+    key: string;
+    title: string;
+    status: JobStatus;
+    rounds: number;
+    toolsCalled: string[];
+  }>;
+  error?: string;
+}
+
+export function useInsightGenerations() {
+  return useQuery<InsightGenerationSummary[]>({
+    queryKey: ["insights", "list"],
+    queryFn: () => apiFetch(`/insights/list`),
+  });
+}
+
+export function useInsightGeneration(generationId: string | null) {
+  return useQuery<InsightGeneration>({
+    queryKey: ["insights", "get", generationId],
+    queryFn: () => apiFetch(`/insights/${generationId}`),
+    enabled: generationId != null,
+  });
+}
+
+export function useStartInsightGeneration() {
+  const queryClient = useQueryClient();
+  return useMutation<{ jobId: string }, Error, { dateFrom?: string; dateTo?: string } | void>({
+    mutationFn: (body) =>
+      apiFetch(`/insights/generate`, {
+        method: "POST",
+        body: JSON.stringify(body ?? {}),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["insights"] });
+    },
+  });
+}
+
+export function useInsightJob(jobId: string | null) {
+  return useQuery<InsightJob>({
+    queryKey: ["insights", "job", jobId],
+    queryFn: () => apiFetch(`/insights/generate/status/${jobId}`),
+    enabled: jobId != null,
+    // Poll every 2s while pending/running. The page-level component
+    // clears `jobId` once the job reaches a terminal status.
+    refetchInterval: (q) => {
+      const data = q.state.data;
+      if (!data) return 2000;
+      if (data.status === "completed" || data.status === "failed") return false;
+      return 2000;
+    },
+  });
+}
+
+export function useDeleteInsightGeneration() {
+  const queryClient = useQueryClient();
+  return useMutation<{ deleted: number }, Error, string>({
+    mutationFn: (id) =>
+      apiFetch(`/insights/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["insights"] });
+    },
+  });
+}
+
+// ------ Chat ------
+
+export interface ChatMessageRow {
+  role: "user" | "assistant";
+  content: string;
+  createdAt: string;
+}
+
+export interface ChatConversationSummary {
+  conversationId: string;
+  preview: string;
+  messageCount: number;
+  lastMessageAt: string;
+}
+
+export function useChatConversations() {
+  return useQuery<ChatConversationSummary[]>({
+    queryKey: ["insights", "chat", "list"],
+    queryFn: () => apiFetch(`/insights/chat/conversations`),
+  });
+}
+
+export function useChatConversation(conversationId: string | null) {
+  return useQuery<{ conversationId: string; messages: ChatMessageRow[] }>({
+    queryKey: ["insights", "chat", "get", conversationId],
+    queryFn: () => apiFetch(`/insights/chat/${conversationId}`),
+    enabled: conversationId != null,
+  });
+}
+
+export function useSendChatMessage() {
+  const queryClient = useQueryClient();
+  return useMutation<
+    {
+      conversationId: string;
+      message: { role: "assistant"; content: string };
+      meta: { sanitized: boolean; placeholder: boolean; toolsCalled: string[]; rounds: number };
+    },
+    Error,
+    { conversationId?: string; message: string }
+  >({
+    mutationFn: (body) =>
+      apiFetch(`/insights/chat`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["insights", "chat", "list"] });
+      queryClient.invalidateQueries({
+        queryKey: ["insights", "chat", "get", data.conversationId],
+      });
+    },
+  });
+}
+
+export function useDeleteConversation() {
+  const queryClient = useQueryClient();
+  return useMutation<{ deleted: number }, Error, string>({
+    mutationFn: (id) =>
+      apiFetch(`/insights/chat/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["insights", "chat"] });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
 // API Console — usage stats for the v1 surface
 // ---------------------------------------------------------------------------
 
