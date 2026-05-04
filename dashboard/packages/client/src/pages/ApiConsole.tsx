@@ -2,26 +2,26 @@ import { useState } from "react";
 import { useApiLogStats, useRecentApiCalls } from "../api/queries";
 
 /**
- * The base URL the dashboard advertises in the Quick Start panel.
+ * Base URL the dashboard advertises in the Quick Start card.
  *
  * In production the API is served by the same Express process the
  * dashboard runs in (see `index.ts`), so the v1 surface is always at
  * `${origin}/api/v1`. Showing the live origin (rather than a static
  * Tailscale hostname) makes the curl examples Just Work whether the
- * user opened the dashboard via Tailscale, localhost, or anything else.
+ * page was opened via Tailscale, localhost, or a LAN IP.
  */
 function apiBaseUrl(): string {
   if (typeof window === "undefined") return "";
   return `${window.location.origin}/api/v1`;
 }
 
-interface QuickStartExample {
+interface CurlExample {
   title: string;
   description: string;
   cmd: string;
 }
 
-function buildExamples(base: string): QuickStartExample[] {
+function buildExamples(base: string): CurlExample[] {
   return [
     {
       title: "Latest health snapshot",
@@ -30,8 +30,8 @@ function buildExamples(base: string): QuickStartExample[] {
     },
     {
       title: "Activity over the last month",
-      description: "Per-day steps, distance, calories, active minutes.",
-      cmd: `curl "${base}/activity?start=2026-04-03&end=2026-05-03"`,
+      description: "Per-day steps, distance, calories, active minutes for a window.",
+      cmd: `curl "${base}/activity?start=2026-04-04&end=2026-05-04"`,
     },
     {
       title: "Personal records and current streaks",
@@ -39,38 +39,94 @@ function buildExamples(base: string): QuickStartExample[] {
       cmd: `curl ${base}/records`,
     },
     {
-      title: "Identify your script (recommended)",
-      description: "Pass an X-Caller header so your calls show up tagged in the stats below.",
-      cmd: `curl -H "X-Caller: my-script" ${base}/summary`,
-    },
-    {
       title: "Supplement → health correlations",
       description: "Pearson r between an item's intake signal and each metric, with optional day lag.",
       cmd: `curl "${base}/supplements/correlations?itemId=7&lag=1"`,
     },
+    {
+      title: "Identify your script (recommended)",
+      description: "Pass an X-Caller header so your calls show up tagged in the recent-requests table below.",
+      cmd: `curl -H "X-Caller: my-script" ${base}/summary`,
+    },
   ];
 }
 
-function CopyableCommand({ value }: { value: string }) {
+// ---------------------------------------------------------------------------
+// Small UI atoms
+// ---------------------------------------------------------------------------
+
+function CopyButton({ value, label }: { value: string; label: string }) {
   const [copied, setCopied] = useState(false);
   return (
-    <div className="relative">
-      <pre className="bg-surface-container-lowest border border-outline-variant/10 rounded-lg p-3 pr-12 text-xs font-mono text-on-surface-variant overflow-x-auto">
-        {value}
-      </pre>
-      <button
-        onClick={() => {
+    <button
+      onClick={() => {
+        // navigator.clipboard requires a secure context (HTTPS or
+        // localhost). Tailscale's MagicDNS provides HTTPS so this is
+        // the common path; fall back to silent no-op if unavailable.
+        if (typeof navigator !== "undefined" && navigator.clipboard) {
           void navigator.clipboard.writeText(value);
           setCopied(true);
           setTimeout(() => setCopied(false), 1500);
-        }}
-        aria-label="Copy command"
-        className="absolute right-2 top-2 p-1.5 rounded text-outline hover:text-primary hover:bg-surface-container transition-colors"
+        }
+      }}
+      aria-label={label}
+      className={`p-1.5 rounded transition-colors ${
+        copied
+          ? "text-secondary"
+          : "text-outline hover:text-primary hover:bg-surface-container"
+      }`}
+    >
+      <span className="material-symbols-outlined text-base">
+        {copied ? "check" : "content_copy"}
+      </span>
+    </button>
+  );
+}
+
+function CodeBlock({ value, copyLabel }: { value: string; copyLabel: string }) {
+  return (
+    <div className="relative">
+      <pre className="bg-surface-container-lowest border border-outline-variant/10 rounded-lg p-3 pr-12 text-xs font-mono text-on-surface-variant overflow-x-auto whitespace-pre">
+        {value}
+      </pre>
+      <div className="absolute right-2 top-2">
+        <CopyButton value={value} label={copyLabel} />
+      </div>
+    </div>
+  );
+}
+
+function PanelLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="text-[10px] uppercase tracking-widest font-bold text-outline mb-2">
+      {children}
+    </div>
+  );
+}
+
+function ExternalLinkPanel({
+  label,
+  href,
+  display,
+}: {
+  label: string;
+  href: string;
+  display: string;
+}) {
+  return (
+    <div>
+      <PanelLabel>{label}</PanelLabel>
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        className="flex items-center gap-1 text-primary text-sm font-mono p-3 bg-surface-container-lowest border border-outline-variant/10 rounded-lg hover:border-primary transition-colors"
       >
-        <span className="material-symbols-outlined text-base">
-          {copied ? "check" : "content_copy"}
+        <span className="truncate">{display}</span>
+        <span className="material-symbols-outlined text-xs shrink-0">
+          open_in_new
         </span>
-      </button>
+      </a>
     </div>
   );
 }
@@ -121,146 +177,219 @@ function relativeAgo(iso: string): string {
   return `${Math.floor(h / 24)}d ago`;
 }
 
+// ---------------------------------------------------------------------------
+// Quick Start card — panels + helper + curl examples
+// ---------------------------------------------------------------------------
+
+function QuickStartCard({ base }: { base: string }) {
+  const examples = buildExamples(base);
+
+  return (
+    <section className="bg-surface-container rounded-xl p-6 border border-outline-variant/10">
+      <h3 className="font-headline text-lg font-semibold text-on-surface flex items-center gap-2 mb-5">
+        <span className="material-symbols-outlined text-primary">terminal</span>
+        Quick Start
+      </h3>
+
+      {/* Top row: 3 side-by-side panels (stack on mobile, 3-col from sm:) */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+        <div>
+          <PanelLabel>Base URL</PanelLabel>
+          <CodeBlock value={base} copyLabel="Copy base URL" />
+        </div>
+        <ExternalLinkPanel
+          label="Interactive docs (Swagger UI)"
+          href="/api/v1/docs"
+          display={`${base}/docs`}
+        />
+        <ExternalLinkPanel
+          label="OpenAPI spec (JSON)"
+          href="/api/v1/openapi.json"
+          display={`${base}/openapi.json`}
+        />
+      </div>
+
+      {/* Helper line — explains the no-auth + X-Caller idiom */}
+      <p className="text-xs text-outline mb-6">
+        All v1 endpoints are read-only and require no auth — access is gated by
+        Tailnet membership. Pass an{" "}
+        <code className="bg-surface-container-lowest border border-outline-variant/10 rounded px-1.5 py-0.5 font-mono text-on-surface-variant">
+          X-Caller
+        </code>{" "}
+        header to tag your script's calls in the table below.
+      </p>
+
+      {/* Curl examples — vertical stack of header + code block */}
+      <div className="space-y-4">
+        {examples.map((ex) => (
+          <div key={ex.title}>
+            <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1 mb-1.5">
+              <div className="text-sm font-bold text-on-surface">{ex.title}</div>
+              <div className="text-xs text-outline">{ex.description}</div>
+            </div>
+            <CodeBlock value={ex.cmd} copyLabel={`Copy: ${ex.title}`} />
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
+
 export function ApiConsole() {
   const base = apiBaseUrl();
-  const examples = buildExamples(base);
   const [callerFilter, setCallerFilter] = useState("");
+  const [recentLimit, setRecentLimit] = useState(50);
 
-  const stats = useApiLogStats();
-  const recent = useRecentApiCalls(callerFilter || undefined, 50);
+  const stats24h = useApiLogStats(24);
+  const stats7d = useApiLogStats(7 * 24);
+  const recent = useRecentApiCalls(callerFilter || undefined, recentLimit);
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="font-headline text-3xl font-bold text-on-surface tracking-tight mb-2">
-          API Console
-        </h1>
-        <p className="text-on-surface-variant text-lg">
-          Read-only REST API for scripts, scheduled jobs, and MCP servers on
-          the Tailnet. Auto-generated docs and live usage stats live below.
-        </p>
+      <header className="mb-2 flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+        <div>
+          <h1 className="font-headline text-3xl font-bold text-on-surface tracking-tight mb-2">
+            API Console
+          </h1>
+          <p className="text-on-surface-variant text-lg">
+            Read-only REST API for scripts, scheduled jobs, and MCP servers on
+            the Tailnet. Auto-generated docs and live usage stats below.
+          </p>
+        </div>
+        {/* Top-right corner link — full URL so it works copied or clicked */}
+        <a
+          href="/api/v1/docs"
+          target="_blank"
+          rel="noreferrer"
+          className="text-primary text-sm font-mono hover:underline whitespace-nowrap shrink-0"
+          title={`${base}/docs`}
+        >
+          Swagger UI →
+        </a>
       </header>
 
-      {/* Endpoints / docs */}
-      <section className="bg-surface-container rounded-xl p-6 border border-outline-variant/10 space-y-4">
-        <h3 className="font-headline text-lg font-semibold text-on-surface flex items-center gap-2">
-          <span className="material-symbols-outlined text-primary">api</span>
-          Base URL & docs
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div>
-            <div className="text-[10px] uppercase tracking-widest font-bold text-outline mb-1">
-              Base URL
-            </div>
-            <CopyableCommand value={base} />
-          </div>
-          <div>
-            <div className="text-[10px] uppercase tracking-widest font-bold text-outline mb-1">
-              Interactive docs
-            </div>
-            <a
-              href="/api/v1/docs"
-              target="_blank"
-              rel="noreferrer"
-              className="block text-primary text-sm font-mono p-3 bg-surface-container-lowest border border-outline-variant/10 rounded-lg hover:border-primary transition-colors"
-            >
-              /api/v1/docs <span className="material-symbols-outlined text-xs align-middle">open_in_new</span>
-            </a>
-          </div>
-          <div>
-            <div className="text-[10px] uppercase tracking-widest font-bold text-outline mb-1">
-              Raw OpenAPI JSON
-            </div>
-            <a
-              href="/api/v1/openapi.json"
-              target="_blank"
-              rel="noreferrer"
-              className="block text-primary text-sm font-mono p-3 bg-surface-container-lowest border border-outline-variant/10 rounded-lg hover:border-primary transition-colors"
-            >
-              /api/v1/openapi.json <span className="material-symbols-outlined text-xs align-middle">open_in_new</span>
-            </a>
-          </div>
-        </div>
-      </section>
+      <QuickStartCard base={base} />
 
-      {/* Quick start examples */}
-      <section className="bg-surface-container rounded-xl p-6 border border-outline-variant/10">
-        <h3 className="font-headline text-lg font-semibold text-on-surface flex items-center gap-2 mb-4">
-          <span className="material-symbols-outlined text-primary">terminal</span>
-          Quick start
-        </h3>
-        <div className="space-y-4">
-          {examples.map((ex) => (
-            <div key={ex.title}>
-              <div className="text-sm font-bold text-on-surface mb-0.5">
-                {ex.title}
-              </div>
-              <div className="text-xs text-outline mb-1.5">{ex.description}</div>
-              <CopyableCommand value={ex.cmd} />
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Live stats */}
+      {/* Stat tiles — last 24h */}
       <section className="bg-surface-container rounded-xl p-6 border border-outline-variant/10">
         <h3 className="font-headline text-lg font-semibold text-on-surface flex items-center gap-2 mb-4">
           <span className="material-symbols-outlined text-primary">monitoring</span>
           Usage (last 24 hours)
         </h3>
-        {stats.isLoading ? (
+        {stats24h.isLoading ? (
           <div className="text-outline text-sm">Loading…</div>
-        ) : stats.data ? (
+        ) : stats24h.data ? (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <StatTile
-              label="Total calls"
-              value={stats.data.totalCalls.toLocaleString()}
-              sub={`${stats.data.uniqueCallers} caller${stats.data.uniqueCallers === 1 ? "" : "s"}`}
+              label="24h calls"
+              value={stats24h.data.totalCalls.toLocaleString()}
             />
             <StatTile
-              label="Avg latency"
+              label="Unique callers"
+              value={stats24h.data.uniqueCallers.toLocaleString()}
+              sub={
+                stats24h.data.byCaller[0]
+                  ? `top: ${stats24h.data.byCaller[0].caller ?? "anonymous"} (${stats24h.data.byCaller[0].count.toLocaleString()})`
+                  : undefined
+              }
+            />
+            <StatTile
+              label="Avg response"
               value={
-                stats.data.avgDurationMs != null
-                  ? `${stats.data.avgDurationMs} ms`
+                stats24h.data.avgDurationMs != null
+                  ? `${stats24h.data.avgDurationMs} ms`
                   : "—"
               }
               sub={
-                stats.data.p95DurationMs != null
-                  ? `p95 ${stats.data.p95DurationMs} ms`
+                stats24h.data.p95DurationMs != null
+                  ? `p95 ${stats24h.data.p95DurationMs} ms`
                   : undefined
               }
             />
             <StatTile
               label="Error rate"
-              value={`${(stats.data.errorRate * 100).toFixed(1)}%`}
-              sub={`${stats.data.errorCount} 5xx`}
+              value={`${(stats24h.data.errorRate * 100).toFixed(1)}%`}
+              sub={`${stats24h.data.errorCount} 5xx`}
               tone={
-                stats.data.errorRate > 0.05
+                stats24h.data.errorRate > 0.05
                   ? "bad"
-                  : stats.data.errorRate > 0
+                  : stats24h.data.errorRate > 0
                     ? "warn"
                     : "good"
               }
             />
-            <StatTile
-              label="Top caller"
-              value={
-                stats.data.byCaller[0]?.caller ??
-                (stats.data.byCaller[0] != null ? "anonymous" : "—")
-              }
-              sub={
-                stats.data.byCaller[0]
-                  ? `${stats.data.byCaller[0].count.toLocaleString()} calls`
-                  : undefined
-              }
-            />
           </div>
         ) : (
-          <div className="text-outline text-sm">No data yet — try one of the curl examples above.</div>
+          <div className="text-outline text-sm">
+            No data yet — try one of the curl examples above.
+          </div>
         )}
       </section>
 
-      {/* Recent requests */}
+      {/* Endpoints — last 7d, sorted by call count */}
+      <section className="bg-surface-container rounded-xl overflow-hidden border border-outline-variant/10">
+        <div className="p-6 border-b border-outline-variant/10">
+          <h3 className="font-headline text-lg font-semibold text-on-surface flex items-center gap-2">
+            <span className="material-symbols-outlined text-primary">api</span>
+            Endpoints (7d)
+          </h3>
+          <p className="text-xs text-outline mt-1">
+            Top paths by call count over the last week.
+          </p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-surface-container-low border-b border-outline-variant/10">
+                <th className="text-left py-3 px-6 text-outline font-semibold uppercase text-xs tracking-wider">
+                  Path
+                </th>
+                <th className="text-right py-3 px-6 text-outline font-semibold uppercase text-xs tracking-wider">
+                  Calls
+                </th>
+                <th className="text-right py-3 px-6 text-outline font-semibold uppercase text-xs tracking-wider">
+                  Avg duration
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {stats7d.data && stats7d.data.byPath.length > 0 ? (
+                stats7d.data.byPath.map((row) => (
+                  <tr
+                    key={row.path}
+                    className="border-b border-outline-variant/5 hover:bg-surface-container-high transition-colors"
+                  >
+                    <td className="py-2 px-6 text-on-surface font-mono text-xs">
+                      {row.path}
+                    </td>
+                    <td className="text-right py-2 px-6 text-on-surface tabular-nums">
+                      {row.count.toLocaleString()}
+                    </td>
+                    <td className="text-right py-2 px-6 text-on-surface-variant tabular-nums">
+                      {row.avgDurationMs} ms
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td
+                    colSpan={3}
+                    className="text-center py-8 text-outline"
+                  >
+                    {stats7d.isLoading ? "Loading…" : "No requests in the last 7 days."}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* Recent requests — caller filter + load-more */}
       <section className="bg-surface-container rounded-xl overflow-hidden border border-outline-variant/10">
         <div className="p-6 flex items-center justify-between gap-4 border-b border-outline-variant/10">
           <h3 className="font-headline text-lg font-semibold text-on-surface flex items-center gap-2">
@@ -270,7 +399,10 @@ export function ApiConsole() {
           <input
             type="text"
             value={callerFilter}
-            onChange={(e) => setCallerFilter(e.target.value)}
+            onChange={(e) => {
+              setCallerFilter(e.target.value);
+              setRecentLimit(50);
+            }}
             placeholder="Filter by caller…"
             className="bg-surface-container-lowest border border-outline-variant/10 rounded-md px-3 py-1.5 text-sm text-on-surface placeholder:text-outline focus:outline-none focus:border-primary"
           />
@@ -337,6 +469,17 @@ export function ApiConsole() {
             </tbody>
           </table>
         </div>
+        {/* Load-more pagination — keeps it simple, server caps at 500. */}
+        {recent.data && recent.data.length >= recentLimit && recentLimit < 500 && (
+          <div className="border-t border-outline-variant/10 p-4 flex justify-center">
+            <button
+              onClick={() => setRecentLimit((n) => Math.min(500, n + 50))}
+              className="text-primary text-sm font-bold uppercase tracking-wider hover:underline"
+            >
+              Load more
+            </button>
+          </div>
+        )}
       </section>
     </div>
   );
