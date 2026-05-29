@@ -63,6 +63,26 @@ export class HealthController {
     res.json(await this.service.getExerciseLogs(start, end));
   }
 
+  async getSpo2(req: Request, res: Response): Promise<void> {
+    const { start, end } = parseDateRange(req, this.tz);
+    res.json(await this.service.getSpo2(start, end));
+  }
+
+  async getBreathingRate(req: Request, res: Response): Promise<void> {
+    const { start, end } = parseDateRange(req, this.tz);
+    res.json(await this.service.getBreathingRate(start, end));
+  }
+
+  async getSkinTemp(req: Request, res: Response): Promise<void> {
+    const { start, end } = parseDateRange(req, this.tz);
+    res.json(await this.service.getSkinTemp(start, end));
+  }
+
+  async getCardioScore(req: Request, res: Response): Promise<void> {
+    const { start, end } = parseDateRange(req, this.tz);
+    res.json(await this.service.getCardioScore(start, end));
+  }
+
   async getRecords(_req: Request, res: Response): Promise<void> {
     // Pass "today" in the user's calendar so the streak walker can skip
     // an in-progress final day rather than counting partial-data zeroes

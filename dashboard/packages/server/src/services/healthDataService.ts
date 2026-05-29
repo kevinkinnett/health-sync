@@ -23,6 +23,10 @@ import type { HeartRateRepository } from "../repositories/heartRateRepo.js";
 import type { WeightRepository } from "../repositories/weightRepo.js";
 import type { HrvRepository } from "../repositories/hrvRepo.js";
 import type { ExerciseLogRepository } from "../repositories/exerciseLogRepo.js";
+import type { Spo2Repository } from "../repositories/spo2Repo.js";
+import type { BreathingRateRepository } from "../repositories/breathingRateRepo.js";
+import type { SkinTempRepository } from "../repositories/skinTempRepo.js";
+import type { CardioScoreRepository } from "../repositories/cardioScoreRepo.js";
 import { avg, describeCorrelation, pearson } from "./stats.js";
 import { addDays } from "./userTz.js";
 
@@ -34,6 +38,10 @@ export class HealthDataService {
     private weightRepo: WeightRepository,
     private hrvRepo: HrvRepository,
     private exerciseLogRepo: ExerciseLogRepository,
+    private spo2Repo: Spo2Repository,
+    private breathingRateRepo: BreathingRateRepository,
+    private skinTempRepo: SkinTempRepository,
+    private cardioScoreRepo: CardioScoreRepository,
   ) {}
 
   async getSummary(): Promise<HealthSummary> {
@@ -101,6 +109,22 @@ export class HealthDataService {
 
   async getExerciseLogs(start: string, end: string) {
     return this.exerciseLogRepo.findByDateRange(start, end);
+  }
+
+  async getSpo2(start: string, end: string) {
+    return this.spo2Repo.findByDateRange(start, end);
+  }
+
+  async getBreathingRate(start: string, end: string) {
+    return this.breathingRateRepo.findByDateRange(start, end);
+  }
+
+  async getSkinTemp(start: string, end: string) {
+    return this.skinTempRepo.findByDateRange(start, end);
+  }
+
+  async getCardioScore(start: string, end: string) {
+    return this.cardioScoreRepo.findByDateRange(start, end);
   }
 
   async getWeeklyInsights(): Promise<WeeklyInsights> {

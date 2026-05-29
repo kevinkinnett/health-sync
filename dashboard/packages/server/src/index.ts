@@ -14,6 +14,10 @@ import { HeartRateRepository } from "./repositories/heartRateRepo.js";
 import { WeightRepository } from "./repositories/weightRepo.js";
 import { HrvRepository } from "./repositories/hrvRepo.js";
 import { ExerciseLogRepository } from "./repositories/exerciseLogRepo.js";
+import { Spo2Repository } from "./repositories/spo2Repo.js";
+import { BreathingRateRepository } from "./repositories/breathingRateRepo.js";
+import { SkinTempRepository } from "./repositories/skinTempRepo.js";
+import { CardioScoreRepository } from "./repositories/cardioScoreRepo.js";
 import { IngestRepository } from "./repositories/ingestRepo.js";
 import { SupplementRepository } from "./repositories/supplementRepo.js";
 import { MedicationRepository } from "./repositories/medicationRepo.js";
@@ -64,6 +68,10 @@ const heartRateRepo = new HeartRateRepository(pool);
 const weightRepo = new WeightRepository(pool);
 const hrvRepo = new HrvRepository(pool);
 const exerciseLogRepo = new ExerciseLogRepository(pool);
+const spo2Repo = new Spo2Repository(pool);
+const breathingRateRepo = new BreathingRateRepository(pool);
+const skinTempRepo = new SkinTempRepository(pool);
+const cardioScoreRepo = new CardioScoreRepository(pool);
 const ingestRepo = new IngestRepository(pool);
 const supplementRepo = new SupplementRepository(pool);
 const medicationRepo = new MedicationRepository(pool);
@@ -86,6 +94,10 @@ const healthDataService = new HealthDataService(
   weightRepo,
   hrvRepo,
   exerciseLogRepo,
+  spo2Repo,
+  breathingRateRepo,
+  skinTempRepo,
+  cardioScoreRepo,
 );
 const ingestService = new IngestService(ingestRepo, config.windmill);
 const supplementService = new SupplementService(supplementRepo);

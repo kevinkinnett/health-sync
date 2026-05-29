@@ -4,10 +4,12 @@ export type { HeartRateDay } from "./types/heartRate.js";
 export type { WeightEntry } from "./types/weight.js";
 export type { HrvDay } from "./types/hrv.js";
 export type { ExerciseLog } from "./types/exerciseLog.js";
-// Spo2Day / BreathingRateDay / SkinTempDay / CardioScoreDay types
-// stay in their source files for future wiring but are not yet
-// surfaced to any caller; re-exporting them earlier was dead weight
-// flagged by audit Tier 5.
+// Overnight "vitals" metrics — surfaced on the Vitals analytics screen
+// and (the numeric three) fed into cross-metric correlations.
+export type { Spo2Day } from "./types/spo2.js";
+export type { BreathingRateDay } from "./types/breathingRate.js";
+export type { SkinTempDay } from "./types/skinTemp.js";
+export type { CardioScoreDay } from "./types/cardioScore.js";
 export type {
   IngestState,
   IngestRun,

@@ -109,6 +109,12 @@ const fakeExerciseLogRepo = {
 let app: express.Express;
 
 beforeAll(() => {
+  // Vitals metrics (spo2/breathing/skin-temp/cardio) aren't exercised
+  // by these tests; empty fakes satisfy the constructor.
+  const fakeVitalsRepo = {
+    findByDateRange: async () => [],
+    findLatest: async () => [],
+  };
   const service = new HealthDataService(
     fakeActivityRepo as any,
     fakeSleepRepo as any,
@@ -116,6 +122,10 @@ beforeAll(() => {
     fakeWeightRepo as any,
     fakeHrvRepo as any,
     fakeExerciseLogRepo as any,
+    fakeVitalsRepo as any,
+    fakeVitalsRepo as any,
+    fakeVitalsRepo as any,
+    fakeVitalsRepo as any,
   );
   const controller = new HealthController(service);
   app = express();
@@ -211,5 +221,26 @@ describe("Health API endpoints", () => {
       heartRate: { latest: expect.any(Object), sparkline: expect.any(Array) },
       weight: { latest: null, sparkline: expect.any(Array) },
     });
+  });
+
+  // The four "vitals" endpoints surface data that was ingested for a
+  // year but never had a read path. These assert the route → controller
+  // → service → repo wiring resolves (the empty fake returns []).
+  it.each([
+    "/api/health/spo2",
+    "/api/health/breathing-rate",
+    "/api/health/skin-temp",
+    "/api/health/cardio-score",
+  ])("GET %s is wired and returns an array", async (path) => {
+    const res = await request(app)
+      .get(`${path}?start=2026-04-01&end=2026-04-01`)
+      .expect(200);
+    expect(res.body).toBeInstanceOf(Array);
+  });
+
+  it("vitals endpoints honor the shared date validation (400 on bad dates)", async () => {
+    await request(app)
+      .get("/api/health/spo2?start=garbage&end=nonsense")
+      .expect(400);
   });
 });

@@ -36,6 +36,11 @@ function makeService({
     findLatest: async () => [],
     findByDateRange: async () => [],
   };
+  // Vitals metrics aren't exercised by the records tests.
+  const fakeVitalsRepo: any = {
+    findLatest: async () => [],
+    findByDateRange: async () => [],
+  };
   return new HealthDataService(
     fakeActivityRepo,
     fakeSleepRepo,
@@ -43,6 +48,10 @@ function makeService({
     fakeWeightRepo,
     fakeHrvRepo,
     fakeExerciseLogRepo,
+    fakeVitalsRepo,
+    fakeVitalsRepo,
+    fakeVitalsRepo,
+    fakeVitalsRepo,
   );
 }
 
