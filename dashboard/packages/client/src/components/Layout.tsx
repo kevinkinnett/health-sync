@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useDateRangeStore, type PresetRange } from "../stores/dateRangeStore";
 import { useUserTimezone } from "../api/queries";
+import { AlertBell } from "./AlertBell";
 
 const presets: { label: string; value: PresetRange }[] = [
   { label: "7D", value: "7d" },
@@ -308,9 +309,7 @@ function TopBar() {
         </div>
 
         {/* Icons */}
-        <button className="text-outline hover:text-on-surface transition-colors p-1">
-          <span className="material-symbols-outlined">notifications</span>
-        </button>
+        <AlertBell />
         <NavLink
           to="/settings"
           className="text-outline hover:text-on-surface transition-colors p-1"
