@@ -96,7 +96,10 @@ export type {
 } from "./types/analytics.js";
 export type { AppConfig } from "./types/config.js";
 
-// ---------------------------------------------------------------------------
-// Runtime helpers (pure functions — usable from both server and client)
-// ---------------------------------------------------------------------------
-export { addDays, formatDateInTz, todayInTz } from "./lib/dates.js";
+// NOTE: this package is TYPES-ONLY at runtime. It ships as raw `.ts`
+// source (no build step) and is consumed by the server as compiled JS,
+// which can only `import type` from here — a runtime value export would
+// make the server's compiled code try to load `src/index.ts` and crash
+// with ERR_UNKNOWN_FILE_EXTENSION. Do not add `export { someFn }` of a
+// runtime value. Pure runtime helpers live in each runtime's own lib
+// (e.g. server `services/userTz.ts`, client `lib/userTz.ts`).

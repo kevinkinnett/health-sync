@@ -4,15 +4,56 @@
  * fixed offsets like `-04:00` here — every helper takes an IANA name
  * (e.g. `America/New_York`) so DST transitions resolve correctly.
  *
- * Pure date-string utilities (`addDays`, `formatDateInTz`, `todayInTz`)
- * live in `@health-dashboard/shared` and are re-exported below; the
- * functions that touch real-Date instants and produce TIMESTAMPTZ
- * bounds (`tzDayStartUtc`, `tzDayEndUtc`) stay here because the
- * client never needs them.
+ * IMPORTANT — why these are defined here and NOT imported from
+ * `@health-dashboard/shared`: the shared package ships as raw `.ts`
+ * source (its `package.json` main is `src/index.ts`, no build step),
+ * and the server runs as COMPILED JS via plain `node`. The server may
+ * only `import type` from shared — a runtime *value* import compiles
+ * to a real `import "@health-dashboard/shared"` that Node resolves to
+ * `src/index.ts` and dies with `ERR_UNKNOWN_FILE_EXTENSION ".ts"`. So
+ * the server keeps its own copy of the pure date helpers. (The client
+ * is bundled by Vite, which transpiles TS, so it can safely share
+ * runtime code — but the server cannot. If we ever want true runtime
+ * dedup, the shared package needs a real build step + dist output.)
  */
 
-export { addDays, formatDateInTz, todayInTz } from "@health-dashboard/shared";
-import { addDays } from "@health-dashboard/shared";
+/**
+ * Returns the local calendar day (`YYYY-MM-DD`) of `instant` as observed
+ * in `tz`. The right way to bucket a UTC instant into "what day did this
+ * happen for the user" — never use `.toISOString().slice(0, 10)`, which
+ * gives the UTC day.
+ */
+export function formatDateInTz(instant: Date | string, tz: string): string {
+  const d = typeof instant === "string" ? new Date(instant) : instant;
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
+}
+
+/** Returns today's calendar day in `tz` (`YYYY-MM-DD`). */
+export function todayInTz(tz: string): string {
+  return formatDateInTz(new Date(), tz);
+}
+
+/**
+ * Adds (or subtracts) calendar days from a `YYYY-MM-DD` string and
+ * returns the same shape. Calendar arithmetic — DST-independent.
+ *
+ * @example addDays("2026-03-08", -7) === "2026-03-01"
+ */
+export function addDays(date: string, days: number): string {
+  const [y, m, d] = date.split("-").map(Number);
+  const t = Date.UTC(y, m - 1, d) + days * 24 * 60 * 60 * 1000;
+  const dt = new Date(t);
+  return [
+    dt.getUTCFullYear(),
+    String(dt.getUTCMonth() + 1).padStart(2, "0"),
+    String(dt.getUTCDate()).padStart(2, "0"),
+  ].join("-");
+}
 
 /**
  * Returns the UTC instant string (`YYYY-MM-DDTHH:MM:SS.sssZ`) that
