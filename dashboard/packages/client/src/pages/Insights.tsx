@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   useChatConversation,
   useChatConversations,
@@ -104,7 +105,15 @@ interface PersistedJob {
 
 function ReportsTab() {
   const list = useInsightGenerations();
-  const [activeIndex, setActiveIndex] = useState(0);
+  const queryClient = useQueryClient();
+  // Track active selection by generationId, NOT list index. A list
+  // index silently slides when the generations array changes — delete
+  // one and "index 2" suddenly points at a different analysis. Anchoring
+  // to the id lets the selection follow the underlying analysis through
+  // refetches; falling back to index 0 only when nothing matches.
+  const [activeGenerationId, setActiveGenerationId] = useState<string | null>(
+    null,
+  );
 
   // Persist in-flight jobId so a navigation/refresh resumes polling
   // rather than orphaning the running generation.
@@ -127,26 +136,43 @@ function ReportsTab() {
     if (!job.data) return;
     if (job.data.status === "completed" || job.data.status === "failed") {
       // Job finished — clear persistence and jump to newest generation.
+      const deadId = persistedJob?.jobId ?? null;
       setPersistedJob(null);
       localStorage.removeItem(JOB_STORAGE_KEY);
-      setActiveIndex(0);
+      setActiveGenerationId(null); // null → defaults to newest in list
+      // Drop the terminal job state from React Query so a future
+      // regenerate doesn't briefly show the previous "completed" /
+      // "failed" data while polling the new job.
+      if (deadId) {
+        queryClient.removeQueries({ queryKey: ["insights", "job", deadId] });
+      }
       list.refetch();
     }
-  }, [job.data, list]);
+  }, [job.data, list, persistedJob?.jobId, queryClient]);
 
   // If the polling endpoint returns 404 (server restarted, evicted the
   // in-memory job state, etc.), clear the orphaned localStorage so the
-  // page doesn't poll a dead jobId forever.
+  // page doesn't poll a dead jobId forever. ALSO drop the cached
+  // error state so the next regenerate doesn't pop a stale red
+  // "Generation failed" banner before the new job's first poll lands.
   useEffect(() => {
     if (!persistedJob) return;
     if (job.error) {
+      const deadId = persistedJob.jobId;
       setPersistedJob(null);
       localStorage.removeItem(JOB_STORAGE_KEY);
+      queryClient.removeQueries({ queryKey: ["insights", "job", deadId] });
     }
-  }, [persistedJob, job.error]);
+  }, [persistedJob, job.error, queryClient]);
 
   const generations = list.data ?? [];
-  const activeSummary = generations[activeIndex];
+  // Resolve the active summary by id. If the tracked id no longer
+  // exists (deleted, never set), fall back to the newest generation.
+  const activeIndex = activeGenerationId
+    ? generations.findIndex((g) => g.generationId === activeGenerationId)
+    : -1;
+  const resolvedIndex = activeIndex >= 0 ? activeIndex : 0;
+  const activeSummary = generations[resolvedIndex];
   const detail = useInsightGeneration(activeSummary?.generationId ?? null);
 
   const onRegenerate = async () => {
@@ -168,7 +194,7 @@ function ReportsTab() {
     )
       return;
     await del.mutateAsync(activeSummary.generationId);
-    setActiveIndex(0);
+    setActiveGenerationId(null); // fall back to newest
   };
 
   const inFlight = job.data?.status === "running" || job.data?.status === "pending";
@@ -204,21 +230,25 @@ function ReportsTab() {
           {generations.length > 0 && (
             <>
               <button
-                onClick={() =>
-                  setActiveIndex((i) => Math.min(generations.length - 1, i + 1))
-                }
-                disabled={activeIndex >= generations.length - 1}
+                onClick={() => {
+                  const next = generations[Math.min(generations.length - 1, resolvedIndex + 1)];
+                  if (next) setActiveGenerationId(next.generationId);
+                }}
+                disabled={resolvedIndex >= generations.length - 1}
                 aria-label="Older analysis"
                 className="p-1 text-outline hover:text-on-surface disabled:opacity-30"
               >
                 <span className="material-symbols-outlined">chevron_left</span>
               </button>
               <span className="text-xs tabular-nums text-outline">
-                {activeIndex + 1} / {generations.length}
+                {resolvedIndex + 1} / {generations.length}
               </span>
               <button
-                onClick={() => setActiveIndex((i) => Math.max(0, i - 1))}
-                disabled={activeIndex === 0}
+                onClick={() => {
+                  const next = generations[Math.max(0, resolvedIndex - 1)];
+                  if (next) setActiveGenerationId(next.generationId);
+                }}
+                disabled={resolvedIndex === 0}
                 aria-label="Newer analysis"
                 className="p-1 text-outline hover:text-on-surface disabled:opacity-30"
               >
@@ -248,7 +278,12 @@ function ReportsTab() {
         </div>
       </header>
 
-      {detail.data && <CategoryAccordion categories={detail.data.categories} />}
+      {/* Hide the stale accordion while a new generation is in flight —
+          otherwise the prior report sits below the progress card and
+          looks like the new output. */}
+      {!inFlight && detail.data && (
+        <CategoryAccordion categories={detail.data.categories} />
+      )}
 
       {!detail.data && !list.isLoading && generations.length === 0 && !inFlight && (
         <div className="bg-surface-container rounded-xl p-12 text-center border border-outline-variant/10">
