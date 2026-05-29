@@ -22,7 +22,14 @@ function cronToHuman(cron: string): string {
   return cron;
 }
 
-function formatDuration(ms: number): string {
+/**
+ * Renders an ingest job's wall-clock duration in `Xm Ys` for ≥1 min
+ * runs, falling back to `Ns` for fast ones. Reserved for the
+ * sub-hour timing the ingest jobs tend to produce — see
+ * `formatWorkoutDuration` in `ExerciseLogTable.tsx` for the
+ * h-and-m variant used on workouts.
+ */
+function formatJobDuration(ms: number): string {
   if (ms >= 60_000)
     return `${Math.round(ms / 60_000)}m ${Math.round((ms % 60_000) / 1000)}s`;
   return `${Math.round(ms / 1000)}s`;
@@ -430,7 +437,7 @@ export function Ingest() {
                     {job.durationMs != null && (
                       <div className="hidden md:block text-right">
                         <div className="text-[10px] text-outline uppercase font-bold tracking-tighter">Duration</div>
-                        <div className="text-xs font-semibold tabular-nums text-on-surface-variant">{formatDuration(job.durationMs)}</div>
+                        <div className="text-xs font-semibold tabular-nums text-on-surface-variant">{formatJobDuration(job.durationMs)}</div>
                       </div>
                     )}
                     {dbRun && (

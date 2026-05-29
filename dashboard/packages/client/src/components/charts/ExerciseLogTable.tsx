@@ -6,7 +6,15 @@ interface Props {
   data: ExerciseLog[];
 }
 
-function formatDuration(ms: number | null): string {
+/**
+ * Renders a workout's duration in `Xh Ym` for ≥1 hour sessions and
+ * `Nm` for shorter ones. Distinct from `formatJobDuration` in
+ * `Ingest.tsx`, which targets sub-minute resolution — workouts
+ * tracked by Fitbit round to the nearest minute, ingest jobs to the
+ * nearest second. Same name, different semantics is the bug audit
+ * #4 flagged; they're now keyed by purpose.
+ */
+function formatWorkoutDuration(ms: number | null): string {
   if (ms == null) return "---";
   const totalMin = Math.round(ms / 60_000);
   if (totalMin >= 60) {
@@ -64,7 +72,7 @@ export function ExerciseLogTable({ data }: Props) {
           <div className="bg-surface-container-low rounded-lg px-3 py-2">
             <div className="text-xs text-on-surface-variant">Total Duration</div>
             <div className="text-xl font-bold text-on-surface">
-              {formatDuration(
+              {formatWorkoutDuration(
                 data.reduce((s, e) => s + (e.durationMs ?? 0), 0),
               )}
             </div>
@@ -93,7 +101,7 @@ export function ExerciseLogTable({ data }: Props) {
                   <span className="text-on-surface-variant">
                     {stats.count}x &middot;{" "}
                     {stats.totalCalories.toLocaleString()} cal &middot;{" "}
-                    {formatDuration(stats.totalDurationMs)}
+                    {formatWorkoutDuration(stats.totalDurationMs)}
                   </span>
                 </div>
               ))}
@@ -142,7 +150,7 @@ export function ExerciseLogTable({ data }: Props) {
                     {e.activityName}
                   </td>
                   <td className="text-right py-1.5 px-2 text-on-surface">
-                    {formatDuration(e.durationMs)}
+                    {formatWorkoutDuration(e.durationMs)}
                   </td>
                   <td className="text-right py-1.5 px-2 text-on-surface">
                     {e.calories?.toLocaleString() ?? "---"}
