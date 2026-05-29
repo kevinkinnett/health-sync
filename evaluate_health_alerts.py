@@ -15,10 +15,16 @@ Detection + dedup/cooldown live server-side (POST /api/alerts/evaluate
 returns ONLY alerts created this run), so this script just fans the
 new ones out to Apprise — no risk of re-pushing a persisting condition.
 
+DELIVERY IS CONTROLLED FROM THE DASHBOARD. The evaluate response carries
+a `delivery` policy (pushEnabled / pushSeverities / appriseUrl) sourced
+from Settings → Notifications, so this script honours the UI without any
+Windmill edits. The `apprise_url` / `push_severities` args are only a
+fallback for an older server that doesn't return a policy.
+
 Activation checklist:
-  1. Deploy the dashboard build that includes /api/alerts/* .
-  2. Configure your Apprise key's targets (the `apprise_url` default
-     points at the "health" key) at https://apprise.tail322ce1.ts.net/.
+  1. Deploy the dashboard build that includes /api/alerts/* + /api/settings/*.
+  2. Register your Apprise key's target (Settings → Notifications has a
+     "Send test" button to verify) at https://apprise.tail322ce1.ts.net/.
   3. Enable this script's schedule.
 """
 
@@ -31,16 +37,28 @@ def main(
     push_severities: list = ["alert", "warn"],
 ):
     # 1. Trigger detection. The server persists new alerts (with a
-    #    per-kind cooldown) and returns only what it just created.
+    #    per-kind cooldown) and returns only what it just created, along
+    #    with the delivery policy from the user's notification settings.
     resp = requests.post(f"{dashboard_url}/api/alerts/evaluate", timeout=120)
     resp.raise_for_status()
-    created = resp.json().get("created", [])
+    data = resp.json()
+    created = data.get("created", [])
 
-    # 2. Forward the new high-severity ones to Apprise.
+    # Delivery policy from the dashboard UI; fall back to this script's
+    # args if an older server build doesn't return one.
+    delivery = data.get("delivery") or {}
+    push_enabled = delivery.get("pushEnabled", True)
+    severities = delivery.get("pushSeverities") or push_severities
+    target = delivery.get("appriseUrl") or apprise_url
+
+    # 2. Forward the new high-severity ones to Apprise — unless push is
+    #    switched off in settings.
     pushed = 0
     failed = 0
+    skipped = 0
     for alert in created:
-        if alert.get("severity") not in push_severities:
+        if not push_enabled or alert.get("severity") not in severities:
+            skipped += 1
             continue
         title = f"\U0001fa7a {alert.get('title', 'Health alert')}"  # 🩺
         body = alert.get("detail", "")
@@ -48,7 +66,7 @@ def main(
         apprise_type = "failure" if alert.get("severity") == "alert" else "warning"
         try:
             push = requests.post(
-                apprise_url,
+                target,
                 json={"title": title, "body": body, "type": apprise_type},
                 timeout=30,
             )
@@ -58,6 +76,12 @@ def main(
             print(f"Apprise push failed for alert {alert.get('id')}: {exc}")
             failed += 1
 
-    summary = {"created": len(created), "pushed": pushed, "failed": failed}
+    summary = {
+        "created": len(created),
+        "pushed": pushed,
+        "failed": failed,
+        "skipped": skipped,
+        "push_enabled": push_enabled,
+    }
     print(summary)
     return summary

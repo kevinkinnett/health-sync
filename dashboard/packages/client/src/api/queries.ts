@@ -22,6 +22,7 @@ import type {
   CardioScoreDay,
   ReadinessScore,
   AlertsResponse,
+  NotificationSettings,
   IngestState,
   IngestRun,
   IngestOverview,
@@ -326,6 +327,42 @@ export function useMarkAlertsRead() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["alerts"] });
     },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Notification settings (the Settings → Notifications control screen)
+// ---------------------------------------------------------------------------
+
+export function useNotificationSettings() {
+  return useQuery<NotificationSettings>({
+    queryKey: ["settings", "notifications"],
+    queryFn: () => apiFetch(`/settings/notifications`),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useUpdateNotificationSettings() {
+  const queryClient = useQueryClient();
+  return useMutation<NotificationSettings, Error, NotificationSettings>({
+    mutationFn: (body) =>
+      apiFetch(`/settings/notifications`, {
+        method: "PUT",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: (saved) => {
+      // The server returns the clamped/normalised settings — seed the
+      // cache with the canonical value so the form reflects any clamping.
+      queryClient.setQueryData(["settings", "notifications"], saved);
+    },
+  });
+}
+
+/** Fire a one-off test push; resolves to the Apprise delivery status. */
+export function useTestNotification() {
+  return useMutation<{ delivered: boolean; status: number }, Error, void>({
+    mutationFn: () =>
+      apiFetch(`/settings/notifications/test`, { method: "POST" }),
   });
 }
 

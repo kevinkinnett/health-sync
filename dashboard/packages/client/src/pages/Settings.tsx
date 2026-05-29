@@ -2,6 +2,7 @@ import { useHealthCheck, useIngestState } from "../api/queries";
 import { useUnitsStore } from "../stores/unitsStore";
 import type { UnitSystem } from "../lib/units";
 import { formatRelativeAgo } from "../lib/relativeTime";
+import { NotificationSettingsCard } from "../components/NotificationSettingsCard";
 
 /**
  * Read-only status display for connected ingest sources. Driven by the
@@ -239,6 +240,7 @@ export function Settings() {
 
         {/* Right column */}
         <section className="lg:col-span-8 space-y-6">
+          <NotificationSettingsCard />
           <SourceStatusCard />
         </section>
       </div>
