@@ -15,8 +15,9 @@ export class AlertController {
   }
 
   async evaluate(_req: Request, res: Response): Promise<void> {
-    const created = await this.service.evaluate();
-    res.json({ created });
+    // Service returns { created, delivery } — the delivery policy tells
+    // the scheduled job whether/which/where to push.
+    res.json(await this.service.evaluate());
   }
 
   async markAllRead(_req: Request, res: Response): Promise<void> {

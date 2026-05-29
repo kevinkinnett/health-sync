@@ -1,38 +1,60 @@
 import type {
   AlertsResponse,
+  EvaluateAlertsResponse,
   HealthAlert,
 } from "@health-dashboard/shared";
 import type { HealthDataService } from "./healthDataService.js";
 import type { AlertRepository } from "../repositories/alertRepo.js";
+import type { SettingService } from "./settingService.js";
 import { computeReadiness } from "./readiness.js";
-import { detectAlerts } from "./alerts.js";
+import { detectAlerts, DEFAULT_DETECTION, type DetectionConfig } from "./alerts.js";
 
 /**
  * Orchestrates anomaly detection + persistence. Pulls the joined
- * recovery series once (reusing HealthDataService's join), runs the
+ * recovery series once (reusing HealthDataService's join), reads the
+ * user's notification settings (thresholds + per-kind toggles), runs the
  * pure detectors, and persists any genuinely-new alerts (the repo's
- * cooldown handles dedup). The scheduled Windmill job calls
- * `evaluate()` daily and forwards the returned `created` alerts to
- * Apprise.
+ * cooldown handles dedup). The scheduled Windmill job calls `evaluate()`
+ * daily; the returned `delivery` policy tells it whether/which/where to
+ * push, so delivery is controlled entirely from the dashboard UI.
  */
 export class AlertService {
   constructor(
     private healthData: HealthDataService,
     private repo: AlertRepository,
+    private settings: SettingService,
   ) {}
 
-  /** Detect + persist; returns only the alerts created this run. */
-  async evaluate(): Promise<HealthAlert[]> {
+  /** Detect + persist; returns the alerts created this run + push policy. */
+  async evaluate(): Promise<EvaluateAlertsResponse> {
+    const s = await this.settings.getNotificationSettings();
     const days = await this.healthData.getReadinessInputs();
     const readiness = computeReadiness(days);
-    const detected = detectAlerts(days, readiness);
+
+    const config: DetectionConfig = {
+      illnessSigma: s.thresholds.illnessSigma,
+      // not surfaced in the UI (yet) — keep the default.
+      skinTempWarm: DEFAULT_DETECTION.skinTempWarm,
+      spo2AlertBelow: s.thresholds.spo2AlertBelow,
+      spo2WarnBelow: s.thresholds.spo2WarnBelow,
+      readinessDropPoints: s.thresholds.readinessDropPoints,
+      kinds: s.kinds,
+    };
+    const detected = detectAlerts(days, readiness, config);
 
     const created: HealthAlert[] = [];
     for (const d of detected) {
-      const row = await this.repo.insertIfNew(d);
+      const row = await this.repo.insertIfNew(d, s.thresholds.cooldownDays);
       if (row) created.push(row);
     }
-    return created;
+    return {
+      created,
+      delivery: {
+        pushEnabled: s.pushEnabled,
+        pushSeverities: s.pushSeverities,
+        appriseUrl: s.appriseUrl,
+      },
+    };
   }
 
   async list(limit = 50): Promise<AlertsResponse> {

@@ -70,8 +70,14 @@ export type {
   HealthAlertKind,
   HealthAlert,
   AlertsResponse,
+  AlertDelivery,
   EvaluateAlertsResponse,
 } from "./types/alerts.js";
+export type {
+  NotificationThresholds,
+  NotificationKindToggles,
+  NotificationSettings,
+} from "./types/settings.js";
 export type {
   PersonalRecord,
   Streak,

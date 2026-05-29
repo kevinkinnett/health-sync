@@ -43,16 +43,21 @@ export class AlertRepository {
 
   /**
    * Insert an alert unless one of the same kind already exists with a
-   * `date` within COOLDOWN_DAYS of this one. Returns the new row, or
+   * `date` within `cooldownDays` of this one. Returns the new row, or
    * null when suppressed by cooldown (idempotent across same-day runs).
+   * The cooldown defaults to COOLDOWN_DAYS but is overridable from the
+   * user's notification settings.
    */
-  async insertIfNew(alert: DetectedAlert): Promise<HealthAlert | null> {
+  async insertIfNew(
+    alert: DetectedAlert,
+    cooldownDays: number = COOLDOWN_DAYS,
+  ): Promise<HealthAlert | null> {
     const { rows: existing } = await this.pool.query(
       `SELECT 1 FROM universe.health_alert
        WHERE kind = $1
          AND date > ($2::date - ($3 || ' days')::interval)
        LIMIT 1`,
-      [alert.kind, alert.date, String(COOLDOWN_DAYS)],
+      [alert.kind, alert.date, String(Math.max(0, Math.floor(cooldownDays)))],
     );
     if (existing.length > 0) return null;
 

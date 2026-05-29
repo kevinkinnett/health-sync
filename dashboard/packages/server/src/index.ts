@@ -28,6 +28,10 @@ import { AlertRepository } from "./repositories/alertRepo.js";
 import { AlertService } from "./services/alertService.js";
 import { AlertController } from "./controllers/alertController.js";
 import { createAlertRoutes } from "./routes/alerts.js";
+import { SettingRepository } from "./repositories/settingRepo.js";
+import { SettingService } from "./services/settingService.js";
+import { SettingsController } from "./controllers/settingsController.js";
+import { createSettingsRoutes } from "./routes/settings.js";
 import { HealthDataService } from "./services/healthDataService.js";
 import { InsightService } from "./services/insightService.js";
 import { InsightChatService } from "./services/insightChatService.js";
@@ -83,6 +87,7 @@ const dossierRepo = new DossierRepository(pool);
 const apiLogRepo = new ApiLogRepository(pool);
 const insightRepo = new InsightRepository(pool);
 const alertRepo = new AlertRepository(pool);
+const settingRepo = new SettingRepository(pool);
 
 // Ensure user-input tables exist before serving traffic
 await supplementRepo.ensureTables();
@@ -91,6 +96,7 @@ await dossierRepo.ensureTables();
 await apiLogRepo.ensureTables();
 await insightRepo.ensureTables();
 await alertRepo.ensureTables();
+await settingRepo.ensureTables();
 
 // Services
 const healthDataService = new HealthDataService(
@@ -167,8 +173,17 @@ app.use("/api/dossier", createDossierRoutes(dossierController));
 app.use("/api/analytics", createAnalyticsRoutes(analyticsController));
 app.use("/api/admin/api-logs", createApiLogRoutes(apiLogRepo));
 
+// User settings (persisted in universe.app_setting). The app's first
+// server-backed settings surface — drives the notifications control
+// screen and feeds detection thresholds + delivery policy below.
+const settingService = new SettingService(settingRepo);
+const settingsController = new SettingsController(settingService);
+app.use("/api/settings", createSettingsRoutes(settingsController));
+
 // Proactive health alerts (anomaly detection over recovery signals).
-const alertService = new AlertService(healthDataService, alertRepo);
+// Reads thresholds/toggles from settings; the evaluate response carries
+// the push-delivery policy for the scheduled Windmill job.
+const alertService = new AlertService(healthDataService, alertRepo, settingService);
 const alertController = new AlertController(alertService);
 app.use("/api/alerts", createAlertRoutes(alertController));
 

@@ -43,7 +43,23 @@ export interface AlertsResponse {
   unreadCount: number;
 }
 
-/** POST /api/alerts/evaluate response — only the alerts created this run. */
+/**
+ * The push-delivery policy in force, returned alongside an evaluation so
+ * the scheduled Windmill job is a dumb forwarder: it pushes the `created`
+ * alerts whose severity is in `pushSeverities` to `appriseUrl`, but only
+ * if `pushEnabled`. All three come from the user's notification settings,
+ * so delivery is controlled entirely from the dashboard UI — no Windmill
+ * edits needed to mute pushes or change the target. Contains NO secret:
+ * `appriseUrl` is the notify endpoint; the token lives in Apprise's config.
+ */
+export interface AlertDelivery {
+  pushEnabled: boolean;
+  pushSeverities: AlertSeverity[];
+  appriseUrl: string;
+}
+
+/** POST /api/alerts/evaluate response — alerts created this run + policy. */
 export interface EvaluateAlertsResponse {
   created: HealthAlert[];
+  delivery: AlertDelivery;
 }
