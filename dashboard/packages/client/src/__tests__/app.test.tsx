@@ -15,9 +15,24 @@ import { AnalyticsActivity } from "../pages/analytics/Activity";
 import { AnalyticsSleep } from "../pages/analytics/Sleep";
 import { AnalyticsHeartRate } from "../pages/analytics/HeartRate";
 
-// Mock all API calls to return empty/loading states
+// Mock all API calls to return empty/loading states. The readiness
+// endpoint must return a valid (insufficient) ReadinessScore object —
+// the Dashboard's ReadinessCard reads `.band`, so a bare [] would
+// crash the render.
 vi.mock("../api/client", () => ({
-  apiFetch: vi.fn(() => Promise.resolve([])),
+  apiFetch: vi.fn((path?: string) =>
+    path?.includes("/health/readiness")
+      ? Promise.resolve({
+          date: null,
+          score: null,
+          band: "insufficient",
+          summary: "",
+          baselineDays: 0,
+          components: [],
+          history: [],
+        })
+      : Promise.resolve([]),
+  ),
 }));
 
 

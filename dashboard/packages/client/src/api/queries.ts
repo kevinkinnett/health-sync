@@ -20,6 +20,7 @@ import type {
   BreathingRateDay,
   SkinTempDay,
   CardioScoreDay,
+  ReadinessScore,
   IngestState,
   IngestRun,
   IngestOverview,
@@ -287,6 +288,19 @@ export function useCardioScore() {
   return useQuery<CardioScoreDay[]>({
     queryKey: ["health", "cardio-score", start, end],
     queryFn: () => apiFetch(`/health/cardio-score?start=${start}&end=${end}`),
+  });
+}
+
+/**
+ * Personal readiness score. No date params — always the latest scored
+ * day. Lives under the ["health"] prefix so an ingest run invalidates
+ * it like the other metrics.
+ */
+export function useReadiness() {
+  return useQuery<ReadinessScore>({
+    queryKey: ["health", "readiness"],
+    queryFn: () => apiFetch(`/health/readiness`),
+    staleTime: 5 * 60 * 1000,
   });
 }
 

@@ -1,6 +1,8 @@
 import { StatCard } from "../components/StatCard";
 import { WeeklyInsights } from "../components/WeeklyInsights";
 import { GoalRings } from "../components/GoalRings";
+import { ReadinessCard } from "../components/ReadinessCard";
+import { QueryBoundary } from "../components/QueryBoundary";
 import { ActivityChart } from "../components/charts/ActivityChart";
 import { SleepStagesChart } from "../components/charts/SleepStagesChart";
 import { HeartRateChart } from "../components/charts/HeartRateChart";
@@ -8,6 +10,7 @@ import { WeightChart } from "../components/charts/WeightChart";
 import {
   useHealthSummary,
   useWeeklyInsights,
+  useReadiness,
   useActivity,
   useSleep,
   useHeartRate,
@@ -19,6 +22,7 @@ import { convertWeight, weightUnitLabel } from "../lib/units";
 export function Dashboard() {
   const summary = useHealthSummary();
   const insights = useWeeklyInsights();
+  const readiness = useReadiness();
   const activity = useActivity();
   const sleep = useSleep();
   const heartRate = useHeartRate();
@@ -37,6 +41,11 @@ export function Dashboard() {
 
   return (
     <div className="space-y-6">
+      {/* Readiness — the "today" instrument, above everything else. */}
+      <QueryBoundary query={readiness} skeleton={null}>
+        {(data) => <ReadinessCard data={data} />}
+      </QueryBoundary>
+
       {/* Top Bento: Weekly Insights + Goal Rings */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <div className="xl:col-span-2">
