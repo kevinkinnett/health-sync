@@ -32,38 +32,50 @@ interface NavSectionDef {
  * record a dose), separated from the analytics views that report on
  * those doses to keep the two intents from blurring.
  */
+/**
+ * The "Analyze" sub-section's items, in order. Exported so
+ * `<AnalyticsLayout>`'s in-page pill strip can derive its own list
+ * from the same source — previously it kept a parallel array which
+ * silently drifted. Items in this list MUST live under
+ * `/analytics/*` (the relative paths the layout's pill strip
+ * generates from `to.split("/").pop()`); the only exception is
+ * `/insights` which lives at the top level but reads as part of
+ * the analyze family.
+ */
+export const analyzeNavItems: NavLinkDef[] = [
+  { to: "/analytics/overview", label: "Overview", icon: "insights" },
+  { to: "/analytics/activity", label: "Activity", icon: "footprint" },
+  { to: "/analytics/sleep", label: "Sleep", icon: "bedtime" },
+  { to: "/analytics/heart-rate", label: "Heart Rate", icon: "favorite" },
+  { to: "/analytics/hrv", label: "HRV", icon: "monitor_heart" },
+  { to: "/analytics/weight", label: "Weight", icon: "scale" },
+  { to: "/analytics/exercises", label: "Exercises", icon: "exercise" },
+  { to: "/analytics/records", label: "Records", icon: "emoji_events" },
+  {
+    to: "/analytics/correlations",
+    label: "Correlations",
+    icon: "scatter_plot",
+  },
+  {
+    to: "/analytics/supplements",
+    label: "Supplements",
+    icon: "medication",
+  },
+  {
+    to: "/analytics/medications",
+    label: "Medications",
+    icon: "prescriptions",
+  },
+  { to: "/insights", label: "AI Insights", icon: "auto_awesome" },
+];
+
 const navSections: NavSectionDef[] = [
   {
     items: [{ to: "/", label: "Dashboard", icon: "dashboard", end: true }],
   },
   {
     header: "Analyze",
-    items: [
-      { to: "/analytics/overview", label: "Overview", icon: "insights" },
-      { to: "/analytics/activity", label: "Activity", icon: "footprint" },
-      { to: "/analytics/sleep", label: "Sleep", icon: "bedtime" },
-      { to: "/analytics/heart-rate", label: "Heart Rate", icon: "favorite" },
-      { to: "/analytics/hrv", label: "HRV", icon: "monitor_heart" },
-      { to: "/analytics/weight", label: "Weight", icon: "scale" },
-      { to: "/analytics/exercises", label: "Exercises", icon: "exercise" },
-      { to: "/analytics/records", label: "Records", icon: "emoji_events" },
-      {
-        to: "/analytics/correlations",
-        label: "Correlations",
-        icon: "scatter_plot",
-      },
-      {
-        to: "/analytics/supplements",
-        label: "Supplements",
-        icon: "medication",
-      },
-      {
-        to: "/analytics/medications",
-        label: "Medications",
-        icon: "prescriptions",
-      },
-      { to: "/insights", label: "AI Insights", icon: "auto_awesome" },
-    ],
+    items: analyzeNavItems,
   },
   {
     header: "Track",

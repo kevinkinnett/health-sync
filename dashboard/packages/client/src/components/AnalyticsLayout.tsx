@@ -1,18 +1,5 @@
 import { NavLink, Outlet } from "react-router-dom";
-
-const subNav = [
-  { to: "overview", label: "Overview" },
-  { to: "activity", label: "Activity" },
-  { to: "sleep", label: "Sleep" },
-  { to: "heart-rate", label: "Heart Rate" },
-  { to: "hrv", label: "HRV" },
-  { to: "weight", label: "Weight" },
-  { to: "exercises", label: "Exercises" },
-  { to: "records", label: "Records" },
-  { to: "correlations", label: "Correlations" },
-  { to: "supplements", label: "Supplements" },
-  { to: "medications", label: "Medications" },
-];
+import { analyzeNavItems } from "./Layout";
 
 /**
  * Wraps every `/analytics/*` route. On desktop the left sidebar is
@@ -21,7 +8,26 @@ const subNav = [
  * stay visible. On smaller viewports — where the sidebar collapses to
  * the bottom dock — the pill sub-nav reappears so users still have a
  * deep-linkable way to switch between metric views.
+ *
+ * The pill list is derived from `analyzeNavItems` (the same source
+ * the desktop sidebar's "Analyze" section uses). Two parallel arrays
+ * had a habit of drifting — same data, two declarations is exactly
+ * the kind of duplication the audit flagged.
+ *
+ * The pill strip needs RELATIVE paths (`overview`, `activity`, …)
+ * because it's nested under the `/analytics` route; we strip the
+ * `/analytics/` prefix from the shared items here. The single AI
+ * Insights entry that doesn't sit under `/analytics/` is filtered
+ * out — it lives in the desktop section but doesn't belong on the
+ * in-page sub-nav.
  */
+const subNav = analyzeNavItems
+  .filter((item) => item.to.startsWith("/analytics/"))
+  .map((item) => ({
+    to: item.to.replace(/^\/analytics\//, ""),
+    label: item.label,
+  }));
+
 export function AnalyticsLayout() {
   return (
     <div className="space-y-6">
@@ -34,7 +40,11 @@ export function AnalyticsLayout() {
             Deep-dive metric views, records, correlations, and intake insights.
           </p>
         </div>
-        <nav className="lg:hidden flex flex-wrap gap-1 p-1.5 bg-surface-container-low rounded-2xl border border-outline-variant/10">
+        <nav
+          aria-label="Analytics sub-navigation"
+          data-testid="analytics-subnav"
+          className="lg:hidden flex flex-wrap gap-1 p-1.5 bg-surface-container-low rounded-2xl border border-outline-variant/10"
+        >
           {subNav.map((tab) => (
             <NavLink
               key={tab.to}
