@@ -66,6 +66,13 @@ export type {
   ReadinessScore,
 } from "./types/readiness.js";
 export type {
+  AlertSeverity,
+  HealthAlertKind,
+  HealthAlert,
+  AlertsResponse,
+  EvaluateAlertsResponse,
+} from "./types/alerts.js";
+export type {
   PersonalRecord,
   Streak,
   RecordsData,

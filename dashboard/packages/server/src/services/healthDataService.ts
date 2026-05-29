@@ -130,12 +130,12 @@ export class HealthDataService {
   }
 
   /**
-   * Compute the personal readiness score. Pulls ~90 days of each
-   * recovery signal, joins by date, and hands off to the pure
-   * `computeReadiness` for the z-vs-baseline math. 90 days comfortably
-   * covers the 30-day baseline window plus the 14-day history series.
+   * Join ~90 days of every recovery signal into one row-per-day series.
+   * 90 days comfortably covers the 30-day baseline window plus the
+   * 14-day history. Shared by `getReadiness` and the alert evaluator so
+   * the join lives in exactly one place.
    */
-  async getReadiness(): Promise<ReadinessScore> {
+  async getReadinessInputs(): Promise<ReadinessDayInput[]> {
     const N = 90;
     const [hrv, heartRate, sleep, breathing, spo2, skinTemp] =
       await Promise.all([
@@ -172,7 +172,15 @@ export class HealthDataService {
     for (const s of spo2) ensure(s.date).spo2 = s.avgValue;
     for (const s of skinTemp) ensure(s.date).skinTemp = s.nightlyRelative;
 
-    return computeReadiness([...byDate.values()]);
+    return [...byDate.values()];
+  }
+
+  /**
+   * Compute the personal readiness score from the joined inputs — see
+   * `services/readiness.ts` for the z-vs-baseline methodology.
+   */
+  async getReadiness(): Promise<ReadinessScore> {
+    return computeReadiness(await this.getReadinessInputs());
   }
 
   async getWeeklyInsights(): Promise<WeeklyInsights> {

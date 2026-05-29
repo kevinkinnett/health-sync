@@ -24,6 +24,10 @@ import { MedicationRepository } from "./repositories/medicationRepo.js";
 import { DossierRepository } from "./repositories/dossierRepo.js";
 import { ApiLogRepository } from "./repositories/apiLogRepo.js";
 import { InsightRepository } from "./repositories/insightRepo.js";
+import { AlertRepository } from "./repositories/alertRepo.js";
+import { AlertService } from "./services/alertService.js";
+import { AlertController } from "./controllers/alertController.js";
+import { createAlertRoutes } from "./routes/alerts.js";
 import { HealthDataService } from "./services/healthDataService.js";
 import { InsightService } from "./services/insightService.js";
 import { InsightChatService } from "./services/insightChatService.js";
@@ -78,6 +82,7 @@ const medicationRepo = new MedicationRepository(pool);
 const dossierRepo = new DossierRepository(pool);
 const apiLogRepo = new ApiLogRepository(pool);
 const insightRepo = new InsightRepository(pool);
+const alertRepo = new AlertRepository(pool);
 
 // Ensure user-input tables exist before serving traffic
 await supplementRepo.ensureTables();
@@ -85,6 +90,7 @@ await medicationRepo.ensureTables();
 await dossierRepo.ensureTables();
 await apiLogRepo.ensureTables();
 await insightRepo.ensureTables();
+await alertRepo.ensureTables();
 
 // Services
 const healthDataService = new HealthDataService(
@@ -160,6 +166,11 @@ app.use("/api/medications", createMedicationRoutes(medicationController));
 app.use("/api/dossier", createDossierRoutes(dossierController));
 app.use("/api/analytics", createAnalyticsRoutes(analyticsController));
 app.use("/api/admin/api-logs", createApiLogRoutes(apiLogRepo));
+
+// Proactive health alerts (anomaly detection over recovery signals).
+const alertService = new AlertService(healthDataService, alertRepo);
+const alertController = new AlertController(alertService);
+app.use("/api/alerts", createAlertRoutes(alertController));
 
 // AI Insights + Chat — the v1 endpoints become tools that the LLM
 // can call. Two surfaces, one tool registry: Reports = parallel
