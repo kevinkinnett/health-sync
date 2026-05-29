@@ -27,6 +27,7 @@ import type { Spo2Repository } from "../repositories/spo2Repo.js";
 import type { BreathingRateRepository } from "../repositories/breathingRateRepo.js";
 import type { SkinTempRepository } from "../repositories/skinTempRepo.js";
 import type { CardioScoreRepository } from "../repositories/cardioScoreRepo.js";
+import type { EightSleepRepository } from "../repositories/eightSleepRepo.js";
 import { avg, describeCorrelation, pearson } from "./stats.js";
 import { addDays } from "./userTz.js";
 import { computeReadiness, type ReadinessDayInput } from "./readiness.js";
@@ -44,6 +45,7 @@ export class HealthDataService {
     private breathingRateRepo: BreathingRateRepository,
     private skinTempRepo: SkinTempRepository,
     private cardioScoreRepo: CardioScoreRepository,
+    private eightSleepRepo: EightSleepRepository,
   ) {}
 
   async getSummary(): Promise<HealthSummary> {
@@ -137,7 +139,7 @@ export class HealthDataService {
    */
   async getReadinessInputs(): Promise<ReadinessDayInput[]> {
     const N = 90;
-    const [hrv, heartRate, sleep, breathing, spo2, skinTemp] =
+    const [hrv, heartRate, sleep, breathing, spo2, skinTemp, eight] =
       await Promise.all([
         this.hrvRepo.findLatest(N),
         this.heartRateRepo.findLatest(N),
@@ -145,6 +147,7 @@ export class HealthDataService {
         this.breathingRateRepo.findLatest(N),
         this.spo2Repo.findLatest(N),
         this.skinTempRepo.findLatest(N),
+        this.eightSleepRepo.findLatest(N),
       ]);
 
     const byDate = new Map<string, ReadinessDayInput>();
@@ -153,24 +156,36 @@ export class HealthDataService {
       if (!d) {
         d = {
           date,
-          hrv: null,
-          rhr: null,
-          sleepMin: null,
-          breathing: null,
-          spo2: null,
+          hrv: {},
+          rhr: {},
+          sleepMin: {},
+          breathing: {},
+          spo2: {},
           skinTemp: null,
+          restlessness: null,
         };
         byDate.set(date, d);
       }
       return d;
     };
 
-    for (const h of hrv) ensure(h.date).hrv = h.dailyRmssd;
-    for (const h of heartRate) ensure(h.date).rhr = h.restingHeartRate;
-    for (const s of sleep) ensure(s.date).sleepMin = s.totalMinutesAsleep;
-    for (const b of breathing) ensure(b.date).breathing = b.breathingRate;
-    for (const s of spo2) ensure(s.date).spo2 = s.avgValue;
+    // Fitbit sources
+    for (const h of hrv) ensure(h.date).hrv.fitbit = h.dailyRmssd;
+    for (const h of heartRate) ensure(h.date).rhr.fitbit = h.restingHeartRate;
+    for (const s of sleep) ensure(s.date).sleepMin.fitbit = s.totalMinutesAsleep;
+    for (const b of breathing) ensure(b.date).breathing.fitbit = b.breathingRate;
+    for (const s of spo2) ensure(s.date).spo2.fitbit = s.avgValue;
     for (const s of skinTemp) ensure(s.date).skinTemp = s.nightlyRelative;
+
+    // Eight Sleep sources (mattress sensor)
+    for (const e of eight) {
+      const d = ensure(e.date);
+      d.hrv.eightSleep = e.avgHrvRmssd;
+      d.rhr.eightSleep = e.avgHeartRate;
+      d.sleepMin.eightSleep = e.sleepDurationMin;
+      d.breathing.eightSleep = e.avgRespiratoryRate;
+      d.restlessness = e.tnt;
+    }
 
     return [...byDate.values()];
   }

@@ -10,6 +10,7 @@ export type { Spo2Day } from "./types/spo2.js";
 export type { BreathingRateDay } from "./types/breathingRate.js";
 export type { SkinTempDay } from "./types/skinTemp.js";
 export type { CardioScoreDay } from "./types/cardioScore.js";
+export type { EightSleepDay } from "./types/eightSleep.js";
 export type {
   IngestState,
   IngestRun,
@@ -61,6 +62,7 @@ export type {
   ReadinessBand,
   ReadinessComponentStatus,
   ReadinessMetric,
+  ReadinessComponentSource,
   ReadinessComponent,
   ReadinessPoint,
   ReadinessScore,

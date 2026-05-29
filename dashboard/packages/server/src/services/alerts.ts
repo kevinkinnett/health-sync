@@ -4,47 +4,41 @@ import type {
   ReadinessScore,
 } from "@health-dashboard/shared";
 import type { ReadinessDayInput } from "./readiness.js";
+import {
+  fuseMetric,
+  type FusibleMetric,
+  type ReadinessSource,
+  type SourceValues,
+} from "./signalFusion.js";
 
 /**
  * Deterministic anomaly detection over the recovery signals. Pure (no
  * DB, no clock) so the rules are unit-testable with synthetic series.
  *
- * Anti-noise discipline (the thing that makes or breaks an alert
- * system):
- *   - Only THREE kinds, each chosen to mean something.
- *   - The illness triad requires multi-DAY persistence, not one noisy
- *     night.
- *   - Severity tiers — only `alert` is meant to be pushed; `warn` is
- *     in-app. Persistence + the repository's cooldown (insert-once-per-
- *     kind-per-window) stop daily re-firing.
+ * Now SOURCE-AWARE: "elevated vs baseline" is judged on the FUSED signal
+ * (Fitbit + Eight Sleep, per `signalFusion.ts`), so the illness triad
+ * benefits from Eight Sleep's more-sensitive overnight HR rather than
+ * Fitbit's smoothed resting HR.
  *
- * Thresholds + per-kind toggles are configurable via `DetectionConfig`;
- * the defaults below mirror the original hardcoded constants, so
- * `detectAlerts(days, readiness)` behaves exactly as it did before
- * settings existed.
+ * Anti-noise discipline:
+ *   - Only THREE kinds, each chosen to mean something.
+ *   - The illness triad requires multi-DAY persistence, not one noisy night.
+ *   - Severity tiers + the repository cooldown stop daily re-firing.
+ *
+ * Thresholds + per-kind toggles come from `DetectionConfig`; defaults
+ * mirror the original constants.
  */
 
 const BASELINE_DAYS = 30;
 const MIN_BASELINE_DAYS = 10;
+const Z_CLAMP = 5; // generous — we compare against sigma, not for scoring
 
-/** Tunable detector knobs (sourced from the user's notification settings). */
 export interface DetectionConfig {
-  /**
-   * σ above/below baseline to count a signal as elevated/depressed.
-   * 1.5σ (not 1σ): recovery signals oscillate, and a 1σ bar flags ~16%
-   * of perfectly normal days per signal — far too trigger-happy. 1.5σ
-   * (~7%) keeps "elevated" meaningful.
-   */
   illnessSigma: number;
-  /** Skin-temp deviation (°) that counts as "warm" regardless of σ. */
   skinTempWarm: number;
-  /** SpO2 below this (%) is an `alert`. */
   spo2AlertBelow: number;
-  /** SpO2 below this (%) is a `warn`. */
   spo2WarnBelow: number;
-  /** Readiness drop vs the recent trend that warrants a heads-up. */
   readinessDropPoints: number;
-  /** Per-kind on/off — a disabled kind is never produced. */
   kinds: { illnessTriad: boolean; lowSpo2: boolean; readinessDrop: boolean };
 }
 
@@ -69,50 +63,46 @@ export interface DetectedAlert {
 function mean(xs: number[]): number {
   return xs.reduce((a, b) => a + b, 0) / xs.length;
 }
-function std(xs: number[], m: number): number {
-  return Math.sqrt(xs.reduce((a, v) => a + (v - m) ** 2, 0) / xs.length);
-}
 
-type RollingMetric = "rhr" | "breathing" | "hrv" | "spo2";
-
-function valueOf(d: ReadinessDayInput, m: RollingMetric): number | null {
-  if (m === "rhr") return d.rhr;
-  if (m === "breathing") return d.breathing;
-  if (m === "hrv") return d.hrv;
-  return d.spo2;
-}
-
-interface Baseline {
-  mean: number;
-  std: number;
-}
-
-/** Trailing baseline for `m` over the days strictly before `idx`. */
-function baselineAt(
+/** Per-source baseline series for a fusible field over the trailing window. */
+function windowFor(
   days: ReadinessDayInput[],
   idx: number,
-  m: RollingMetric,
-): Baseline | null {
-  const window = days
-    .slice(Math.max(0, idx - BASELINE_DAYS), idx)
-    .map((d) => valueOf(d, m))
-    .filter((v): v is number => v != null);
-  if (window.length < MIN_BASELINE_DAYS) return null;
-  const mu = mean(window);
-  return { mean: mu, std: std(window, mu) };
+  field: keyof ReadinessDayInput,
+): Partial<Record<ReadinessSource, number[]>> {
+  const win = days.slice(Math.max(0, idx - BASELINE_DAYS), idx);
+  const out: Partial<Record<ReadinessSource, number[]>> = {};
+  for (const src of ["fitbit", "eightSleep"] as ReadinessSource[]) {
+    const vals: number[] = [];
+    for (const d of win) {
+      const v = (d[field] as SourceValues)?.[src];
+      if (v != null) vals.push(v);
+    }
+    if (vals.length) out[src] = vals;
+  }
+  return out;
 }
 
-/** Is `m` elevated (≥ μ+σ) on day `idx`? Null when undeterminable. */
-function isElevated(
+/** Fused (unsigned, + = higher value) z for a metric on day `idx`. */
+function fusedZAt(
   days: ReadinessDayInput[],
   idx: number,
-  m: RollingMetric,
-  sigma: number,
-): boolean | null {
-  const v = valueOf(days[idx], m);
-  const b = baselineAt(days, idx, m);
-  if (v == null || b == null || b.std === 0) return null;
-  return v >= b.mean + sigma * b.std;
+  metric: FusibleMetric,
+  field: keyof ReadinessDayInput,
+): number | null {
+  const fused = fuseMetric(
+    metric,
+    days[idx][field] as SourceValues,
+    windowFor(days, idx, field),
+    { minBaselineDays: MIN_BASELINE_DAYS, zClamp: Z_CLAMP },
+  );
+  return fused.z;
+}
+
+/** First present raw value across sources (for absolute-threshold checks). */
+function rawValue(sv: SourceValues): number | null {
+  for (const v of Object.values(sv)) if (v != null) return v;
+  return null;
 }
 
 /** Triad "bad" signals on day `idx`: elevated RHR / breathing / warm skin. */
@@ -123,19 +113,15 @@ function triadHitsAt(
   skinTempWarm: number,
 ): string[] {
   const hits: string[] = [];
-  if (isElevated(days, idx, "rhr", sigma)) hits.push("resting HR");
-  if (isElevated(days, idx, "breathing", sigma)) hits.push("breathing rate");
+  const rhrZ = fusedZAt(days, idx, "rhr", "rhr");
+  if (rhrZ != null && rhrZ >= sigma) hits.push("resting HR");
+  const brZ = fusedZAt(days, idx, "breathing", "breathing");
+  if (brZ != null && brZ >= sigma) hits.push("breathing rate");
   const skin = days[idx].skinTemp;
   if (skin != null && skin >= skinTempWarm) hits.push("skin temp");
   return hits;
 }
 
-/**
- * Run all (enabled) detectors against a date-sorted day series + the
- * current readiness score. Returns the alerts that are *active for the
- * latest scored day* — the repository decides which are new
- * (cooldown/dedup).
- */
 export function detectAlerts(
   daysIn: ReadinessDayInput[],
   readiness: ReadinessScore,
@@ -144,7 +130,6 @@ export function detectAlerts(
   const days = [...daysIn].sort((a, b) => a.date.localeCompare(b.date));
   if (days.length === 0) return [];
 
-  // Score the latest day that has core data — align with readiness.
   const targetDate = readiness.date;
   const idx = targetDate
     ? days.findIndex((d) => d.date === targetDate)
@@ -155,16 +140,9 @@ export function detectAlerts(
 
   // 1) Illness / over-reaching triad — ≥2 hits today AND ≥2 yesterday.
   if (config.kinds.illnessTriad) {
-    const todayHits = triadHitsAt(
-      days,
-      idx,
-      config.illnessSigma,
-      config.skinTempWarm,
-    );
+    const todayHits = triadHitsAt(days, idx, config.illnessSigma, config.skinTempWarm);
     const prevHits =
-      idx > 0
-        ? triadHitsAt(days, idx - 1, config.illnessSigma, config.skinTempWarm)
-        : [];
+      idx > 0 ? triadHitsAt(days, idx - 1, config.illnessSigma, config.skinTempWarm) : [];
     if (todayHits.length >= 2 && prevHits.length >= 2) {
       out.push({
         kind: "illness_triad",
@@ -177,9 +155,9 @@ export function detectAlerts(
     }
   }
 
-  // 2) Low blood oxygen — absolute floor.
+  // 2) Low blood oxygen — absolute floor (Fitbit-sourced).
   if (config.kinds.lowSpo2) {
-    const spo2 = days[idx].spo2;
+    const spo2 = rawValue(days[idx].spo2);
     if (spo2 != null && spo2 < config.spo2AlertBelow) {
       out.push({
         kind: "low_spo2",
@@ -208,11 +186,9 @@ export function detectAlerts(
       .slice(-7)
       .map((p) => p.score);
     const droppedVsTrend =
-      prior.length >= 3 &&
-      readiness.score <= mean(prior) - config.readinessDropPoints;
+      prior.length >= 3 && readiness.score <= mean(prior) - config.readinessDropPoints;
     if (readiness.band === "compromised" || droppedVsTrend) {
-      const vs =
-        prior.length >= 3 ? ` (was averaging ${Math.round(mean(prior))})` : "";
+      const vs = prior.length >= 3 ? ` (was averaging ${Math.round(mean(prior))})` : "";
       out.push({
         kind: "readiness_drop",
         severity: "warn",

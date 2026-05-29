@@ -91,6 +91,14 @@ export function ReadinessCard({ data }: { data: ReadinessScore }) {
               ))}
             </div>
           )}
+          {data.components.some((c) => (c.sources?.length ?? 0) >= 2) && (
+            <p className="text-[10px] text-outline">
+              Fused from Fitbit + Eight Sleep
+              {drivers.some((c) => c.disagreement)
+                ? " · ⚑ marks where the sensors disagreed"
+                : ""}
+            </p>
+          )}
         </div>
       </div>
     </div>
@@ -136,18 +144,25 @@ function ScoreDial({ score, ring }: { score: number; ring: string }) {
 
 function DriverChip({ component }: { component: ReadinessComponent }) {
   const good = component.status === "good";
+  const title = component.sources?.length
+    ? component.sources.map((s) => `${s.label} ${s.z >= 0 ? "+" : ""}${s.z}`).join(" · ")
+    : undefined;
   return (
     <span
+      title={title}
       className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${
-        good
-          ? "bg-secondary/10 text-secondary"
-          : "bg-error/10 text-error"
+        good ? "bg-secondary/10 text-secondary" : "bg-error/10 text-error"
       }`}
     >
       <span className="material-symbols-outlined text-sm">
         {good ? "trending_up" : "trending_down"}
       </span>
       {component.label}
+      {component.disagreement && (
+        <span title="Fitbit & Eight Sleep disagreed on this signal" aria-label="sensors disagreed">
+          ⚑
+        </span>
+      )}
     </span>
   );
 }

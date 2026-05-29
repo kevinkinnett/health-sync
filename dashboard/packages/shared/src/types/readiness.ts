@@ -23,7 +23,16 @@ export type ReadinessMetric =
   | "sleep"
   | "breathing"
   | "spo2"
-  | "skinTemp";
+  | "skinTemp"
+  | "restlessness";
+
+/** One sensor's signed-z contribution to a fused component. */
+export interface ReadinessComponentSource {
+  /** Display label, e.g. "Fitbit" / "Eight Sleep". */
+  label: string;
+  /** Signed z (positive = better recovery), this source alone. */
+  z: number;
+}
 
 export interface ReadinessComponent {
   metric: ReadinessMetric;
@@ -41,6 +50,11 @@ export interface ReadinessComponent {
   /** This metric's weight in the composite, as a percentage. */
   weightPct: number;
   status: ReadinessComponentStatus;
+  /** Per-sensor breakdown for fused metrics (HRV/RHR/etc). Omitted for
+   *  single-source metrics' callers that don't populate it. */
+  sources?: ReadinessComponentSource[];
+  /** True when ≥2 sensors measured this and disagreed materially. */
+  disagreement?: boolean;
 }
 
 /** One day's score, for the trend sparkline. */
