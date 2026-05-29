@@ -41,3 +41,17 @@ export class ValidationError extends Error {
     this.name = "ValidationError";
   }
 }
+
+/**
+ * Thrown by controller request-parsing helpers (`controllers/_params.ts`)
+ * when query / param / body inputs are malformed (missing required
+ * field, wrong type, etc). Distinct from `ValidationError` (which is
+ * about business rules failing on well-formed input). Controllers map
+ * this to HTTP 400 via `middleware/errorMapper.ts`.
+ */
+export class BadRequestError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "BadRequestError";
+  }
+}

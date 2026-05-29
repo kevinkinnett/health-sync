@@ -13,6 +13,7 @@ import type {
   UpdateSupplementIngredientBody,
 } from "@health-dashboard/shared";
 import { SupplementService } from "../services/supplementService.js";
+import { errorMapper } from "../middleware/errorMapper.js";
 import { SupplementController } from "../controllers/supplementController.js";
 import { createSupplementRoutes } from "../routes/supplement.js";
 
@@ -299,6 +300,7 @@ const controller = new SupplementController(service);
 const app = express();
 app.use(express.json());
 app.use("/api/supplements", createSupplementRoutes(controller));
+app.use(errorMapper);
 
 beforeEach(() => {
   fakeRepo.reset();

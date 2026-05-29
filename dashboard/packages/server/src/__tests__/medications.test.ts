@@ -10,6 +10,7 @@ import type {
 import { MedicationService } from "../services/medicationService.js";
 import { MedicationController } from "../controllers/medicationController.js";
 import { createMedicationRoutes } from "../routes/medication.js";
+import { errorMapper } from "../middleware/errorMapper.js";
 
 /**
  * In-memory fake repo with the full MedicationRepository surface used by
@@ -145,6 +146,7 @@ const controller = new MedicationController(service);
 const app = express();
 app.use(express.json());
 app.use("/api/medications", createMedicationRoutes(controller));
+app.use(errorMapper);
 
 beforeEach(() => {
   fakeRepo.reset();

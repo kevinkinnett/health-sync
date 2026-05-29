@@ -15,6 +15,7 @@ import { AnalyticsService } from "../services/analyticsService.js";
 import { AnalyticsController } from "../controllers/analyticsController.js";
 import { createAnalyticsRoutes } from "../routes/analytics.js";
 import { addDays } from "../services/userTz.js";
+import { errorMapper } from "../middleware/errorMapper.js";
 
 // ---------------------------------------------------------------------------
 // In-memory fakes — implement only the surface AnalyticsService touches.
@@ -213,6 +214,7 @@ beforeEach(() => {
   app = express();
   app.use(express.json());
   app.use("/api/analytics", createAnalyticsRoutes(controller));
+  app.use(errorMapper);
 });
 
 // ---------------------------------------------------------------------------
@@ -573,6 +575,7 @@ describe("Analytics TZ bucketing", () => {
       const tzApp = express();
       tzApp.use(express.json());
       tzApp.use("/api/analytics", createAnalyticsRoutes(controller));
+      tzApp.use(errorMapper);
 
       supRepo.items.set(1, makeSupplementItem(1, "Anxie-T"));
       // Intake at 11pm Eastern on Apr 27 — should still be on Apr 27

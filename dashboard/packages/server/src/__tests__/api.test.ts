@@ -4,6 +4,7 @@ import request from "supertest";
 import { HealthDataService } from "../services/healthDataService.js";
 import { HealthController } from "../controllers/healthController.js";
 import { createHealthRoutes } from "../routes/health.js";
+import { errorMapper } from "../middleware/errorMapper.js";
 
 // Minimal fake repos that return realistic data shapes
 const fakeActivityRepo = {
@@ -119,6 +120,7 @@ beforeAll(() => {
   const controller = new HealthController(service);
   app = express();
   app.use("/api/health", createHealthRoutes(controller));
+  app.use(errorMapper);
 });
 
 describe("Health API endpoints", () => {

@@ -26,6 +26,7 @@ import { InsightChatService } from "./services/insightChatService.js";
 import { InsightJobManager } from "./services/insightJobs.js";
 import { InsightController } from "./controllers/insightController.js";
 import { createInsightRoutes } from "./routes/insights.js";
+import { errorMapper } from "./middleware/errorMapper.js";
 import { IngestService } from "./services/ingestService.js";
 import { SupplementService } from "./services/supplementService.js";
 import { MedicationService } from "./services/medicationService.js";
@@ -197,6 +198,12 @@ app.get("/api/v1/openapi.json", (_req, res) => {
 });
 app.use("/api/v1/docs", swaggerUi.serve, swaggerUi.setup(openApiSpec));
 app.use("/api/v1", apiLogger(apiLogRepo), createV1Router(v1RouterCtx));
+
+// Centralised error → HTTP status mapper. MUST be mounted after every
+// API route so route-thrown errors funnel through here instead of
+// crashing the request. Controllers throw `BadRequestError`,
+// `NotFoundError`, `ValidationError`, etc; `errorMapper` translates.
+app.use("/api", errorMapper);
 
 // Serve client static files in production (single-container mode)
 // In Docker: dist/public/  In dev: ../../client/dist/

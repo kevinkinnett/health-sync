@@ -1,5 +1,6 @@
 import { Router } from "express";
 import type { DossierController } from "../controllers/dossierController.js";
+import { asyncHandler } from "../middleware/asyncHandler.js";
 
 /**
  * Dossier routes. Mounted at `/api/dossier` from `index.ts`.
@@ -10,12 +11,11 @@ import type { DossierController } from "../controllers/dossierController.js";
  */
 export function createDossierRoutes(controller: DossierController): Router {
   const router = Router();
+  const wrap = asyncHandler;
 
-  router.get("/:type/:id", (req, res) => controller.get(req, res));
-  router.post("/:type/:id/refresh", (req, res) =>
-    controller.refresh(req, res),
-  );
-  router.delete("/:type/:id", (req, res) => controller.delete(req, res));
+  router.get("/:type/:id", wrap((req, res) => controller.get(req, res)));
+  router.post("/:type/:id/refresh", wrap((req, res) => controller.refresh(req, res)));
+  router.delete("/:type/:id", wrap((req, res) => controller.delete(req, res)));
 
   return router;
 }

@@ -14,6 +14,7 @@ import {
 } from "../services/dossierService.js";
 import { DossierController } from "../controllers/dossierController.js";
 import { createDossierRoutes } from "../routes/dossier.js";
+import { errorMapper } from "../middleware/errorMapper.js";
 import {
   SupplementService,
   NotFoundError as SupplementNotFoundError,
@@ -235,6 +236,7 @@ const controller = new DossierController(dossierService);
 const app = express();
 app.use(express.json());
 app.use("/api/dossier", createDossierRoutes(controller));
+app.use(errorMapper);
 
 const sampleSupplement: SupplementItem = {
   id: 123,

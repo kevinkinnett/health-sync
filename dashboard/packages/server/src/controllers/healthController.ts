@@ -1,8 +1,17 @@
 import type { Request, Response } from "express";
 import type { HealthDataService } from "../services/healthDataService.js";
-import { logger } from "../logger.js";
-import { todayInTz, addDays } from "../services/userTz.js";
+import { todayInTz } from "../services/userTz.js";
+import { parseDateRange } from "./_params.js";
 
+/**
+ * Read-side controllers for the dashboard's primary metric endpoints.
+ *
+ * Style note: handlers throw on failure rather than respond manually.
+ * `middleware/asyncHandler` forwards errors to `middleware/errorMapper`,
+ * which translates known service-layer error types into HTTP statuses.
+ * The previous per-method `try { … } catch { res.status(500) … }` is
+ * gone — uniform error semantics in one place.
+ */
 export class HealthController {
   /**
    * IANA timezone — used to compute the default "last 30 days" window
@@ -20,142 +29,56 @@ export class HealthController {
   }
 
   async getSummary(_req: Request, res: Response): Promise<void> {
-    try {
-      const summary = await this.service.getSummary();
-      res.json(summary);
-    } catch (err) {
-      logger.error({ err }, "Failed to fetch health summary");
-      res.status(500).json({ error: "Failed to fetch health summary" });
-    }
+    const summary = await this.service.getSummary();
+    res.json(summary);
   }
 
   async getActivity(req: Request, res: Response): Promise<void> {
-    try {
-      const { start, end } = parseDateRange(req, this.tz);
-      const data = await this.service.getActivity(start, end);
-      res.json(data);
-    } catch (err) {
-      logger.error({ err }, "Failed to fetch activity data");
-      res.status(500).json({ error: "Failed to fetch activity data" });
-    }
+    const { start, end } = parseDateRange(req, this.tz);
+    res.json(await this.service.getActivity(start, end));
   }
 
   async getSleep(req: Request, res: Response): Promise<void> {
-    try {
-      const { start, end } = parseDateRange(req, this.tz);
-      const data = await this.service.getSleep(start, end);
-      res.json(data);
-    } catch (err) {
-      logger.error({ err }, "Failed to fetch sleep data");
-      res.status(500).json({ error: "Failed to fetch sleep data" });
-    }
+    const { start, end } = parseDateRange(req, this.tz);
+    res.json(await this.service.getSleep(start, end));
   }
 
   async getHeartRate(req: Request, res: Response): Promise<void> {
-    try {
-      const { start, end } = parseDateRange(req, this.tz);
-      const data = await this.service.getHeartRate(start, end);
-      res.json(data);
-    } catch (err) {
-      logger.error({ err }, "Failed to fetch heart rate data");
-      res.status(500).json({ error: "Failed to fetch heart rate data" });
-    }
+    const { start, end } = parseDateRange(req, this.tz);
+    res.json(await this.service.getHeartRate(start, end));
   }
 
   async getWeight(req: Request, res: Response): Promise<void> {
-    try {
-      const { start, end } = parseDateRange(req, this.tz);
-      const data = await this.service.getWeight(start, end);
-      res.json(data);
-    } catch (err) {
-      logger.error({ err }, "Failed to fetch weight data");
-      res.status(500).json({ error: "Failed to fetch weight data" });
-    }
+    const { start, end } = parseDateRange(req, this.tz);
+    res.json(await this.service.getWeight(start, end));
   }
 
   async getHrv(req: Request, res: Response): Promise<void> {
-    try {
-      const { start, end } = parseDateRange(req, this.tz);
-      const data = await this.service.getHrv(start, end);
-      res.json(data);
-    } catch (err) {
-      logger.error({ err }, "Failed to fetch HRV data");
-      res.status(500).json({ error: "Failed to fetch HRV data" });
-    }
-  }
-
-  async getRecords(_req: Request, res: Response): Promise<void> {
-    try {
-      // Pass "today" in the user's calendar so the streak walker can
-      // skip an in-progress final day rather than counting partial-data
-      // zeroes as a streak failure.
-      const data = await this.service.getRecords(todayInTz(this.tz));
-      res.json(data);
-    } catch (err) {
-      logger.error({ err }, "Failed to fetch records");
-      res.status(500).json({ error: "Failed to fetch records" });
-    }
-  }
-
-  async getDayOfWeekHeatmap(_req: Request, res: Response): Promise<void> {
-    try {
-      const data = await this.service.getDayOfWeekHeatmap();
-      res.json(data);
-    } catch (err) {
-      logger.error({ err }, "Failed to fetch day-of-week heatmap");
-      res.status(500).json({ error: "Failed to fetch day-of-week heatmap" });
-    }
-  }
-
-  async getCorrelations(_req: Request, res: Response): Promise<void> {
-    try {
-      const data = await this.service.getCorrelations();
-      res.json(data);
-    } catch (err) {
-      logger.error({ err }, "Failed to fetch correlations");
-      res.status(500).json({ error: "Failed to fetch correlations" });
-    }
-  }
-
-  async getWeeklyInsights(_req: Request, res: Response): Promise<void> {
-    try {
-      const insights = await this.service.getWeeklyInsights();
-      res.json(insights);
-    } catch (err) {
-      logger.error({ err }, "Failed to fetch weekly insights");
-      res.status(500).json({ error: "Failed to fetch weekly insights" });
-    }
+    const { start, end } = parseDateRange(req, this.tz);
+    res.json(await this.service.getHrv(start, end));
   }
 
   async getExerciseLogs(req: Request, res: Response): Promise<void> {
-    try {
-      const { start, end } = parseDateRange(req, this.tz);
-      const data = await this.service.getExerciseLogs(start, end);
-      res.json(data);
-    } catch (err) {
-      logger.error({ err }, "Failed to fetch exercise logs");
-      res.status(500).json({ error: "Failed to fetch exercise logs" });
-    }
-  }
-}
-
-/**
- * Parses `start` and `end` query params as `YYYY-MM-DD`. When both are
- * absent, defaults to the last 30 days computed in the user's timezone
- * — this matters around midnight, where UTC's "today" can be a day
- * ahead of the user's local "today".
- */
-function parseDateRange(
-  req: Request,
-  tz: string,
-): { start: string; end: string } {
-  const start = req.query.start as string | undefined;
-  const end = req.query.end as string | undefined;
-
-  if (!start || !end) {
-    const today = todayInTz(tz);
-    return { start: addDays(today, -30), end: today };
+    const { start, end } = parseDateRange(req, this.tz);
+    res.json(await this.service.getExerciseLogs(start, end));
   }
 
-  return { start, end };
+  async getRecords(_req: Request, res: Response): Promise<void> {
+    // Pass "today" in the user's calendar so the streak walker can skip
+    // an in-progress final day rather than counting partial-data zeroes
+    // as a streak failure.
+    res.json(await this.service.getRecords(todayInTz(this.tz)));
+  }
+
+  async getDayOfWeekHeatmap(_req: Request, res: Response): Promise<void> {
+    res.json(await this.service.getDayOfWeekHeatmap());
+  }
+
+  async getCorrelations(_req: Request, res: Response): Promise<void> {
+    res.json(await this.service.getCorrelations());
+  }
+
+  async getWeeklyInsights(_req: Request, res: Response): Promise<void> {
+    res.json(await this.service.getWeeklyInsights());
+  }
 }

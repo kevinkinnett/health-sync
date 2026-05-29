@@ -1,11 +1,7 @@
 import type { Request, Response } from "express";
-import { z, ZodError } from "zod";
-import {
-  NotFoundError,
-  ValidationError,
-  type MedicationService,
-} from "../services/medicationService.js";
-import { logger } from "../logger.js";
+import { z } from "zod";
+import type { MedicationService } from "../services/medicationService.js";
+import { parseId } from "./_params.js";
 
 const createItemSchema = z.object({
   name: z.string().trim().min(1, "name is required"),
@@ -40,136 +36,50 @@ export class MedicationController {
   constructor(private service: MedicationService) {}
 
   async listItems(req: Request, res: Response): Promise<void> {
-    try {
-      const includeInactive = req.query.includeInactive === "true";
-      const items = await this.service.listItems(includeInactive);
-      res.json(items);
-    } catch (err) {
-      logger.error({ err }, "Failed to list medication items");
-      res.status(500).json({ error: "Failed to list medication items" });
-    }
+    const includeInactive = req.query.includeInactive === "true";
+    res.json(await this.service.listItems(includeInactive));
   }
 
   async getItem(req: Request, res: Response): Promise<void> {
-    try {
-      const id = parseId(req.params.id);
-      if (id == null) {
-        res.status(400).json({ error: "Invalid id" });
-        return;
-      }
-      const item = await this.service.getItem(id);
-      res.json(item);
-    } catch (err) {
-      this.handleError(err, res, "Failed to get medication item");
-    }
+    const id = parseId(req.params.id);
+    res.json(await this.service.getItem(id));
   }
 
   async createItem(req: Request, res: Response): Promise<void> {
-    try {
-      const body = createItemSchema.parse(req.body);
-      const item = await this.service.createItem(body);
-      res.status(201).json(item);
-    } catch (err) {
-      this.handleError(err, res, "Failed to create medication item");
-    }
+    const body = createItemSchema.parse(req.body);
+    res.status(201).json(await this.service.createItem(body));
   }
 
   async updateItem(req: Request, res: Response): Promise<void> {
-    try {
-      const id = parseId(req.params.id);
-      if (id == null) {
-        res.status(400).json({ error: "Invalid id" });
-        return;
-      }
-      const body = updateItemSchema.parse(req.body);
-      const item = await this.service.updateItem(id, body);
-      res.json(item);
-    } catch (err) {
-      this.handleError(err, res, "Failed to update medication item");
-    }
+    const id = parseId(req.params.id);
+    const body = updateItemSchema.parse(req.body);
+    res.json(await this.service.updateItem(id, body));
   }
 
   async archiveItem(req: Request, res: Response): Promise<void> {
-    try {
-      const id = parseId(req.params.id);
-      if (id == null) {
-        res.status(400).json({ error: "Invalid id" });
-        return;
-      }
-      await this.service.archiveItem(id);
-      res.status(204).send();
-    } catch (err) {
-      this.handleError(err, res, "Failed to archive medication item");
-    }
+    const id = parseId(req.params.id);
+    await this.service.archiveItem(id);
+    res.status(204).send();
   }
 
   async listIntakes(req: Request, res: Response): Promise<void> {
-    try {
-      const start = typeof req.query.start === "string" ? req.query.start : undefined;
-      const end = typeof req.query.end === "string" ? req.query.end : undefined;
-      const itemIdRaw =
-        typeof req.query.itemId === "string" ? req.query.itemId : undefined;
-      const itemId = itemIdRaw != null ? parseId(itemIdRaw) : null;
-      if (itemIdRaw != null && itemId == null) {
-        res.status(400).json({ error: "Invalid itemId" });
-        return;
-      }
-      const intakes = await this.service.listIntakes(
-        start,
-        end,
-        itemId ?? undefined,
-      );
-      res.json(intakes);
-    } catch (err) {
-      logger.error({ err }, "Failed to list medication intakes");
-      res.status(500).json({ error: "Failed to list medication intakes" });
-    }
+    const start = typeof req.query.start === "string" ? req.query.start : undefined;
+    const end = typeof req.query.end === "string" ? req.query.end : undefined;
+    const itemId =
+      typeof req.query.itemId === "string"
+        ? parseId(req.query.itemId, "itemId")
+        : undefined;
+    res.json(await this.service.listIntakes(start, end, itemId));
   }
 
   async createIntake(req: Request, res: Response): Promise<void> {
-    try {
-      const body = createIntakeSchema.parse(req.body);
-      const intake = await this.service.logIntake(body);
-      res.status(201).json(intake);
-    } catch (err) {
-      this.handleError(err, res, "Failed to log medication intake");
-    }
+    const body = createIntakeSchema.parse(req.body);
+    res.status(201).json(await this.service.logIntake(body));
   }
 
   async deleteIntake(req: Request, res: Response): Promise<void> {
-    try {
-      const id = parseId(req.params.id);
-      if (id == null) {
-        res.status(400).json({ error: "Invalid id" });
-        return;
-      }
-      await this.service.deleteIntake(id);
-      res.status(204).send();
-    } catch (err) {
-      this.handleError(err, res, "Failed to delete medication intake");
-    }
+    const id = parseId(req.params.id);
+    await this.service.deleteIntake(id);
+    res.status(204).send();
   }
-
-  private handleError(err: unknown, res: Response, logMessage: string): void {
-    if (err instanceof ZodError) {
-      res.status(400).json({ error: "Invalid request body", issues: err.issues });
-      return;
-    }
-    if (err instanceof NotFoundError) {
-      res.status(404).json({ error: err.message });
-      return;
-    }
-    if (err instanceof ValidationError) {
-      res.status(400).json({ error: err.message });
-      return;
-    }
-    logger.error({ err }, logMessage);
-    res.status(500).json({ error: logMessage });
-  }
-}
-
-function parseId(raw: unknown): number | null {
-  if (typeof raw !== "string") return null;
-  const n = parseInt(raw, 10);
-  return Number.isInteger(n) && n > 0 ? n : null;
 }
