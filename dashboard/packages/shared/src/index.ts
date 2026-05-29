@@ -96,3 +96,8 @@ export type {
   IntakeCorrelations,
 } from "./types/analytics.js";
 export type { AppConfig } from "./types/config.js";
+
+// ---------------------------------------------------------------------------
+// Runtime helpers (pure functions — usable from both server and client)
+// ---------------------------------------------------------------------------
+export { addDays, formatDateInTz, todayInTz } from "./lib/dates.js";

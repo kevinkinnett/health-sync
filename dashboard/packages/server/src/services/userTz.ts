@@ -1,64 +1,18 @@
 /**
- * Timezone helpers for converting between UTC instants (TIMESTAMPTZ in
- * Postgres) and user-local calendar days. **Never** use fixed offsets like
- * `-04:00` here — every helper takes an IANA name (e.g. `America/New_York`)
- * so DST transitions resolve correctly.
+ * Server-only timezone helpers for converting between UTC instants
+ * (TIMESTAMPTZ in Postgres) and user-local calendar days. **Never** use
+ * fixed offsets like `-04:00` here — every helper takes an IANA name
+ * (e.g. `America/New_York`) so DST transitions resolve correctly.
  *
- * The implementation is dependency-free, leaning on `Intl.DateTimeFormat`
- * which all modern Node versions ship with full tzdata support for.
+ * Pure date-string utilities (`addDays`, `formatDateInTz`, `todayInTz`)
+ * live in `@health-dashboard/shared` and are re-exported below; the
+ * functions that touch real-Date instants and produce TIMESTAMPTZ
+ * bounds (`tzDayStartUtc`, `tzDayEndUtc`) stay here because the
+ * client never needs them.
  */
 
-/**
- * Returns the local calendar day (`YYYY-MM-DD`) of `instant` as observed
- * in `tz`. This is the right way to bucket TIMESTAMPTZ events into
- * "what day did this happen for the user" — never use `.toISOString().slice(0,10)`.
- *
- * @example
- *   formatDateInTz("2026-04-26T23:00:00-04:00", "America/New_York") === "2026-04-26"
- *   formatDateInTz("2026-04-26T23:00:00-04:00", "UTC")              === "2026-04-27"
- */
-export function formatDateInTz(instant: Date | string, tz: string): string {
-  const d = typeof instant === "string" ? new Date(instant) : instant;
-  // `en-CA` formats as YYYY-MM-DD natively, sidestepping locale tweaks.
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: tz,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(d);
-}
-
-/**
- * Returns today's calendar day in `tz` (`YYYY-MM-DD`). Equivalent to
- * `formatDateInTz(new Date(), tz)` but slightly more readable at call sites
- * computing date-range presets.
- */
-export function todayInTz(tz: string): string {
-  return formatDateInTz(new Date(), tz);
-}
-
-/**
- * Adds (or subtracts) calendar days from a `YYYY-MM-DD` string. Operates on
- * the calendar — independent of any timezone — so the result is always
- * exactly N days earlier/later regardless of DST. Used for "today minus 30
- * days" style date-range math where the user thinks in calendar days.
- *
- * @example
- *   addDays("2026-03-08", -7) === "2026-03-01"  // unaffected by DST gap
- */
-export function addDays(date: string, days: number): string {
-  // Parse as UTC midnight → arithmetic in UTC → format back. Never bridges
-  // a DST boundary because UTC has no DST. The `Date` here is a stand-in
-  // for "the calendar day", not a real instant.
-  const [y, m, d] = date.split("-").map(Number);
-  const t = Date.UTC(y, m - 1, d) + days * 24 * 60 * 60 * 1000;
-  const dt = new Date(t);
-  return [
-    dt.getUTCFullYear(),
-    String(dt.getUTCMonth() + 1).padStart(2, "0"),
-    String(dt.getUTCDate()).padStart(2, "0"),
-  ].join("-");
-}
+export { addDays, formatDateInTz, todayInTz } from "@health-dashboard/shared";
+import { addDays } from "@health-dashboard/shared";
 
 /**
  * Returns the UTC instant string (`YYYY-MM-DDTHH:MM:SS.sssZ`) that

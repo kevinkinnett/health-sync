@@ -41,17 +41,6 @@ export function pearson(xs: number[], ys: number[]): number {
 }
 
 /**
- * Add `days` to a `YYYY-MM-DD` date string and return the same shape.
- * Negative values shift backwards. Uses UTC arithmetic to avoid DST
- * surprises on the boundary.
- */
-export function shiftDate(dateStr: string, days: number): string {
-  const d = new Date(dateStr + "T00:00:00Z");
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-}
-
-/**
  * Plain-English summary of a Pearson r value used as the `insight`
  * field on a correlation pair. Thresholds match the badge cutoffs the
  * UI uses (Strong ≥0.7, Moderate ≥0.4, Weak ≥0.2).

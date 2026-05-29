@@ -10,8 +10,13 @@ import type { ActivityRepository } from "../repositories/activityRepo.js";
 import type { SleepRepository } from "../repositories/sleepRepo.js";
 import type { HeartRateRepository } from "../repositories/heartRateRepo.js";
 import type { HrvRepository } from "../repositories/hrvRepo.js";
-import { describeCorrelation, pearson, shiftDate } from "./stats.js";
-import { formatDateInTz, tzDayStartUtc, tzDayEndUtc } from "./userTz.js";
+import { describeCorrelation, pearson } from "./stats.js";
+import {
+  addDays,
+  formatDateInTz,
+  tzDayStartUtc,
+  tzDayEndUtc,
+} from "./userTz.js";
 
 /**
  * Validation error surfaced to the controller as a 404. Used when the
@@ -338,7 +343,7 @@ function shiftIntakeDays(
   if (lagDays === 0) return new Map(intakeDays);
   const out = new Map<string, number>();
   for (const [day, count] of intakeDays) {
-    out.set(shiftDate(day, lagDays), count);
+    out.set(addDays(day, lagDays), count);
   }
   return out;
 }
@@ -483,7 +488,7 @@ function enumerateDays(start: string, end: string): string[] {
   // Cap at ~366 days to avoid runaway loops on bad input.
   for (let i = 0; i < 400 && cursor <= end; i++) {
     out.push(cursor);
-    cursor = shiftDate(cursor, 1);
+    cursor = addDays(cursor, 1);
   }
   return out;
 }

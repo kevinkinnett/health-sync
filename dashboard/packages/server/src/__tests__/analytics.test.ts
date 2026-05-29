@@ -14,7 +14,7 @@ import type {
 import { AnalyticsService } from "../services/analyticsService.js";
 import { AnalyticsController } from "../controllers/analyticsController.js";
 import { createAnalyticsRoutes } from "../routes/analytics.js";
-import { shiftDate } from "../services/stats.js";
+import { addDays } from "../services/userTz.js";
 
 // ---------------------------------------------------------------------------
 // In-memory fakes — implement only the surface AnalyticsService touches.
@@ -226,7 +226,7 @@ describe("Analytics adherence", () => {
     // Intake every day except 2026-01-10, 2026-01-20, 2026-01-21
     let intakeId = 1;
     for (let i = 0; i < 30; i++) {
-      const date = shiftDate("2026-01-01", i);
+      const date = addDays("2026-01-01", i);
       if (date === "2026-01-10") continue;
       if (date === "2026-01-20" || date === "2026-01-21") continue;
       supRepo.intakes.push(makeIntake(intakeId++, 1, "Anxie-T", date));
@@ -356,7 +356,7 @@ describe("Analytics correlations", () => {
     // 30 alternating days: even index → intake + high steps,
     // odd index → no intake + low steps.
     for (let i = 0; i < 30; i++) {
-      const date = shiftDate("2026-01-01", i);
+      const date = addDays("2026-01-01", i);
       if (i % 2 === 0) {
         supRepo.intakes.push(makeIntake(i + 1, 1, "Anxie-T", date));
       }
@@ -386,7 +386,7 @@ describe("Analytics correlations", () => {
   it("excludes pairs with fewer than 7 joined days", async () => {
     supRepo.items.set(1, makeSupplementItem(1, "Anxie-T"));
     for (let i = 0; i < 5; i++) {
-      const date = shiftDate("2026-01-01", i);
+      const date = addDays("2026-01-01", i);
       supRepo.intakes.push(makeIntake(i + 1, 1, "Anxie-T", date));
       const a = emptyActivity(date);
       a.steps = 5000 + i * 100;
@@ -419,7 +419,7 @@ describe("Analytics correlations", () => {
     // at D+1 — i.e. lag=1 should reveal a correlation that lag=0 misses.
     supRepo.items.set(1, makeSupplementItem(1, "Anxie-T"));
     for (let i = 0; i < 14; i++) {
-      const date = shiftDate("2026-01-01", i);
+      const date = addDays("2026-01-01", i);
       // Intake on even days
       if (i % 2 === 0) {
         supRepo.intakes.push(makeIntake(i + 1, 1, "Anxie-T", date));

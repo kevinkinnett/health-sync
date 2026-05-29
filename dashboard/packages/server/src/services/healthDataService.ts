@@ -23,7 +23,8 @@ import type { HeartRateRepository } from "../repositories/heartRateRepo.js";
 import type { WeightRepository } from "../repositories/weightRepo.js";
 import type { HrvRepository } from "../repositories/hrvRepo.js";
 import type { ExerciseLogRepository } from "../repositories/exerciseLogRepo.js";
-import { avg, describeCorrelation, pearson, shiftDate } from "./stats.js";
+import { avg, describeCorrelation, pearson } from "./stats.js";
+import { addDays } from "./userTz.js";
 
 export class HealthDataService {
   constructor(
@@ -112,9 +113,9 @@ export class HealthDataService {
     // allActivity is DESC — latest first
     const latestDate = allActivity[0].date;
     const currentEnd = latestDate;
-    const currentStart = shiftDate(latestDate, -6);
-    const previousEnd = shiftDate(latestDate, -7);
-    const previousStart = shiftDate(latestDate, -13);
+    const currentStart = addDays(latestDate, -6);
+    const previousEnd = addDays(latestDate, -7);
+    const previousStart = addDays(latestDate, -13);
 
     const currentActivity = allActivity.filter(
       (d) => d.date >= currentStart && d.date <= currentEnd,
@@ -386,7 +387,7 @@ export class HealthDataService {
     const withNextDaySleep: { steps: number; sleepMin: number; deepMin: number; efficiency: number }[] = [];
     for (const a of activity) {
       if (a.steps == null || a.steps === 0) continue;
-      const nextDate = shiftDate(a.date, 1);
+      const nextDate = addDays(a.date, 1);
       const s = sleepByDate.get(nextDate);
       if (s?.totalMinutesAsleep != null && s.minutesDeep != null && s.efficiency != null) {
         withNextDaySleep.push({
