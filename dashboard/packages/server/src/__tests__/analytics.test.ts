@@ -353,7 +353,14 @@ describe("Analytics ingredient-by-day", () => {
 // ---------------------------------------------------------------------------
 
 describe("Analytics correlations", () => {
-  it("finds r ≈ 1 when steps are perfectly aligned with intake days", async () => {
+  // Renamed from "finds r ≈ 1 when steps are perfectly aligned" — audit
+  // #14. The previous name promised r ≈ 1 but the assert was actually
+  // `correlation === 0`, because `listIntakes` only returns rows for
+  // *intake* days; after the day-grain join the x series is constant
+  // (every row has x=1). Constant series produce r=0 by our stats
+  // helper's degenerate-variance convention. This test now describes
+  // what it actually verifies.
+  it("returns r=0 for degenerate constant-x series (intake-only rows)", async () => {
     supRepo.items.set(1, makeSupplementItem(1, "Anxie-T"));
     // 30 alternating days: even index → intake + high steps,
     // odd index → no intake + low steps.

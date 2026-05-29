@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
+// `waitFor` is used by the Dashboard mount test — the Loading state
+// renders synchronously but we wrap to keep the test resilient to
+// future async changes in `useHealthSummary`.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { Routes, Route, Navigate } from "react-router-dom";
@@ -71,10 +74,18 @@ describe("App routing and layout", () => {
     expect(screen.getByText("All")).toBeInTheDocument();
   });
 
-  it("renders Dashboard page at /", () => {
+  it("mounts the Dashboard route at /", async () => {
+    // We can't easily assert Dashboard-specific content here because
+    // the global mock returns `[]` for every endpoint — `useHealthSummary`
+    // hangs on `isLoading` forever (it never receives a HealthSummary
+    // shape it can render against). What we CAN verify is that the
+    // route mounts the Dashboard component (vs e.g. routing to a 404).
+    // The Dashboard's own render contract is exercised by
+    // `unitsToggle.test.tsx`, which mocks /health/summary properly.
     renderWithProviders("/");
-    // Dashboard shows loading state while queries resolve
-    expect(screen.getByText("Loading...")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByText("Loading...")).toBeInTheDocument(),
+    );
   });
 
   it("renders Analytics layout with sub-nav at /analytics/overview", () => {
