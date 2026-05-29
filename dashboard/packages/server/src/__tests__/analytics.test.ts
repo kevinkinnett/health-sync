@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import express from "express";
 import request from "supertest";
 import type {
@@ -563,9 +563,19 @@ describe("Analytics TZ bucketing", () => {
   });
 
   it("uses the user's calendar today (not UTC's) when start/end are omitted", async () => {
-    // Mock "now" to a moment where UTC and Eastern disagree on the date.
-    const realNow = Date.now;
-    Date.now = () => new Date("2026-04-28T03:00:00.000Z").getTime();
+    // Freeze "now" to a moment where UTC and Eastern disagree on the
+    // date (11pm Eastern on the 27th = 3am UTC on the 28th).
+    //
+    // Must use vi.setSystemTime, NOT `Date.now = …`: the default-range
+    // computation runs through `todayInTz()` → `formatDateInTz(new
+    // Date(), tz)`, and `new Date()` (no args) ignores a `Date.now`
+    // override. The previous override-only approach silently stopped
+    // working once the real clock drifted >30 days past the hardcoded
+    // fixture, dropping the fixture date out of the rolling window and
+    // turning this into a date-dependent CI failure. Fake timers patch
+    // both `Date.now()` and `new Date()`.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-28T03:00:00.000Z"));
     try {
       const service = new AnalyticsService(
         supRepo as never,
@@ -609,7 +619,7 @@ describe("Analytics TZ bucketing", () => {
       expect(dates).toContain("2026-04-27");
       expect(dates).not.toContain("2026-04-28");
     } finally {
-      Date.now = realNow;
+      vi.useRealTimers();
     }
   });
 });
