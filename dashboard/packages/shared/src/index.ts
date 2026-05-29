@@ -35,9 +35,27 @@ export type {
   CorrelationsData,
 } from "./types/correlations.js";
 export type {
-  DayOfWeekHeatmapRow,
+  DayOfWeekHeatmapMetric,
   DayOfWeekHeatmapData,
 } from "./types/heatmap.js";
+export type {
+  InsightCategory,
+  InsightGeneration,
+  InsightGenerationSummary,
+  InsightJob,
+  InsightJobCategoryState,
+  InsightJobStatus,
+  StartInsightGenerationRequest,
+  StartInsightGenerationResponse,
+} from "./types/aiInsights.js";
+export type {
+  ChatTurn,
+  ChatConversationSummary,
+  ChatConversationResponse,
+  ChatSendRequest,
+  ChatSendResponse,
+} from "./types/chat.js";
+export type { ApiLogEntry, ApiLogStats } from "./types/apiLog.js";
 export type {
   PersonalRecord,
   Streak,

@@ -12,7 +12,7 @@ import type {
   CorrelationPair,
   ActivityBucket,
   DayOfWeekHeatmapData,
-  DayOfWeekHeatmapRow,
+  DayOfWeekHeatmapMetric,
   RecordsData,
   PersonalRecord,
   Streak,
@@ -468,7 +468,7 @@ export class HealthDataService {
       { key: "rhr", label: "Resting HR", unit: "bpm", decimals: 0 },
     ];
 
-    const rows: DayOfWeekHeatmapRow[] = [];
+    const rows: DayOfWeekHeatmapMetric[] = [];
     for (const { key, label, unit, decimals } of metrics) {
       const factor = 10 ** decimals;
       const values = buckets.map((b) => {

@@ -1,4 +1,4 @@
-import type { DayOfWeekHeatmapData, DayOfWeekHeatmapRow } from "@health-dashboard/shared";
+import type { DayOfWeekHeatmapData, DayOfWeekHeatmapMetric } from "@health-dashboard/shared";
 import { useUnits } from "../stores/unitsStore";
 import {
   convertDistance,
@@ -34,7 +34,7 @@ function CellValue({
   dayIndex,
   units,
 }: {
-  row: DayOfWeekHeatmapRow;
+  row: DayOfWeekHeatmapMetric;
   dayIndex: number;
   units: UnitSystem;
 }) {

@@ -42,6 +42,14 @@ import type {
   IngredientByDay,
   IntakeCorrelations,
   AppConfig,
+  InsightGeneration,
+  InsightGenerationSummary,
+  InsightJob,
+  ChatConversationSummary,
+  ChatConversationResponse,
+  ChatSendResponse,
+  ApiLogEntry,
+  ApiLogStats,
 } from "@health-dashboard/shared";
 import { apiFetch } from "./client";
 import { useDateRangeStore } from "../stores/dateRangeStore";
@@ -721,49 +729,6 @@ export function useMedicationCorrelations(
 // AI Insights + Chat
 // ---------------------------------------------------------------------------
 
-export interface InsightGenerationSummary {
-  generationId: string;
-  createdAt: string;
-  dateFrom: string;
-  dateTo: string;
-  categoryCount: number;
-}
-
-export interface InsightCategory {
-  key: string;
-  title: string;
-  content: string;
-}
-
-export interface InsightGeneration {
-  generationId: string;
-  dateFrom: string;
-  dateTo: string;
-  createdAt: string;
-  categories: InsightCategory[];
-}
-
-export type JobStatus = "pending" | "running" | "completed" | "failed";
-
-export interface InsightJob {
-  jobId: string;
-  status: JobStatus;
-  startedAt: string;
-  finishedAt?: string;
-  dateFrom?: string;
-  dateTo?: string;
-  progress: number;
-  statusMessage: string;
-  categories: Array<{
-    key: string;
-    title: string;
-    status: JobStatus;
-    rounds: number;
-    toolsCalled: string[];
-  }>;
-  error?: string;
-}
-
 export function useInsightGenerations() {
   return useQuery<InsightGenerationSummary[]>({
     queryKey: ["insights", "list"],
@@ -822,19 +787,6 @@ export function useDeleteInsightGeneration() {
 
 // ------ Chat ------
 
-export interface ChatMessageRow {
-  role: "user" | "assistant";
-  content: string;
-  createdAt: string;
-}
-
-export interface ChatConversationSummary {
-  conversationId: string;
-  preview: string;
-  messageCount: number;
-  lastMessageAt: string;
-}
-
 export function useChatConversations() {
   return useQuery<ChatConversationSummary[]>({
     queryKey: ["insights", "chat", "list"],
@@ -843,7 +795,7 @@ export function useChatConversations() {
 }
 
 export function useChatConversation(conversationId: string | null) {
-  return useQuery<{ conversationId: string; messages: ChatMessageRow[] }>({
+  return useQuery<ChatConversationResponse>({
     queryKey: ["insights", "chat", "get", conversationId],
     queryFn: () => apiFetch(`/insights/chat/${conversationId}`),
     enabled: conversationId != null,
@@ -853,11 +805,7 @@ export function useChatConversation(conversationId: string | null) {
 export function useSendChatMessage() {
   const queryClient = useQueryClient();
   return useMutation<
-    {
-      conversationId: string;
-      message: { role: "assistant"; content: string };
-      meta: { sanitized: boolean; placeholder: boolean; toolsCalled: string[]; rounds: number };
-    },
+    ChatSendResponse,
     Error,
     { conversationId?: string; message: string }
   >({
@@ -890,35 +838,6 @@ export function useDeleteConversation() {
 // API Console — usage stats for the v1 surface
 // ---------------------------------------------------------------------------
 
-/**
- * Aggregate stats for the v1 API surface (last N hours). Drives the
- * tiles on the API Console page (total calls, latency, error rate,
- * top callers).
- */
-export interface ApiLogStats {
-  windowHours: number;
-  totalCalls: number;
-  uniqueCallers: number;
-  avgDurationMs: number | null;
-  p95DurationMs: number | null;
-  errorCount: number;
-  errorRate: number;
-  byCaller: Array<{ caller: string | null; count: number }>;
-  byPath: Array<{ path: string; count: number; avgDurationMs: number }>;
-}
-
-export interface ApiLogRow {
-  id: number;
-  caller: string | null;
-  method: string;
-  path: string;
-  statusCode: number;
-  durationMs: number;
-  requestParams: Record<string, unknown> | null;
-  error: string | null;
-  createdAt: string;
-}
-
 export function useApiLogStats(windowHours = 24) {
   return useQuery<ApiLogStats>({
     queryKey: ["api-logs", "stats", windowHours],
@@ -932,7 +851,7 @@ export function useApiLogStats(windowHours = 24) {
 export function useRecentApiCalls(caller?: string, limit = 50) {
   const params = new URLSearchParams({ limit: String(limit) });
   if (caller) params.set("caller", caller);
-  return useQuery<ApiLogRow[]>({
+  return useQuery<ApiLogEntry[]>({
     queryKey: ["api-logs", "recent", caller ?? null, limit],
     queryFn: () => apiFetch(`/admin/api-logs/recent?${params.toString()}`),
     refetchInterval: 30_000,

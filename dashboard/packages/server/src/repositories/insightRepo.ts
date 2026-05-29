@@ -1,10 +1,21 @@
 import type { Pool } from "pg";
+import type {
+  ChatConversationSummary,
+  InsightGenerationSummary,
+} from "@health-dashboard/shared";
 
 // ---------------------------------------------------------------------------
-// Types — shared between server, controller, and shared/client packages
+// Server-internal DB record shapes
 // ---------------------------------------------------------------------------
+//
+// Wire shapes the dashboard consumes live in `@health-dashboard/shared`
+// (`InsightGenerationSummary`, `ChatConversationSummary`, etc). The
+// types below are the row shapes the repository hands back internally —
+// they carry the surrogate `id` and the full 3-way `role` (`tool`
+// included), neither of which the UI needs.
 
-export interface InsightCategoryRow {
+/** Internal: a single row of `universe.health_insight`. */
+export interface InsightCategoryRecord {
   id: number;
   generationId: string;
   category: string;
@@ -15,17 +26,14 @@ export interface InsightCategoryRow {
   createdAt: string;
 }
 
-export interface InsightGenerationSummary {
-  generationId: string;
-  createdAt: string;
-  dateFrom: string;
-  dateTo: string;
-  categoryCount: number;
-}
-
 export type ChatRole = "user" | "assistant" | "tool";
 
-export interface ChatRow {
+/**
+ * Internal: a single row of `universe.health_insight_chat`. Includes
+ * `tool` rows and `tool_calls` JSONB which the UI never sees but the
+ * agentic loop replays on every turn.
+ */
+export interface ChatRecord {
   id: number;
   conversationId: string;
   role: ChatRole;
@@ -37,13 +45,6 @@ export interface ChatRow {
   toolCallId: string | null;
   toolName: string | null;
   createdAt: string;
-}
-
-export interface ConversationSummary {
-  conversationId: string;
-  preview: string;
-  messageCount: number;
-  lastMessageAt: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -131,7 +132,7 @@ export class InsightRepository {
     }));
   }
 
-  async getGeneration(generationId: string): Promise<InsightCategoryRow[]> {
+  async getGeneration(generationId: string): Promise<InsightCategoryRecord[]> {
     const { rows } = await this.pool.query(
       `SELECT id, generation_id, category, title, content,
               date_from, date_to, created_at
@@ -174,7 +175,7 @@ export class InsightRepository {
     return rowCount ?? 0;
   }
 
-  private toInsightRow(r: Record<string, unknown>): InsightCategoryRow {
+  private toInsightRow(r: Record<string, unknown>): InsightCategoryRecord {
     return {
       id: r.id as number,
       generationId: r.generation_id as string,
@@ -189,7 +190,7 @@ export class InsightRepository {
 
   // ------ Chat ----------------------------------------------------------
 
-  async appendChatRow(row: {
+  async appendChatRecord(row: {
     conversationId: string;
     role: ChatRole;
     content: string | null;
@@ -213,7 +214,7 @@ export class InsightRepository {
   }
 
   /** Full transcript including tool turns — fed back to the LLM for context. */
-  async getFullConversation(conversationId: string): Promise<ChatRow[]> {
+  async getFullConversation(conversationId: string): Promise<ChatRecord[]> {
     const { rows } = await this.pool.query(
       `SELECT id, conversation_id, role, content, tool_calls,
               tool_call_id, tool_name, created_at
@@ -222,11 +223,11 @@ export class InsightRepository {
        ORDER BY id`,
       [conversationId],
     );
-    return rows.map(this.toChatRow);
+    return rows.map(this.toChatRecord);
   }
 
   /** UI-visible transcript — only user + assistant text rows. */
-  async getDisplayConversation(conversationId: string): Promise<ChatRow[]> {
+  async getDisplayConversation(conversationId: string): Promise<ChatRecord[]> {
     const { rows } = await this.pool.query(
       `SELECT id, conversation_id, role, content, tool_calls,
               tool_call_id, tool_name, created_at
@@ -237,10 +238,10 @@ export class InsightRepository {
        ORDER BY id`,
       [conversationId],
     );
-    return rows.map(this.toChatRow);
+    return rows.map(this.toChatRecord);
   }
 
-  async listConversations(limit = 20): Promise<ConversationSummary[]> {
+  async listConversations(limit = 20): Promise<ChatConversationSummary[]> {
     const { rows } = await this.pool.query(
       `WITH latest AS (
          SELECT conversation_id,
@@ -280,7 +281,7 @@ export class InsightRepository {
     return rowCount ?? 0;
   }
 
-  private toChatRow(r: Record<string, unknown>): ChatRow {
+  private toChatRecord(r: Record<string, unknown>): ChatRecord {
     return {
       id: r.id as number,
       conversationId: r.conversation_id as string,

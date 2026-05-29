@@ -6,15 +6,15 @@ import type {
   InsightService,
 } from "./insightService.js";
 import { listCategoryDefs } from "./insightService.js";
+import type { InsightJob } from "@health-dashboard/shared";
 
 /**
  * In-memory job manager for Insights generation.
  *
  * The Reports surface kicks off an async generation that takes 30-90s
- * (six categories in parallel, each running a 5-10 round agentic
- * loop). The HTTP request that POSTs /generate returns immediately
- * with a `jobId`; the client polls `/generate/status/:jobId` every 2s
- * until completion.
+ * (six categories run sequentially through the agentic loop). The HTTP
+ * request that POSTs /generate returns immediately with a `jobId`; the
+ * client polls `/generate/status/:jobId` every 2s until completion.
  *
  * In-memory is the right tradeoff for a personal dashboard:
  *
@@ -26,31 +26,15 @@ import { listCategoryDefs } from "./insightService.js";
  * - Jobs auto-evict after 1h to keep the Map from growing forever.
  */
 
-export type JobStatus = "pending" | "running" | "completed" | "failed";
-
-export interface JobState {
-  jobId: string;
-  status: JobStatus;
-  /** ISO timestamp when the job was created. */
-  startedAt: string;
-  /** ISO timestamp when the job reached a terminal status. */
-  finishedAt?: string;
-  dateFrom?: string;
-  dateTo?: string;
-  /** 0–100 progress estimate driven by per-category round events. */
-  progress: number;
-  /** Human-readable status line shown in the UI's progress card. */
-  statusMessage: string;
-  /** Per-category state — populated incrementally. */
-  categories: Array<{
-    key: string;
-    title: string;
-    status: JobStatus;
-    rounds: number;
-    toolsCalled: string[];
-  }>;
+/**
+ * Server-internal job record. Adds `result` (the full
+ * `GenerateInsightsResult`) to the wire-visible `InsightJob` so the
+ * controller can keep generated content in memory until the client
+ * refetches the generations list. The extra field is structurally
+ * compatible — the client's typed `InsightJob` simply ignores it.
+ */
+export interface JobState extends InsightJob {
   result?: GenerateInsightsResult;
-  error?: string;
 }
 
 const MAX_AGE_MS = 60 * 60 * 1000;

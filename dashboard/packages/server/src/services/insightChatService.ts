@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { V1Context } from "../api/v1/endpoints.js";
 import type {
-  ChatRow,
+  ChatRecord,
   InsightRepository,
 } from "../repositories/insightRepo.js";
 import { GROUNDING_RULES } from "./groundingRules.js";
@@ -71,7 +71,7 @@ export class InsightChatService {
 
     // Persist the user turn before running the loop so a crash mid-loop
     // doesn't lose what the user asked.
-    await this.repo.appendChatRow({
+    await this.repo.appendChatRecord({
       conversationId,
       role: "user",
       content: input.message,
@@ -128,14 +128,14 @@ export class InsightChatService {
     const newTurns = result.transcript.slice(messages.length);
     for (const turn of newTurns) {
       if (turn.role === "assistant") {
-        await this.repo.appendChatRow({
+        await this.repo.appendChatRecord({
           conversationId,
           role: "assistant",
           content: turn.content,
           toolCalls: turn.tool_calls ?? null,
         });
       } else if (turn.role === "tool") {
-        await this.repo.appendChatRow({
+        await this.repo.appendChatRecord({
           conversationId,
           role: "tool",
           content: turn.content ?? null,
@@ -145,7 +145,7 @@ export class InsightChatService {
       } else if (turn.role === "user") {
         // Nag messages — persist them too so a follow-up regenerate
         // sees the full transcript.
-        await this.repo.appendChatRow({
+        await this.repo.appendChatRecord({
           conversationId,
           role: "user",
           content: turn.content,
@@ -165,7 +165,7 @@ export class InsightChatService {
     };
   }
 
-  private toChatMessage(r: ChatRow): ChatMessage {
+  private toChatMessage(r: ChatRecord): ChatMessage {
     if (r.role === "tool") {
       return {
         role: "tool",

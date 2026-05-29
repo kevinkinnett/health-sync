@@ -11,8 +11,8 @@ import {
   useInsightJob,
   useSendChatMessage,
   useStartInsightGeneration,
-  type ChatMessageRow,
 } from "../api/queries";
+import type { ChatTurn } from "@health-dashboard/shared";
 
 // ---------------------------------------------------------------------------
 // Top-level page
@@ -420,7 +420,7 @@ function ChatTab() {
 
   const messages = conv.data?.messages ?? [];
   // Optimistic + pending message rendering.
-  const optimistic: ChatMessageRow[] = useMemo(() => {
+  const optimistic: ChatTurn[] = useMemo(() => {
     if (!send.isPending) return [];
     const lastIsOurs =
       messages.length > 0 && messages[messages.length - 1].content === send.variables?.message;
@@ -562,7 +562,7 @@ function MessagesArea({
   loading,
   onExample,
 }: {
-  messages: ChatMessageRow[];
+  messages: ChatTurn[];
   empty: boolean;
   loading: boolean;
   onExample: (q: string) => void;
@@ -608,7 +608,7 @@ function MessagesArea({
   );
 }
 
-function MessageBubble({ message }: { message: ChatMessageRow }) {
+function MessageBubble({ message }: { message: ChatTurn }) {
   if (message.role === "user") {
     return (
       <div className="flex justify-end">
