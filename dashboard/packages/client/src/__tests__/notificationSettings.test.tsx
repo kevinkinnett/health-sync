@@ -21,7 +21,7 @@ const DEFAULTS: NotificationSettings = {
     cooldownDays: 3,
   },
   weeklyReportEnabled: true,
-  appriseUrl: "https://apprise.tail322ce1.ts.net/notify/health",
+  appriseUrl: "https://apprise.tail322ce1.ts.net/notify/apprise?tag=health",
 };
 
 function renderCard() {

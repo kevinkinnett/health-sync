@@ -33,7 +33,10 @@ import requests
 
 def main(
     dashboard_url: str = "https://health-sync.tail322ce1.ts.net",
-    apprise_url: str = "https://apprise.tail322ce1.ts.net/notify/health",
+    # Apprise config is keyed `apprise`; ?tag=health scopes delivery to the
+    # health target only (not the finance/security/discord targets in the
+    # same shared config). The dashboard's delivery policy overrides this.
+    apprise_url: str = "https://apprise.tail322ce1.ts.net/notify/apprise?tag=health",
     push_severities: list = ["alert", "warn"],
 ):
     # 1. Trigger detection. The server persists new alerts (with a

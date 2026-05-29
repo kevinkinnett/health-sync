@@ -47,9 +47,11 @@ export interface NotificationSettings {
   /** Whether the weekly AI report job sends its heads-up notification. */
   weeklyReportEnabled: boolean;
   /**
-   * Apprise notify endpoint the scheduled job POSTs to (e.g.
-   * `https://apprise.tail322ce1.ts.net/notify/health`). NOT a secret —
-   * the delivery token lives in Apprise's own config under that key.
+   * Full Apprise notify endpoint the test push + scheduled job POST to,
+   * e.g. `https://apprise.tail322ce1.ts.net/notify/apprise?tag=health`.
+   * The `?tag=` query scopes delivery within a shared multi-target
+   * Apprise config, so it must ride in the URL. NOT a secret — the
+   * delivery token lives in Apprise's own config under that key.
    */
   appriseUrl: string;
 }

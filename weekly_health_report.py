@@ -19,7 +19,9 @@ import requests
 
 def main(
     dashboard_url: str = "https://health-sync.tail322ce1.ts.net",
-    apprise_url: str = "https://apprise.tail322ce1.ts.net/notify/health",
+    # Keyed `apprise`; ?tag=health scopes to the health target in the
+    # shared Apprise config (see evaluate_health_alerts.py).
+    apprise_url: str = "https://apprise.tail322ce1.ts.net/notify/apprise?tag=health",
     notify: bool = True,
 ):
     # Kick off generation (returns immediately with a job id; the

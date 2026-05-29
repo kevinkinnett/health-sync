@@ -25,7 +25,13 @@ import { logger } from "../logger.js";
 
 const NOTIFICATION_KEY = "notifications";
 
-const DEFAULT_APPRISE_URL = "https://apprise.tail322ce1.ts.net/notify/health";
+// Apprise stores one shared, multi-target config under the key `apprise`;
+// each target is tagged. The `?tag=health` query scopes delivery to the
+// health-tagged target only (so alerts never fan out to the finance /
+// security / discord channels in the same config). The tag rides in the
+// URL so it travels with every POST — test push and scheduled job alike.
+const DEFAULT_APPRISE_URL =
+  "https://apprise.tail322ce1.ts.net/notify/apprise?tag=health";
 
 export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   pushEnabled: true,

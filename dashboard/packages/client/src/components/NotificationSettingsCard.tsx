@@ -262,7 +262,8 @@ export function NotificationSettingsCard() {
               </p>
             )}
             <p className="text-[11px] text-outline mt-1">
-              The notify URL only — your delivery token stays in Apprise.
+              Full notify URL — the <code>?tag=</code> scopes which Apprise
+              target fires. Your delivery token stays in Apprise.
             </p>
           </div>
         </section>
