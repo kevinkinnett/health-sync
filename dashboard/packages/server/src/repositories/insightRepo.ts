@@ -3,6 +3,7 @@ import type {
   ChatConversationSummary,
   InsightGenerationSummary,
 } from "@health-dashboard/shared";
+import { toDateStr, toTimestampStr } from "./mappers.js";
 
 // ---------------------------------------------------------------------------
 // Server-internal DB record shapes
@@ -125,9 +126,13 @@ export class InsightRepository {
     );
     return rows.map((r) => ({
       generationId: r.generation_id as string,
-      createdAt: (r.created_at as Date).toISOString(),
-      dateFrom: (r.date_from as Date).toISOString().slice(0, 10),
-      dateTo: (r.date_to as Date).toISOString().slice(0, 10),
+      // created_at is TIMESTAMPTZ (Date); date_from/date_to are DATE,
+      // which the global pg parser (registered in src/db) returns as
+      // YYYY-MM-DD STRINGS — calling .toISOString() on those threw and
+      // 500'd this endpoint. The mappers handle both string and Date.
+      createdAt: toTimestampStr(r.created_at) ?? "",
+      dateFrom: toDateStr(r.date_from),
+      dateTo: toDateStr(r.date_to),
       categoryCount: r.category_count as number,
     }));
   }
@@ -182,9 +187,11 @@ export class InsightRepository {
       category: r.category as string,
       title: r.title as string,
       content: r.content as string,
-      dateFrom: (r.date_from as Date).toISOString().slice(0, 10),
-      dateTo: (r.date_to as Date).toISOString().slice(0, 10),
-      createdAt: (r.created_at as Date).toISOString(),
+      // date_from/date_to are DATE → strings via the pg parser; the
+      // mappers tolerate both string and Date so this can't 500.
+      dateFrom: toDateStr(r.date_from),
+      dateTo: toDateStr(r.date_to),
+      createdAt: toTimestampStr(r.created_at) ?? "",
     };
   }
 
@@ -267,7 +274,7 @@ export class InsightRepository {
     );
     return rows.map((r) => ({
       conversationId: r.conversation_id as string,
-      lastMessageAt: (r.last_message_at as Date).toISOString(),
+      lastMessageAt: toTimestampStr(r.last_message_at) ?? "",
       messageCount: r.message_count as number,
       preview: r.preview as string,
     }));
@@ -290,7 +297,7 @@ export class InsightRepository {
       toolCalls: r.tool_calls ?? null,
       toolCallId: (r.tool_call_id as string | null) ?? null,
       toolName: (r.tool_name as string | null) ?? null,
-      createdAt: (r.created_at as Date).toISOString(),
+      createdAt: toTimestampStr(r.created_at) ?? "",
     };
   }
 }
