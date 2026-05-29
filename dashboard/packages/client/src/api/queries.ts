@@ -16,6 +16,10 @@ import type {
   WeightEntry,
   HrvDay,
   ExerciseLog,
+  Spo2Day,
+  BreathingRateDay,
+  SkinTempDay,
+  CardioScoreDay,
   IngestState,
   IngestRun,
   IngestOverview,
@@ -249,6 +253,40 @@ export function useExerciseLogs() {
   return useQuery<ExerciseLog[]>({
     queryKey: ["health", "exercise-logs", start, end],
     queryFn: () => apiFetch(`/health/exercise-logs?start=${start}&end=${end}`),
+  });
+}
+
+// Overnight vitals — long-ingested but only recently surfaced. See the
+// Vitals analytics screen.
+export function useSpo2() {
+  const { start, end } = useDateRangeStore();
+  return useQuery<Spo2Day[]>({
+    queryKey: ["health", "spo2", start, end],
+    queryFn: () => apiFetch(`/health/spo2?start=${start}&end=${end}`),
+  });
+}
+
+export function useBreathingRate() {
+  const { start, end } = useDateRangeStore();
+  return useQuery<BreathingRateDay[]>({
+    queryKey: ["health", "breathing-rate", start, end],
+    queryFn: () => apiFetch(`/health/breathing-rate?start=${start}&end=${end}`),
+  });
+}
+
+export function useSkinTemp() {
+  const { start, end } = useDateRangeStore();
+  return useQuery<SkinTempDay[]>({
+    queryKey: ["health", "skin-temp", start, end],
+    queryFn: () => apiFetch(`/health/skin-temp?start=${start}&end=${end}`),
+  });
+}
+
+export function useCardioScore() {
+  const { start, end } = useDateRangeStore();
+  return useQuery<CardioScoreDay[]>({
+    queryKey: ["health", "cardio-score", start, end],
+    queryFn: () => apiFetch(`/health/cardio-score?start=${start}&end=${end}`),
   });
 }
 
