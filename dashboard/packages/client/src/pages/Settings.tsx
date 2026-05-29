@@ -1,23 +1,7 @@
 import { useHealthCheck, useIngestState } from "../api/queries";
 import { useUnitsStore } from "../stores/unitsStore";
 import type { UnitSystem } from "../lib/units";
-
-/**
- * Compact human-friendly "synced N ago" string from a UTC timestamp.
- * Falls back to "—" when the timestamp is missing.
- */
-function formatRelativeAgo(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  const ms = Date.now() - new Date(iso).getTime();
-  if (Number.isNaN(ms) || ms < 0) return "—";
-  const min = Math.floor(ms / 60_000);
-  if (min < 1) return "just now";
-  if (min < 60) return `${min}m ago`;
-  const h = Math.floor(min / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  return `${d}d ago`;
-}
+import { formatRelativeAgo } from "../lib/relativeTime";
 
 /**
  * Read-only status display for connected ingest sources. Driven by the

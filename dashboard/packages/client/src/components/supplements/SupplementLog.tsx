@@ -11,6 +11,7 @@ import {
   useDeleteSupplementIntake,
 } from "../../api/queries";
 import { DateTimePicker } from "../DateTimePicker";
+import { formatDose, formatAmount } from "../../lib/dose";
 
 const inputClass =
   "w-full rounded-lg bg-surface-container-lowest border border-outline-variant/20 px-3 py-2 text-sm text-on-surface focus:outline-none focus:ring-1 focus:ring-primary";
@@ -34,14 +35,6 @@ function rangeToSinceIso(range: HistoryRange): string | undefined {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString();
 }
 
-function formatDose(amount: number | null, unit: string): string {
-  if (amount == null) return `— ${unit}`;
-  return `${formatAmount(amount)} ${unit}`;
-}
-
-function formatAmount(n: number): string {
-  return Number.isInteger(n) ? String(n) : String(parseFloat(n.toFixed(3)));
-}
 
 /**
  * Mirror of the server's `computeBreakdown`: scales the item's

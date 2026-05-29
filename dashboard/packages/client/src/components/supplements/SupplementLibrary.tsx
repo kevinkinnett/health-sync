@@ -16,6 +16,7 @@ import {
   DossierDrawer,
   type DossierDrawerTarget,
 } from "../dossier/DossierDrawer";
+import { formatAmount } from "../../lib/dose";
 
 const inputClass =
   "w-full rounded-lg bg-surface-container-lowest border border-outline-variant/20 px-3 py-2 text-sm text-on-surface focus:outline-none focus:ring-1 focus:ring-primary";
@@ -541,10 +542,6 @@ function CompositionPreview({
       </ul>
     </div>
   );
-}
-
-function formatAmount(n: number): string {
-  return Number.isInteger(n) ? String(n) : String(parseFloat(n.toFixed(3)));
 }
 
 function ItemCard({

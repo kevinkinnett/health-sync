@@ -7,6 +7,7 @@ import type {
   DossierSource,
 } from "@health-dashboard/shared";
 import { useDossier, useRefreshDossier } from "../../api/queries";
+import { formatRelativeAgo } from "../../lib/relativeTime";
 
 /**
  * Controlled right-side drawer that shows / refreshes the LLM-built dossier
@@ -398,18 +399,7 @@ function renderBody(body: string, sources: DossierSource[]) {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function formatRelative(iso: string): string {
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) return iso;
-  const diffMs = Date.now() - t;
-  const minutes = Math.round(diffMs / 60_000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.round(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  const months = Math.round(days / 30);
-  if (months < 12) return `${months}mo ago`;
-  return `${Math.round(months / 12)}y ago`;
-}
+// Local alias kept so the existing call sites read naturally
+// ("Cached {formatRelative(...)}"). Single shared implementation lives
+// in `lib/relativeTime.ts`.
+const formatRelative = formatRelativeAgo;

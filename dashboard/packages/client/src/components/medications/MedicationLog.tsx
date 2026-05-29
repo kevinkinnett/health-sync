@@ -7,6 +7,7 @@ import {
   useDeleteMedicationIntake,
 } from "../../api/queries";
 import { DateTimePicker } from "../DateTimePicker";
+import { formatDose } from "../../lib/dose";
 
 const inputClass =
   "w-full rounded-lg bg-surface-container-lowest border border-outline-variant/20 px-3 py-2 text-sm text-on-surface focus:outline-none focus:ring-1 focus:ring-primary";
@@ -28,12 +29,6 @@ function rangeToSinceIso(range: HistoryRange): string | undefined {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString();
 }
 
-function formatDose(amount: number | null, unit: string): string {
-  if (amount == null) return `— ${unit}`;
-  const formatted =
-    Number.isInteger(amount) ? String(amount) : String(parseFloat(amount.toFixed(3)));
-  return `${formatted} ${unit}`;
-}
 
 interface ConfirmSheetProps {
   item: MedicationItem;
