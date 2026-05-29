@@ -146,18 +146,31 @@ describe("Insights page", () => {
       return Promise.resolve(null);
     });
     renderInsights();
-    await waitFor(() => {
-      // First category expanded by default
-      expect(screen.getByText("Activity & Movement")).toBeInTheDocument();
-      expect(screen.getByText(/averaged 8,400\/day/i)).toBeInTheDocument();
-      // Second category collapsed (header visible, body not)
-      expect(screen.getByText("Sleep & Recovery")).toBeInTheDocument();
-      expect(screen.queryByText(/6h45m/)).not.toBeInTheDocument();
-    });
 
-    // Open the second category
-    fireEvent.click(screen.getByRole("button", { name: /Sleep & Recovery/i }));
+    // Assert open/closed state via aria-expanded on the header buttons
+    // — the structural contract — rather than inferring it from whether
+    // body text happens to be in the DOM. (The body-text checks stay as
+    // a complementary signal that the expanded panel actually renders
+    // its content.)
+    const firstHeader = await screen.findByRole("button", {
+      name: /Activity & Movement/i,
+    });
+    const secondHeader = screen.getByRole("button", {
+      name: /Sleep & Recovery/i,
+    });
     await waitFor(() => {
+      expect(firstHeader).toHaveAttribute("aria-expanded", "true");
+      expect(secondHeader).toHaveAttribute("aria-expanded", "false");
+    });
+    // First panel's body is rendered; second's is not (collapsed).
+    expect(screen.getByText(/averaged 8,400\/day/i)).toBeInTheDocument();
+    expect(screen.queryByText(/6h45m/)).not.toBeInTheDocument();
+
+    // Open the second category → its aria-expanded flips and its body
+    // appears.
+    fireEvent.click(secondHeader);
+    await waitFor(() => {
+      expect(secondHeader).toHaveAttribute("aria-expanded", "true");
       expect(screen.getByText(/6h45m/)).toBeInTheDocument();
     });
   });
@@ -272,19 +285,12 @@ describe("Insights page", () => {
     renderInsights();
     fireEvent.click(screen.getByRole("tab", { name: /chat/i }));
 
-    await waitFor(() => {
-      expect(
-        screen.getByText(/Ask anything about your health data/i),
-      ).toBeInTheDocument();
-    });
-    // Each example question is a button. Using getAllByRole and
-    // filtering for buttons inside the chat empty area would be
-    // ideal — we approximate by checking ≥6 buttons appear in the
-    // example grid (the "auto_awesome" icon is on the page header).
-    const examples = screen.getAllByRole("button").filter((b) =>
-      /\?$/.test(b.textContent ?? ""),
-    );
-    expect(examples.length).toBeGreaterThanOrEqual(6);
+    // Scope the count to the example grid via its test-id rather than
+    // scraping every "?"-terminated button on the page (which would
+    // silently inflate if any future button anywhere ended in "?").
+    const grid = await screen.findByTestId("chat-example-questions");
+    const examples = within(grid).getAllByRole("button");
+    expect(examples).toHaveLength(6);
   });
 
   it("clicking an example pre-fills the chat input", async () => {

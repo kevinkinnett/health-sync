@@ -623,7 +623,10 @@ function MessagesArea({
             Ask anything about your health data — sleep, activity, supplements,
             correlations between them.
           </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-2xl">
+          <div
+            data-testid="chat-example-questions"
+            className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-2xl"
+          >
             {EXAMPLE_QUESTIONS.map((q) => (
               <button
                 key={q}
