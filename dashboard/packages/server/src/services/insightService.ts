@@ -74,12 +74,17 @@ const HEALTH_CATEGORIES: CategoryDef[] = [
       "query_records",
       "query_correlations",
       "query_summary",
+      "query_skin_temp",
+      "query_spo2",
     ],
     prompt:
       "Analyse the user's sleep duration, stage breakdown (deep / REM / " +
       "light), efficiency, bedtime consistency, and HRV as a recovery " +
-      "indicator. Note any nights below 7 hours, deep-sleep trends, and " +
-      "whether HRV correlates with sleep totals. End with one specific " +
+      "indicator. Also fold in the overnight recovery vitals: skin-" +
+      "temperature deviation from baseline (query_skin_temp) and blood-" +
+      "oxygen (query_spo2) — call out any multi-night skin-temp rise or " +
+      "SpO2 dips, which can flag illness or poor sleep quality. Note any " +
+      "nights below 7 hours and deep-sleep trends. End with one specific " +
       "behaviour to test. 200-300 words, markdown.",
   },
   {
@@ -92,12 +97,19 @@ const HEALTH_CATEGORIES: CategoryDef[] = [
       "query_hrv",
       "query_summary",
       "query_records",
+      "query_breathing_rate",
+      "query_spo2",
+      "query_cardio_score",
     ],
     prompt:
       "Analyse resting heart rate, heart-rate-zone minutes, and HRV. Call " +
-      "out the recent RHR trend (rising / falling / stable), how much time " +
-      "the user spent in fat-burn / cardio / peak zones, and whether HRV " +
-      "looks normal for their baseline. 200-300 words, markdown.",
+      "out the recent RHR trend (rising / falling / stable) and how much " +
+      "time the user spent in fat-burn / cardio / peak zones. Bring in the " +
+      "cardio-respiratory vitals: breathing rate (query_breathing_rate), " +
+      "blood-oxygen (query_spo2), and cardio fitness / VO2 max " +
+      "(query_cardio_score, a slow-moving range string). Flag the classic " +
+      "under-recovery / illness triad if present — elevated RHR + elevated " +
+      "breathing rate together. 200-300 words, markdown.",
   },
   {
     key: "body_composition",

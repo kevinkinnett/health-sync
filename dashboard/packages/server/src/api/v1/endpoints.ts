@@ -188,6 +188,54 @@ export function buildV1Endpoints(): V1EndpointDef[] {
     },
 
     // -----------------------------------------------------------------
+    // Overnight vitals / recovery signals
+    // -----------------------------------------------------------------
+    {
+      path: "/spo2",
+      summary: "Daily SpO2 (blood oxygen)",
+      description:
+        "Per-day blood-oxygen saturation — nightly average plus min and max (percent). A drop in the nightly minimum can indicate respiratory disturbance or illness.",
+      parameters: dateRangeParams,
+      handler: async (args, ctx) => {
+        const { start, end } = resolveDateRange(args, ctx.userTimezone);
+        return ctx.healthDataService.getSpo2(start, end);
+      },
+    },
+    {
+      path: "/breathing-rate",
+      summary: "Daily breathing rate",
+      description:
+        "Per-day average breathing rate (breaths per minute) measured during sleep. A sustained rise above baseline is an early illness / under-recovery signal.",
+      parameters: dateRangeParams,
+      handler: async (args, ctx) => {
+        const { start, end } = resolveDateRange(args, ctx.userTimezone);
+        return ctx.healthDataService.getBreathingRate(start, end);
+      },
+    },
+    {
+      path: "/skin-temp",
+      summary: "Daily skin temperature deviation",
+      description:
+        "Per-day nightly skin-temperature deviation from the user's personal baseline (degrees; positive = warmer than baseline). Multi-night positive deviation is part of the standard illness / over-training triad.",
+      parameters: dateRangeParams,
+      handler: async (args, ctx) => {
+        const { start, end } = resolveDateRange(args, ctx.userTimezone);
+        return ctx.healthDataService.getSkinTemp(start, end);
+      },
+    },
+    {
+      path: "/cardio-score",
+      summary: "Cardio fitness (VO2 max)",
+      description:
+        "Per-day cardio-fitness score (VO2 max). Reported by Fitbit as a RANGE string such as \"43-47\", not a single number — it changes slowly, so expect long flat stretches.",
+      parameters: dateRangeParams,
+      handler: async (args, ctx) => {
+        const { start, end } = resolveDateRange(args, ctx.userTimezone);
+        return ctx.healthDataService.getCardioScore(start, end);
+      },
+    },
+
+    // -----------------------------------------------------------------
     // Aggregates / analytics
     // -----------------------------------------------------------------
     {
