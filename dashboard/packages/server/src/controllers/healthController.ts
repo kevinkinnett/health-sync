@@ -83,6 +83,10 @@ export class HealthController {
     res.json(await this.service.getCardioScore(start, end));
   }
 
+  async getReadiness(_req: Request, res: Response): Promise<void> {
+    res.json(await this.service.getReadiness());
+  }
+
   async getRecords(_req: Request, res: Response): Promise<void> {
     // Pass "today" in the user's calendar so the streak walker can skip
     // an in-progress final day rather than counting partial-data zeroes

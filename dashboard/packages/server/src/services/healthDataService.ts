@@ -29,6 +29,8 @@ import type { SkinTempRepository } from "../repositories/skinTempRepo.js";
 import type { CardioScoreRepository } from "../repositories/cardioScoreRepo.js";
 import { avg, describeCorrelation, pearson } from "./stats.js";
 import { addDays } from "./userTz.js";
+import { computeReadiness, type ReadinessDayInput } from "./readiness.js";
+import type { ReadinessScore } from "@health-dashboard/shared";
 
 export class HealthDataService {
   constructor(
@@ -125,6 +127,52 @@ export class HealthDataService {
 
   async getCardioScore(start: string, end: string) {
     return this.cardioScoreRepo.findByDateRange(start, end);
+  }
+
+  /**
+   * Compute the personal readiness score. Pulls ~90 days of each
+   * recovery signal, joins by date, and hands off to the pure
+   * `computeReadiness` for the z-vs-baseline math. 90 days comfortably
+   * covers the 30-day baseline window plus the 14-day history series.
+   */
+  async getReadiness(): Promise<ReadinessScore> {
+    const N = 90;
+    const [hrv, heartRate, sleep, breathing, spo2, skinTemp] =
+      await Promise.all([
+        this.hrvRepo.findLatest(N),
+        this.heartRateRepo.findLatest(N),
+        this.sleepRepo.findLatest(N),
+        this.breathingRateRepo.findLatest(N),
+        this.spo2Repo.findLatest(N),
+        this.skinTempRepo.findLatest(N),
+      ]);
+
+    const byDate = new Map<string, ReadinessDayInput>();
+    const ensure = (date: string): ReadinessDayInput => {
+      let d = byDate.get(date);
+      if (!d) {
+        d = {
+          date,
+          hrv: null,
+          rhr: null,
+          sleepMin: null,
+          breathing: null,
+          spo2: null,
+          skinTemp: null,
+        };
+        byDate.set(date, d);
+      }
+      return d;
+    };
+
+    for (const h of hrv) ensure(h.date).hrv = h.dailyRmssd;
+    for (const h of heartRate) ensure(h.date).rhr = h.restingHeartRate;
+    for (const s of sleep) ensure(s.date).sleepMin = s.totalMinutesAsleep;
+    for (const b of breathing) ensure(b.date).breathing = b.breathingRate;
+    for (const s of spo2) ensure(s.date).spo2 = s.avgValue;
+    for (const s of skinTemp) ensure(s.date).skinTemp = s.nightlyRelative;
+
+    return computeReadiness([...byDate.values()]);
   }
 
   async getWeeklyInsights(): Promise<WeeklyInsights> {

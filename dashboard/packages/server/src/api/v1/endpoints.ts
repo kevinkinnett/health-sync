@@ -235,6 +235,14 @@ export function buildV1Endpoints(): V1EndpointDef[] {
       },
     },
 
+    {
+      path: "/readiness",
+      summary: "Readiness / recovery score",
+      description:
+        "Personal recovery score (0-100, 50 = your baseline) synthesized from HRV, resting HR, sleep, breathing rate, SpO2, and skin-temp deviation — each scored vs the user's own trailing 30-day baseline. Returns the composite, a per-signal breakdown, and a 14-day trend.",
+      handler: async (_args, ctx) => ctx.healthDataService.getReadiness(),
+    },
+
     // -----------------------------------------------------------------
     // Aggregates / analytics
     // -----------------------------------------------------------------
