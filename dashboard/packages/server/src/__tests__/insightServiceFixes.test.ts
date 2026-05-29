@@ -1,5 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
-import { listCategoryDefs } from "../services/insightService.js";
+import {
+  listCategoryDefs,
+  runWithConcurrency,
+} from "../services/insightService.js";
 import { LlmHttpError } from "../services/llmClient.js";
 import { LlmClient } from "../services/llmClient.js";
 
@@ -22,36 +25,9 @@ import { LlmClient } from "../services/llmClient.js";
  */
 
 describe("runWithConcurrency invariants", () => {
-  // The runner is internal to insightService. We verify its observable
-  // behaviour (sequential ordering with limit=1) via a small re-impl
-  // that mirrors the production code's contract.
-  async function runWithConcurrency<T, R>(
-    items: T[],
-    limit: number,
-    fn: (item: T) => Promise<R>,
-  ): Promise<PromiseSettledResult<R>[]> {
-    const results: PromiseSettledResult<R>[] = new Array(items.length);
-    let nextIndex = 0;
-    const workers: Promise<void>[] = [];
-    const workerCount = Math.max(1, Math.min(limit, items.length));
-    for (let w = 0; w < workerCount; w++) {
-      workers.push(
-        (async () => {
-          while (true) {
-            const i = nextIndex++;
-            if (i >= items.length) return;
-            try {
-              results[i] = { status: "fulfilled", value: await fn(items[i]) };
-            } catch (reason) {
-              results[i] = { status: "rejected", reason };
-            }
-          }
-        })(),
-      );
-    }
-    await Promise.all(workers);
-    return results;
-  }
+  // Tests the REAL production function — the prior version re-implemented
+  // the runner locally and tested the copy, which would have stayed green
+  // even if the production runner was broken. Audit #13.
 
   it("with limit=1, never has two items in flight simultaneously", async () => {
     let inFlight = 0;

@@ -350,7 +350,11 @@ export class InsightService {
 // from being saturated by N parallel `claude -p` invocations.
 // ---------------------------------------------------------------------------
 
-async function runWithConcurrency<T, R>(
+/**
+ * Bounded-concurrency `Promise.allSettled`. Exported so tests can
+ * exercise the real production function rather than a re-implementation.
+ */
+export async function runWithConcurrency<T, R>(
   items: T[],
   limit: number,
   fn: (item: T) => Promise<R>,

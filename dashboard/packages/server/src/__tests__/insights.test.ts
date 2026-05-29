@@ -316,8 +316,14 @@ describe("runAgenticLoop", () => {
       );
       expect(result.placeholder).toBe(true);
       expect(result.content).toMatch(/Unable to produce a grounded answer/);
-      // Should have stopped after at most 2 rounds (each took 70s, budget 120s).
-      expect(calls).toBeLessThanOrEqual(2);
+      // Each call advances fake time by 70s. With a 120s budget:
+      //   Round 1: budget-check passes (0s elapsed), call runs (70s).
+      //   Round 2: budget-check passes (70s elapsed), call runs (140s).
+      //   Round 3: budget-check FAILS (140s > 120s), placeholder.
+      // So exactly 2 LLM calls landed before the bail. Asserting an
+      // exact count guards against a zero-round bug (loop bailing
+      // before any call) silently passing the old `<=2` bound.
+      expect(calls).toBe(2);
     } finally {
       dateNowSpy.mockRestore();
     }
@@ -338,45 +344,15 @@ describe("runAgenticLoop", () => {
     expect(result.content).toMatch(/Unable to produce a grounded answer/);
   });
 
-  it("retries the chatCompletion call on transient 5xx via the LlmClient retry path", async () => {
-    // Simulate a 500 the first time (proxy hiccup), success the second.
-    // The agentic loop opts callers in to retries=2 by default, so the
-    // round count remains 1 from the loop's perspective.
-    const { LlmHttpError } = await import("../services/llmClient.js");
-    let calls = 0;
-    const llm = {
-      chatCompletion: vi.fn(async () => {
-        calls++;
-        if (calls === 1) {
-          throw new LlmHttpError(500, "Command failed");
-        }
-        return textResponse("Recovered.");
-      }),
-    } as unknown as LlmClient;
-    // Wrap our fake llm with retry behaviour (mimicking the real one)
-    const llmWithRetry = {
-      chatCompletion: vi.fn(async (req, opts) => {
-        const retries = opts?.retries ?? 0;
-        let attempt = 0;
-        while (true) {
-          try {
-            return await llm.chatCompletion(req, opts);
-          } catch (err) {
-            const transient =
-              err instanceof LlmHttpError && err.status >= 500;
-            if (transient && attempt < retries) {
-              attempt++;
-              continue;
-            }
-            throw err;
-          }
-        }
-      }),
-    } as unknown as LlmClient;
-    const result = await runAgenticLoop(baseOpts({ llm: llmWithRetry }));
-    expect(calls).toBe(2);
-    expect(result.content).toBe("Recovered.");
-  });
+  // (Audit #15 removed: the original "retries the chatCompletion call
+  // on transient 5xx via the LlmClient retry path" test wrapped the
+  // fake LlmClient in its own retry helper and asserted that the
+  // wrapper retried. It was tautological — testing a copy of the
+  // production retry logic against itself. The genuine retry behaviour
+  // is exercised against the real `LlmClient.chatCompletion` in
+  // `insightServiceFixes.test.ts` ("LlmClient retry-on-5xx" describe
+  // block: 4 tests covering recovery, exhaustion, opt-out, and
+  // 4xx-not-retried).)
 
   it("emits progress events with the tool names called in each round", async () => {
     const llm = makeLlm([
