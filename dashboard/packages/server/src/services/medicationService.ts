@@ -6,22 +6,8 @@ import type {
   CreateMedicationIntakeBody,
 } from "@health-dashboard/shared";
 import type { MedicationRepository } from "../repositories/medicationRepo.js";
-
-/** Thrown when a referenced item doesn't exist or is inactive. */
-export class NotFoundError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "NotFoundError";
-  }
-}
-
-/** Thrown when business rules reject a request (vs. malformed input). */
-export class ValidationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "ValidationError";
-  }
-}
+export { NotFoundError, ValidationError } from "./errors.js";
+import { NotFoundError, ValidationError } from "./errors.js";
 
 /**
  * Coordinates medication repository access and centralizes the
