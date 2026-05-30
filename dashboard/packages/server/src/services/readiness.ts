@@ -336,8 +336,10 @@ function summarize(s: DayScore): string {
   const lead =
     s.band === "primed" ? "Primed" : s.band === "compromised" ? "Compromised" : "Balanced";
   const parts: string[] = [];
-  if (best && (best.z ?? 0) >= 0.5) parts.push(`${best.label.toLowerCase()} above your baseline`);
-  if (worst && (worst.z ?? 0) <= -0.5) parts.push(`${worst.label.toLowerCase()} below`);
+  // Frame by RECOVERY contribution, not raw direction — "above/below
+  // baseline" is wrong for inverted metrics (low breathing / RHR is good).
+  if (best && (best.z ?? 0) >= 0.5) parts.push(`${best.label.toLowerCase()} is a bright spot`);
+  if (worst && (worst.z ?? 0) <= -0.5) parts.push(`${worst.label.toLowerCase()} is dragging`);
   if (parts.length === 0) return `${lead} — everything close to your baseline.`;
   return `${lead} — ${parts.join(", ")}.`;
 }
