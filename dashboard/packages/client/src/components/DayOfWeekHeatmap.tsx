@@ -6,6 +6,23 @@ import {
   type UnitSystem,
 } from "../lib/units";
 
+/** "Monday, May 25" — the actual date behind a day-of-week column. */
+function formatDayDate(dateStr: string): string {
+  return new Date(dateStr + "T00:00:00Z").toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+}
+function formatShortDate(dateStr: string): string {
+  return new Date(dateStr + "T00:00:00Z").toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+}
+
 // Map metric type to accent color hue for the heatmap
 function getColorForMetric(metric: string): { r0: number; g0: number; b0: number; r1: number; g1: number; b1: number } {
   // Activity metrics -> primary (indigo)
@@ -32,16 +49,24 @@ function interpolateColor(t: number, metric: string): string {
 function CellValue({
   row,
   dayIndex,
+  dayDate,
   units,
 }: {
   row: DayOfWeekHeatmapMetric;
   dayIndex: number;
+  dayDate?: string;
   units: UnitSystem;
 }) {
+  const datePart = dayDate ? ` · ${formatShortDate(dayDate)}` : "";
   const val = row.values[dayIndex];
   if (val == null) {
     return (
-      <td className="px-4 py-4 text-center text-outline">--</td>
+      <td
+        className="px-4 py-4 text-center text-outline"
+        title={dayDate ? formatDayDate(dayDate) : undefined}
+      >
+        --
+      </td>
     );
   }
 
@@ -67,7 +92,7 @@ function CellValue({
     <td
       className={`px-4 py-4 text-center tabular-nums ${isBold ? "font-bold" : ""}`}
       style={{ backgroundColor: bg }}
-      title={`${row.label}: ${formatted} ${displayUnit}`}
+      title={`${row.label}${datePart}: ${formatted} ${displayUnit}`}
     >
       {formatted}
     </td>
@@ -100,8 +125,12 @@ export function DayOfWeekHeatmap({ data }: { data: DayOfWeekHeatmapData }) {
           <thead>
             <tr className="bg-surface-container-low">
               <th className="px-6 py-4 font-semibold text-outline">METRIC</th>
-              {data.dayNames.map((name) => (
-                <th key={name} className="px-4 py-4 font-semibold text-outline text-center">
+              {data.dayNames.map((name, i) => (
+                <th
+                  key={name}
+                  title={data.dayDates?.[i] ? formatDayDate(data.dayDates[i]) : undefined}
+                  className="px-4 py-4 font-semibold text-outline text-center cursor-help"
+                >
                   {name}
                 </th>
               ))}
@@ -117,7 +146,13 @@ export function DayOfWeekHeatmap({ data }: { data: DayOfWeekHeatmapData }) {
                   </span>
                 </td>
                 {data.dayNames.map((_, i) => (
-                  <CellValue key={i} row={row} dayIndex={i} units={units} />
+                  <CellValue
+                    key={i}
+                    row={row}
+                    dayIndex={i}
+                    dayDate={data.dayDates?.[i]}
+                    units={units}
+                  />
                 ))}
               </tr>
             ))}

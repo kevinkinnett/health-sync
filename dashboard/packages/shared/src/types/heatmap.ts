@@ -17,6 +17,10 @@ export interface DayOfWeekHeatmapMetric {
 
 export interface DayOfWeekHeatmapData {
   dayNames: string[];
+  /** The actual calendar date (YYYY-MM-DD) each column maps to in the
+   *  current rolling week — columns are rotated so the rightmost is the
+   *  latest day. Used to show the real date on hover. */
+  dayDates: string[];
   /** One entry per metric — rendered as one table row each. */
   rows: DayOfWeekHeatmapMetric[];
   totalDays: number;

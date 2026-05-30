@@ -606,8 +606,16 @@ export class HealthDataService {
         : 0;
     const startDow = (latestDow + 1) % 7;
 
+    // The actual date behind each (rotated) column: the rightmost column is
+    // the latest day, so column i maps to latestDate − (6 − i).
+    const latestDate = activity.length > 0 ? activity[0].date : null;
+    const dayDates = latestDate
+      ? Array.from({ length: 7 }, (_, i) => addDays(latestDate, i - 6))
+      : [];
+
     return {
       dayNames: rotateDow(DAY_NAMES, startDow),
+      dayDates,
       rows: rows.map((r) => ({ ...r, values: rotateDow(r.values, startDow) })),
       totalDays: activity.filter((d) => d.steps != null).length,
       dayCounts: rotateDow(dayCounts, startDow),

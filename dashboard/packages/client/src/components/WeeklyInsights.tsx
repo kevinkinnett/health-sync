@@ -12,6 +12,22 @@ function formatDateRange(start: string, end: string): string {
   return `${s.toLocaleDateString("en-US", opts).toUpperCase()} - ${e.toLocaleDateString("en-US", opts).toUpperCase()}`;
 }
 
+/** "Monday, May 25" — the actual date a day-of-week column maps to. */
+function formatDayDate(dateStr: string): string {
+  return new Date(dateStr + "T00:00:00Z").toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+function addDaysStr(dateStr: string, n: number): string {
+  const d = new Date(dateStr + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
 function ChangeArrow({ value }: { value: number }) {
   if (value === 0) return <span className="text-outline text-xs">--</span>;
   const up = value > 0;
@@ -52,26 +68,38 @@ function MetricCard({
   );
 }
 
-function DayOfWeekChart({ data }: { data: DayOfWeekAvg[] }) {
+function DayOfWeekChart({
+  data,
+  periodStart,
+}: {
+  data: DayOfWeekAvg[];
+  periodStart: string;
+}) {
   const max = Math.max(...data.map((d) => d.avgSteps), 1);
 
   return (
     <div className="flex items-end gap-2 h-24 px-2 mt-4">
-      {data.map((d) => {
+      {data.map((d, i) => {
         const pct = (d.avgSteps / max) * 100;
         const isTop = pct > 80;
+        // Columns are aligned to the current rolling week, so column i is
+        // periodStart + i — the real date behind this weekday.
+        const dateLabel = formatDayDate(addDaysStr(periodStart, i));
+        const tip = `${dateLabel} · ${d.avgSteps.toLocaleString()} avg steps`;
         return (
           <div key={d.dow} className="flex-1 flex flex-col items-center gap-2">
-            <div className="w-full relative" style={{ height: "80px" }}>
+            <div className="w-full relative" style={{ height: "80px" }} title={tip}>
               <div
                 className={`absolute bottom-0 w-full rounded-t-lg transition-all ${
                   isTop ? "bg-primary" : "bg-surface-container-highest"
                 }`}
                 style={{ height: `${Math.max(pct, 6)}%` }}
-                title={`${d.dayName}: ${d.avgSteps.toLocaleString()} avg steps`}
               />
             </div>
-            <span className={`text-[10px] font-bold uppercase tracking-widest ${isTop ? "text-primary" : "text-outline"}`}>
+            <span
+              title={dateLabel}
+              className={`text-[10px] font-bold uppercase tracking-widest cursor-help ${isTop ? "text-primary" : "text-outline"}`}
+            >
               {d.dayName}
             </span>
           </div>
@@ -140,7 +168,10 @@ export function WeeklyInsights({ data }: { data: WeeklyInsightsData }) {
         </div>
 
         {/* Day-of-week activity bars */}
-        <DayOfWeekChart data={data.dayOfWeek} />
+        <DayOfWeekChart
+          data={data.dayOfWeek}
+          periodStart={data.currentPeriod.start}
+        />
 
         {/* Highlights */}
         {data.highlights.length > 0 && (
