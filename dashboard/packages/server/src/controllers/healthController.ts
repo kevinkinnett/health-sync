@@ -93,8 +93,16 @@ export class HealthController {
     res.json(await this.service.getFood(start, end));
   }
 
-  async getReadiness(_req: Request, res: Response): Promise<void> {
-    res.json(await this.service.getReadiness());
+  async getReadiness(req: Request, res: Response): Promise<void> {
+    // Optional `?days=` controls the trend length. The dashboard card
+    // omits it (short 14-day glance); the detail screen asks for ~45.
+    // Clamp so the 90-day input window always covers it + the 30-day
+    // baseline each history point needs.
+    const raw = Number(req.query.days);
+    const historyDays = Number.isFinite(raw)
+      ? Math.min(60, Math.max(7, Math.trunc(raw)))
+      : undefined;
+    res.json(await this.service.getReadiness(historyDays));
   }
 
   async getRecords(_req: Request, res: Response): Promise<void> {

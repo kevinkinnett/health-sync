@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Readiness } from "../pages/Readiness";
 import type { ReadinessScore } from "@health-dashboard/shared";
@@ -15,7 +16,9 @@ function renderScreen() {
   });
   return render(
     <QueryClientProvider client={qc}>
-      <Readiness />
+      <MemoryRouter>
+        <Readiness />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
@@ -120,6 +123,20 @@ describe("Readiness screen", () => {
     renderScreen();
     expect(await screen.findByText(/Not scored today/i)).toBeInTheDocument();
     expect(screen.getByText(/Skin temperature/)).toBeInTheDocument();
+  });
+
+  it("links each signal row to its full analytics screen", async () => {
+    apiFetchMock.mockResolvedValue(SCORE);
+    renderScreen();
+    const hrv = await screen.findByRole("link", { name: /HRV.*full history/i });
+    expect(hrv).toHaveAttribute("href", "/analytics/hrv");
+    expect(
+      screen.getByRole("link", { name: /Resting HR.*full history/i }),
+    ).toHaveAttribute("href", "/analytics/heart-rate");
+    // Vitals signals (breathing/SpO2/skin-temp) point at the Vitals screen.
+    expect(
+      screen.getByRole("link", { name: /Blood oxygen.*full history/i }),
+    ).toHaveAttribute("href", "/analytics/vitals");
   });
 
   it("explains the methodology", async () => {

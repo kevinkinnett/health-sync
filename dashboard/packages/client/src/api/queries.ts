@@ -312,14 +312,15 @@ export function useCardioScore() {
 }
 
 /**
- * Personal readiness score. No date params — always the latest scored
- * day. Lives under the ["health"] prefix so an ingest run invalidates
- * it like the other metrics.
+ * Personal readiness score for the latest scored day. `days` sets the
+ * trend length (the dashboard card omits it for a short glance; the
+ * detail screen passes ~45). Keyed by `days` so the two coexist; still
+ * under the ["health"] prefix so an ingest run invalidates both.
  */
-export function useReadiness() {
+export function useReadiness(days?: number) {
   return useQuery<ReadinessScore>({
-    queryKey: ["health", "readiness"],
-    queryFn: () => apiFetch(`/health/readiness`),
+    queryKey: ["health", "readiness", days ?? null],
+    queryFn: () => apiFetch(`/health/readiness${days ? `?days=${days}` : ""}`),
     staleTime: 5 * 60 * 1000,
   });
 }

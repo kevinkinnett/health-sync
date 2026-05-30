@@ -1,6 +1,8 @@
+import { Link } from "react-router-dom";
 import type {
   ReadinessBand,
   ReadinessComponent,
+  ReadinessMetric,
   ReadinessScore,
 } from "@health-dashboard/shared";
 import { useReadiness } from "../api/queries";
@@ -26,7 +28,9 @@ const BAND: Record<ReadinessBand, { ring: string; text: string; label: string; b
 };
 
 export function Readiness() {
-  const q = useReadiness();
+  // Longer trend than the dashboard card's 14-day glance — this is the
+  // analysis view. 45 stays within the 90-day input window (+30 baseline).
+  const q = useReadiness(45);
 
   if (q.isLoading) {
     return <p className="text-sm text-outline">Loading readiness…</p>;
@@ -131,13 +135,26 @@ const STATUS_DOT: Record<ReadinessComponent["status"], string> = {
   unavailable: "bg-outline/40",
 };
 
+/** Where each signal's full history lives — tap a row to drill in. */
+const METRIC_ROUTE: Partial<Record<ReadinessMetric, string>> = {
+  hrv: "/analytics/hrv",
+  rhr: "/analytics/heart-rate",
+  sleep: "/analytics/sleep",
+  breathing: "/analytics/vitals",
+  spo2: "/analytics/vitals",
+  skinTemp: "/analytics/vitals",
+  restlessness: "/analytics/eight-sleep",
+};
+
 function ComponentRow({ c }: { c: ReadinessComponent }) {
   const z = c.z ?? 0;
   // Center bar: 0 in the middle, fill right (good) / left (poor), |z| up to 3.
   const pct = Math.min(Math.abs(z) / 3, 1) * 50;
   const good = z >= 0;
-  return (
-    <div className="py-3">
+  const route = METRIC_ROUTE[c.metric];
+
+  const inner = (
+    <>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className={`w-2 h-2 rounded-full ${STATUS_DOT[c.status]}`} />
@@ -146,7 +163,14 @@ function ComponentRow({ c }: { c: ReadinessComponent }) {
             <span title="Sensors disagreed on this signal" aria-label="sensors disagreed">⚑</span>
           )}
         </div>
-        <span className="text-[10px] text-outline uppercase tracking-widest">{c.weightPct}% weight</span>
+        <span className="text-[10px] text-outline uppercase tracking-widest flex items-center gap-1">
+          {c.weightPct}% weight
+          {route && (
+            <span className="material-symbols-outlined text-sm text-outline group-hover:text-primary transition-colors">
+              chevron_right
+            </span>
+          )}
+        </span>
       </div>
 
       {/* z bar */}
@@ -173,6 +197,18 @@ function ComponentRow({ c }: { c: ReadinessComponent }) {
           {c.sources.map((s) => `${s.label} ${s.z >= 0 ? "+" : ""}${s.z}`).join(" · ")}
         </div>
       )}
-    </div>
+    </>
+  );
+
+  return route ? (
+    <Link
+      to={route}
+      aria-label={`${c.label} — view full history`}
+      className="group block py-3 px-3 -mx-3 rounded-lg hover:bg-surface-container-high transition-colors"
+    >
+      {inner}
+    </Link>
+  ) : (
+    <div className="py-3">{inner}</div>
   );
 }

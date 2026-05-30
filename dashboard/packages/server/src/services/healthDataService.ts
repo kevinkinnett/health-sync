@@ -204,8 +204,8 @@ export class HealthDataService {
    * Compute the personal readiness score from the joined inputs — see
    * `services/readiness.ts` for the z-vs-baseline methodology.
    */
-  async getReadiness(): Promise<ReadinessScore> {
-    return computeReadiness(await this.getReadinessInputs());
+  async getReadiness(historyDays?: number): Promise<ReadinessScore> {
+    return computeReadiness(await this.getReadinessInputs(), historyDays);
   }
 
   async getWeeklyInsights(): Promise<WeeklyInsights> {

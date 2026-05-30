@@ -278,7 +278,10 @@ function scoreDay(days: ReadinessDayInput[], idx: number): DayScore {
 
 // ---- Public entry point ---------------------------------------------------
 
-export function computeReadiness(daysIn: ReadinessDayInput[]): ReadinessScore {
+export function computeReadiness(
+  daysIn: ReadinessDayInput[],
+  historyDays: number = HISTORY_DAYS,
+): ReadinessScore {
   const days = [...daysIn].sort((a, b) => a.date.localeCompare(b.date));
 
   const eligible = (d: ReadinessDayInput) =>
@@ -305,7 +308,7 @@ export function computeReadiness(daysIn: ReadinessDayInput[]): ReadinessScore {
   const current = scoreDay(days, targetIdx);
 
   const history: { date: string; score: number }[] = [];
-  for (let i = Math.max(0, targetIdx - HISTORY_DAYS + 1); i <= targetIdx; i++) {
+  for (let i = Math.max(0, targetIdx - historyDays + 1); i <= targetIdx; i++) {
     if (!eligible(days[i])) continue;
     const s = scoreDay(days, i);
     if (s.score != null) history.push({ date: days[i].date, score: s.score });
