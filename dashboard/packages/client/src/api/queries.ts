@@ -20,6 +20,7 @@ import type {
   BreathingRateDay,
   SkinTempDay,
   CardioScoreDay,
+  EightSleepDay,
   ReadinessScore,
   AlertsResponse,
   NotificationSettings,
@@ -266,6 +267,14 @@ export function useSpo2() {
   return useQuery<Spo2Day[]>({
     queryKey: ["health", "spo2", start, end],
     queryFn: () => apiFetch(`/health/spo2?start=${start}&end=${end}`),
+  });
+}
+
+export function useEightSleep() {
+  const { start, end } = useDateRangeStore();
+  return useQuery<EightSleepDay[]>({
+    queryKey: ["health", "eight-sleep", start, end],
+    queryFn: () => apiFetch(`/health/eight-sleep?start=${start}&end=${end}`),
   });
 }
 

@@ -83,6 +83,11 @@ export class HealthController {
     res.json(await this.service.getCardioScore(start, end));
   }
 
+  async getEightSleep(req: Request, res: Response): Promise<void> {
+    const { start, end } = parseDateRange(req, this.tz);
+    res.json(await this.service.getEightSleep(start, end));
+  }
+
   async getReadiness(_req: Request, res: Response): Promise<void> {
     res.json(await this.service.getReadiness());
   }

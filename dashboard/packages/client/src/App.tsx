@@ -17,6 +17,7 @@ import { AnalyticsHrv } from "./pages/analytics/Hrv";
 import { AnalyticsWeight } from "./pages/analytics/Weight";
 import { AnalyticsExercises } from "./pages/analytics/Exercises";
 import { AnalyticsVitals } from "./pages/analytics/Vitals";
+import { AnalyticsEightSleep } from "./pages/analytics/EightSleep";
 import { AnalyticsRecords } from "./pages/analytics/Records";
 import { AnalyticsCorrelations } from "./pages/analytics/Correlations";
 import { AnalyticsSupplements } from "./pages/analytics/Supplements";
@@ -48,6 +49,7 @@ export default function App() {
               <Route path="weight" element={<AnalyticsWeight />} />
               <Route path="exercises" element={<AnalyticsExercises />} />
               <Route path="vitals" element={<AnalyticsVitals />} />
+              <Route path="eight-sleep" element={<AnalyticsEightSleep />} />
               <Route path="records" element={<AnalyticsRecords />} />
               <Route path="correlations" element={<AnalyticsCorrelations />} />
               <Route path="supplements" element={<AnalyticsSupplements />} />

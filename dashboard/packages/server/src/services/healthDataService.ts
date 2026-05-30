@@ -131,6 +131,10 @@ export class HealthDataService {
     return this.cardioScoreRepo.findByDateRange(start, end);
   }
 
+  async getEightSleep(start: string, end: string) {
+    return this.eightSleepRepo.findByDateRange(start, end);
+  }
+
   /**
    * Join ~90 days of every recovery signal into one row-per-day series.
    * 90 days comfortably covers the 30-day baseline window plus the
