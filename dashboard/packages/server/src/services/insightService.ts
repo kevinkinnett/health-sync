@@ -121,12 +121,16 @@ const HEALTH_CATEGORIES: CategoryDef[] = [
     title: "Body Composition",
     color: "#c0c1ff",
     requiredTools: ["query_weight", "query_summary"],
-    relevantTools: ["query_weight", "query_summary", "query_activity"],
+    relevantTools: ["query_weight", "query_summary", "query_activity", "query_food"],
     prompt:
-      "Analyse the user's weight trajectory. Cover: window over which " +
-      "data is available, total change in kg, weekly rate, and any " +
-      "plateaus or accelerations. If only sparse weights are logged, say " +
-      "so plainly — do not extrapolate. 150-250 words, markdown.",
+      "Analyse the user's weight trajectory and energy balance. Cover: " +
+      "window over which data is available, total weight change in kg, " +
+      "weekly rate, and any plateaus or accelerations. If the user logs " +
+      "food (query_food), bring in calorie intake vs. calories burned " +
+      "(query_activity / query_summary) to comment on energy balance and " +
+      "protein intake — but only for days food was actually logged; absence " +
+      "means unlogged, not zero. If weights or food are sparse, say so " +
+      "plainly — do not extrapolate. 150-250 words, markdown.",
   },
   {
     key: "lifestyle",

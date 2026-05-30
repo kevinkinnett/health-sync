@@ -21,6 +21,7 @@ import type {
   SkinTempDay,
   CardioScoreDay,
   EightSleepDay,
+  FoodLogDay,
   ReadinessScore,
   AlertsResponse,
   NotificationSettings,
@@ -275,6 +276,14 @@ export function useEightSleep() {
   return useQuery<EightSleepDay[]>({
     queryKey: ["health", "eight-sleep", start, end],
     queryFn: () => apiFetch(`/health/eight-sleep?start=${start}&end=${end}`),
+  });
+}
+
+export function useFood() {
+  const { start, end } = useDateRangeStore();
+  return useQuery<FoodLogDay[]>({
+    queryKey: ["health", "food", start, end],
+    queryFn: () => apiFetch(`/health/food?start=${start}&end=${end}`),
   });
 }
 

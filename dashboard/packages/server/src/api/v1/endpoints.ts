@@ -245,6 +245,17 @@ export function buildV1Endpoints(): V1EndpointDef[] {
         return ctx.healthDataService.getEightSleep(start, end);
       },
     },
+    {
+      path: "/food",
+      summary: "Daily food / calorie intake",
+      description:
+        "Per-day logged nutrition: total calories in, macronutrient grams (carbs, fat, fiber, protein, sodium), water (ml), the calorie goal if set, and how many items were logged. Only days the user actually logged food appear — absence means nothing was logged, not zero intake. Pair with activity/calories-out for energy balance.",
+      parameters: dateRangeParams,
+      handler: async (args, ctx) => {
+        const { start, end } = resolveDateRange(args, ctx.userTimezone);
+        return ctx.healthDataService.getFood(start, end);
+      },
+    },
 
     {
       path: "/readiness",

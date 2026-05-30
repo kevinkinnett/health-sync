@@ -51,6 +51,7 @@ export const analyzeNavItems: NavLinkDef[] = [
   { to: "/analytics/hrv", label: "HRV", icon: "monitor_heart" },
   { to: "/analytics/vitals", label: "Vitals", icon: "vital_signs" },
   { to: "/analytics/eight-sleep", label: "Eight Sleep", icon: "bed" },
+  { to: "/analytics/nutrition", label: "Nutrition", icon: "restaurant" },
   { to: "/analytics/weight", label: "Weight", icon: "scale" },
   { to: "/analytics/exercises", label: "Exercises", icon: "exercise" },
   { to: "/analytics/records", label: "Records", icon: "emoji_events" },

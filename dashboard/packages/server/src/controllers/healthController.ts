@@ -88,6 +88,11 @@ export class HealthController {
     res.json(await this.service.getEightSleep(start, end));
   }
 
+  async getFood(req: Request, res: Response): Promise<void> {
+    const { start, end } = parseDateRange(req, this.tz);
+    res.json(await this.service.getFood(start, end));
+  }
+
   async getReadiness(_req: Request, res: Response): Promise<void> {
     res.json(await this.service.getReadiness());
   }

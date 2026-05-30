@@ -28,6 +28,7 @@ import type { BreathingRateRepository } from "../repositories/breathingRateRepo.
 import type { SkinTempRepository } from "../repositories/skinTempRepo.js";
 import type { CardioScoreRepository } from "../repositories/cardioScoreRepo.js";
 import type { EightSleepRepository } from "../repositories/eightSleepRepo.js";
+import type { FoodRepository } from "../repositories/foodRepo.js";
 import { avg, describeCorrelation, pearson } from "./stats.js";
 import { addDays } from "./userTz.js";
 import { computeReadiness, type ReadinessDayInput } from "./readiness.js";
@@ -46,6 +47,7 @@ export class HealthDataService {
     private skinTempRepo: SkinTempRepository,
     private cardioScoreRepo: CardioScoreRepository,
     private eightSleepRepo: EightSleepRepository,
+    private foodRepo: FoodRepository,
   ) {}
 
   async getSummary(): Promise<HealthSummary> {
@@ -133,6 +135,10 @@ export class HealthDataService {
 
   async getEightSleep(start: string, end: string) {
     return this.eightSleepRepo.findByDateRange(start, end);
+  }
+
+  async getFood(start: string, end: string) {
+    return this.foodRepo.findByDateRange(start, end);
   }
 
   /**
