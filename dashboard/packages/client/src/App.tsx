@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Layout } from "./components/Layout";
 import { AnalyticsLayout } from "./components/AnalyticsLayout";
 import { Dashboard } from "./pages/Dashboard";
+import { Readiness } from "./pages/Readiness";
 import { Ingest } from "./pages/Ingest";
 import { Settings } from "./pages/Settings";
 import { ApiConsole } from "./pages/ApiConsole";
@@ -40,6 +41,7 @@ export default function App() {
         <Routes>
           <Route element={<Layout />}>
             <Route path="/" element={<Dashboard />} />
+            <Route path="/readiness" element={<Readiness />} />
             <Route path="/analytics" element={<AnalyticsLayout />}>
               <Route index element={<Navigate to="overview" replace />} />
               <Route path="overview" element={<AnalyticsOverview />} />

@@ -1,4 +1,6 @@
 import { ResponsiveContainer, LineChart, Line, YAxis } from "recharts";
+import { Link } from "react-router-dom";
+import type { ReactNode } from "react";
 import type {
   ReadinessBand,
   ReadinessComponent,
@@ -26,19 +28,19 @@ const BAND_STYLES: Record<
   insufficient: { ring: "#5a5b6a", text: "text-outline", label: "No score yet" },
 };
 
-export function ReadinessCard({ data }: { data: ReadinessScore }) {
+export function ReadinessCard({ data, to }: { data: ReadinessScore; to?: string }) {
   // Defensive: this is the very first card on the dashboard. If the
   // endpoint ever returns an unexpected shape (or no score yet),
   // degrade to the "no score" state rather than crashing the whole
   // page on a missing `band`/`score`.
   if (!data || typeof data !== "object" || data.score == null) {
     return (
-      <div className="bg-surface-container rounded-xl p-6 border border-outline-variant/10">
-        <ReadinessHeader />
+      <CardShell to={to}>
+        <ReadinessHeader linked={!!to} />
         <p className="text-on-surface-variant text-sm mt-2">
           {data?.summary || "Not enough data to compute readiness yet."}
         </p>
-      </div>
+      </CardShell>
     );
   }
 
@@ -50,8 +52,8 @@ export function ReadinessCard({ data }: { data: ReadinessScore }) {
     .slice(0, 4);
 
   return (
-    <div className="bg-surface-container rounded-xl p-6 border border-outline-variant/10">
-      <ReadinessHeader date={data.date} />
+    <CardShell to={to}>
+      <ReadinessHeader date={data.date} linked={!!to} />
       <div className="grid grid-cols-1 md:grid-cols-[auto_1fr] gap-6 items-center mt-3">
         {/* Score dial */}
         <div className="flex items-center gap-4">
@@ -101,13 +103,41 @@ export function ReadinessCard({ data }: { data: ReadinessScore }) {
           )}
         </div>
       </div>
-    </div>
+    </CardShell>
   );
 }
 
-function ReadinessHeader({ date }: { date?: string | null }) {
+/**
+ * Outer container. When `to` is provided the whole card becomes a link
+ * to the readiness detail screen (hover affordance + "Details ›" hint);
+ * otherwise it's a plain div — which keeps the component renderable
+ * without a router (its unit test mounts it bare).
+ */
+function CardShell({ to, children }: { to?: string; children: ReactNode }) {
+  const cls =
+    "block bg-surface-container rounded-xl p-6 border border-outline-variant/10";
+  return to ? (
+    <Link
+      to={to}
+      aria-label="View readiness breakdown"
+      className={`${cls} hover:border-primary/30 transition-colors`}
+    >
+      {children}
+    </Link>
+  ) : (
+    <div className={cls}>{children}</div>
+  );
+}
+
+function ReadinessHeader({
+  date,
+  linked,
+}: {
+  date?: string | null;
+  linked?: boolean;
+}) {
   return (
-    <div className="flex items-baseline justify-between">
+    <div className="flex items-baseline justify-between gap-2">
       <h2 className="text-sm font-headline font-semibold text-on-surface uppercase tracking-widest flex items-center gap-2">
         <span
           className="material-symbols-outlined text-primary text-base"
@@ -117,7 +147,15 @@ function ReadinessHeader({ date }: { date?: string | null }) {
         </span>
         Readiness
       </h2>
-      {date && <span className="text-[11px] text-outline tabular-nums">{date}</span>}
+      <div className="flex items-baseline gap-3">
+        {date && <span className="text-[11px] text-outline tabular-nums">{date}</span>}
+        {linked && (
+          <span className="text-[11px] font-semibold text-primary inline-flex items-center gap-0.5">
+            Details
+            <span className="material-symbols-outlined text-sm">chevron_right</span>
+          </span>
+        )}
+      </div>
     </div>
   );
 }

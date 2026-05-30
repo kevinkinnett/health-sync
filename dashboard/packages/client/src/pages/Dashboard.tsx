@@ -43,7 +43,7 @@ export function Dashboard() {
     <div className="space-y-6">
       {/* Readiness — the "today" instrument, above everything else. */}
       <QueryBoundary query={readiness} skeleton={null}>
-        {(data) => <ReadinessCard data={data} />}
+        {(data) => <ReadinessCard data={data} to="/readiness" />}
       </QueryBoundary>
 
       {/* Top Bento: Weekly Insights + Goal Rings */}

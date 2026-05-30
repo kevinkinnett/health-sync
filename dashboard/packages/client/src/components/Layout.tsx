@@ -75,7 +75,10 @@ export const analyzeNavItems: NavLinkDef[] = [
 
 const navSections: NavSectionDef[] = [
   {
-    items: [{ to: "/", label: "Dashboard", icon: "dashboard", end: true }],
+    items: [
+      { to: "/", label: "Dashboard", icon: "dashboard", end: true },
+      { to: "/readiness", label: "Readiness", icon: "bolt" },
+    ],
   },
   {
     header: "Analyze",

@@ -1,0 +1,145 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Readiness } from "../pages/Readiness";
+import type { ReadinessScore } from "@health-dashboard/shared";
+
+const apiFetchMock = vi.fn();
+vi.mock("../api/client", () => ({
+  apiFetch: (path?: string) => apiFetchMock(path),
+}));
+
+function renderScreen() {
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 } },
+  });
+  return render(
+    <QueryClientProvider client={qc}>
+      <Readiness />
+    </QueryClientProvider>,
+  );
+}
+
+const SCORE: ReadinessScore = {
+  date: "2026-05-30",
+  score: 72,
+  band: "primed",
+  summary: "Primed — hrv is a bright spot.",
+  baselineDays: 30,
+  components: [
+    {
+      metric: "hrv",
+      label: "HRV",
+      value: 65,
+      baseline: 50,
+      z: 1.4,
+      contribution: 12,
+      weightPct: 35,
+      status: "good",
+      sources: [
+        { label: "Fitbit", z: 0.9 },
+        { label: "Eight Sleep", z: 1.8 },
+      ],
+    },
+    {
+      metric: "rhr",
+      label: "Resting HR",
+      value: 53,
+      baseline: 60,
+      z: 0.9,
+      contribution: 6,
+      weightPct: 25,
+      status: "good",
+      sources: [
+        { label: "Fitbit", z: 0.2 },
+        { label: "Eight Sleep", z: 1.6 },
+      ],
+      disagreement: true,
+    },
+    // Neutral signal — the dashboard card hides this, the detail screen shows it.
+    {
+      metric: "spo2",
+      label: "Blood oxygen",
+      value: 96,
+      baseline: 96,
+      z: 0.1,
+      contribution: 0,
+      weightPct: 8,
+      status: "neutral",
+    },
+    // Unavailable today — should land in the "not scored" footnote, not a row.
+    {
+      metric: "skinTemp",
+      label: "Skin temperature",
+      value: null,
+      baseline: null,
+      z: null,
+      contribution: 0,
+      weightPct: 7,
+      status: "unavailable",
+    },
+  ],
+  history: [
+    { date: "2026-05-28", score: 60 },
+    { date: "2026-05-29", score: 68 },
+    { date: "2026-05-30", score: 72 },
+  ],
+};
+
+describe("Readiness screen", () => {
+  beforeEach(() => apiFetchMock.mockReset());
+
+  it("renders the band, score, and summary", async () => {
+    apiFetchMock.mockResolvedValue(SCORE);
+    renderScreen();
+    expect(await screen.findByText("72")).toBeInTheDocument();
+    expect(screen.getByText("Primed")).toBeInTheDocument();
+    expect(screen.getByText(/bright spot/i)).toBeInTheDocument();
+  });
+
+  it("shows EVERY scored signal — including neutral ones the card omits", async () => {
+    apiFetchMock.mockResolvedValue(SCORE);
+    renderScreen();
+    expect(await screen.findByText("HRV")).toBeInTheDocument();
+    expect(screen.getByText("Resting HR")).toBeInTheDocument();
+    // Neutral SpO2 is NOT a driver chip on the card, but the detail lists it.
+    expect(screen.getByText("Blood oxygen")).toBeInTheDocument();
+  });
+
+  it("surfaces each sensor's per-source contribution and the disagreement flag", async () => {
+    apiFetchMock.mockResolvedValue(SCORE);
+    renderScreen();
+    // HRV fused from two sensors → both shown with signed z.
+    expect(await screen.findByText(/Fitbit \+0\.9 · Eight Sleep \+1\.8/)).toBeInTheDocument();
+    // RHR sensors disagreed → flag rendered.
+    expect(screen.getByText("⚑")).toBeInTheDocument();
+  });
+
+  it("lists unavailable signals in a footnote rather than a row", async () => {
+    apiFetchMock.mockResolvedValue(SCORE);
+    renderScreen();
+    expect(await screen.findByText(/Not scored today/i)).toBeInTheDocument();
+    expect(screen.getByText(/Skin temperature/)).toBeInTheDocument();
+  });
+
+  it("explains the methodology", async () => {
+    apiFetchMock.mockResolvedValue(SCORE);
+    renderScreen();
+    expect(await screen.findByText(/How readiness is computed/i)).toBeInTheDocument();
+  });
+
+  it("degrades to a friendly message when there is no score yet", async () => {
+    apiFetchMock.mockResolvedValue({
+      date: "2026-05-30",
+      score: null,
+      band: "insufficient",
+      summary: "Not enough baseline history yet — keep syncing.",
+      baselineDays: 0,
+      components: [],
+      history: [],
+    } satisfies ReadinessScore);
+    renderScreen();
+    expect(await screen.findByText(/keep syncing/i)).toBeInTheDocument();
+    expect(screen.queryByText("72")).not.toBeInTheDocument();
+  });
+});
