@@ -73,19 +73,21 @@ const HEALTH_CATEGORIES: CategoryDef[] = [
       "query_hrv",
       "query_records",
       "query_correlations",
-      "query_summary",
+      "query_eight_sleep",
       "query_skin_temp",
       "query_spo2",
     ],
     prompt:
       "Analyse the user's sleep duration, stage breakdown (deep / REM / " +
       "light), efficiency, bedtime consistency, and HRV as a recovery " +
-      "indicator. Also fold in the overnight recovery vitals: skin-" +
-      "temperature deviation from baseline (query_skin_temp) and blood-" +
-      "oxygen (query_spo2) — call out any multi-night skin-temp rise or " +
-      "SpO2 dips, which can flag illness or poor sleep quality. Note any " +
-      "nights below 7 hours and deep-sleep trends. End with one specific " +
-      "behaviour to test. 200-300 words, markdown.",
+      "indicator. The user also has an Eight Sleep mattress " +
+      "(query_eight_sleep) — a contact sensor that measures overnight HR, " +
+      "HRV, respiratory rate, sleep stages and bed temperature; prefer it " +
+      "for sleep-time vitals and note where it diverges from Fitbit. Fold " +
+      "in skin-temperature deviation (query_skin_temp) and blood-oxygen " +
+      "(query_spo2) — call out any multi-night skin-temp rise or SpO2 dips, " +
+      "which can flag illness. Note any nights below 7 hours and deep-sleep " +
+      "trends. End with one specific behaviour to test. 200-300 words, markdown.",
   },
   {
     key: "cardiovascular",
@@ -96,7 +98,7 @@ const HEALTH_CATEGORIES: CategoryDef[] = [
       "query_heart_rate",
       "query_hrv",
       "query_summary",
-      "query_records",
+      "query_eight_sleep",
       "query_breathing_rate",
       "query_spo2",
       "query_cardio_score",
@@ -104,12 +106,15 @@ const HEALTH_CATEGORIES: CategoryDef[] = [
     prompt:
       "Analyse resting heart rate, heart-rate-zone minutes, and HRV. Call " +
       "out the recent RHR trend (rising / falling / stable) and how much " +
-      "time the user spent in fat-burn / cardio / peak zones. Bring in the " +
-      "cardio-respiratory vitals: breathing rate (query_breathing_rate), " +
-      "blood-oxygen (query_spo2), and cardio fitness / VO2 max " +
-      "(query_cardio_score, a slow-moving range string). Flag the classic " +
-      "under-recovery / illness triad if present — elevated RHR + elevated " +
-      "breathing rate together. 200-300 words, markdown.",
+      "time the user spent in fat-burn / cardio / peak zones. The Eight " +
+      "Sleep mattress (query_eight_sleep) measures overnight HR + HRV + " +
+      "respiratory rate from a contact sensor — more sensitive to nightly " +
+      "change than the Fitbit wrist; use it and flag where the two sources " +
+      "diverge. Bring in breathing rate (query_breathing_rate), blood-" +
+      "oxygen (query_spo2), and cardio fitness / VO2 max (query_cardio_score, " +
+      "a slow-moving range string). Flag the classic under-recovery / " +
+      "illness triad if present — elevated RHR + elevated breathing rate " +
+      "together. 200-300 words, markdown.",
   },
   {
     key: "body_composition",

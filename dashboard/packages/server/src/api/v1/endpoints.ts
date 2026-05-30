@@ -234,6 +234,17 @@ export function buildV1Endpoints(): V1EndpointDef[] {
         return ctx.healthDataService.getCardioScore(start, end);
       },
     },
+    {
+      path: "/eight-sleep",
+      summary: "Eight Sleep nightly data",
+      description:
+        "Per-night Eight Sleep mattress data: sleep score, time asleep and stage minutes (deep/light/REM), average overnight heart rate, HRV (RMSSD), respiratory rate, bed/room temperature, and toss-and-turn count. A contact-sensor recovery source — generally more sensitive to night-to-night change than the Fitbit wrist, and fused into the readiness score. Compare against Fitbit's HR/HRV/sleep when both are present.",
+      parameters: dateRangeParams,
+      handler: async (args, ctx) => {
+        const { start, end } = resolveDateRange(args, ctx.userTimezone);
+        return ctx.healthDataService.getEightSleep(start, end);
+      },
+    },
 
     {
       path: "/readiness",
