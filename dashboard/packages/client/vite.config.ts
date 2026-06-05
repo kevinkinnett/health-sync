@@ -40,6 +40,16 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
+        // The SPA navigation fallback (serve index.html for any client-side
+        // route) must NOT swallow top-level navigations to the read-only
+        // /api/v1 surface — Swagger UI at /api/v1/docs, /api/v1/openapi.json,
+        // or any /api link opened directly in the browser. Without this the
+        // service worker serves the React shell for those URLs and they
+        // appear broken. The app's own data calls are unaffected: they're
+        // fetch() (mode "cors"), not navigations, so they keep hitting the
+        // NetworkFirst /api cache below — only mode:"navigate" requests use
+        // the fallback this denylist guards.
+        navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [
           {
             urlPattern: /^\/api\//,
