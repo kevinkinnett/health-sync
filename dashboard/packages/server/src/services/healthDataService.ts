@@ -16,6 +16,7 @@ import type {
   RecordsData,
   PersonalRecord,
   Streak,
+  DrivingSummary,
 } from "@health-dashboard/shared";
 import type { ActivityRepository } from "../repositories/activityRepo.js";
 import type { SleepRepository } from "../repositories/sleepRepo.js";
@@ -29,6 +30,7 @@ import type { SkinTempRepository } from "../repositories/skinTempRepo.js";
 import type { CardioScoreRepository } from "../repositories/cardioScoreRepo.js";
 import type { EightSleepRepository } from "../repositories/eightSleepRepo.js";
 import type { FoodRepository } from "../repositories/foodRepo.js";
+import type { TeslaDriveRepository } from "../repositories/teslaDriveRepo.js";
 import { avg, describeCorrelation, pearson } from "./stats.js";
 import { addDays } from "./userTz.js";
 import { computeReadiness, type ReadinessDayInput } from "./readiness.js";
@@ -48,6 +50,7 @@ export class HealthDataService {
     private cardioScoreRepo: CardioScoreRepository,
     private eightSleepRepo: EightSleepRepository,
     private foodRepo: FoodRepository,
+    private teslaDriveRepo: TeslaDriveRepository,
   ) {}
 
   async getSummary(): Promise<HealthSummary> {
@@ -331,15 +334,17 @@ export class HealthDataService {
 
   async getCorrelations(): Promise<CorrelationsData> {
     // Fetch all available data
-    const [activity, sleep, heartRate] = await Promise.all([
+    const [activity, sleep, heartRate, driving] = await Promise.all([
       this.activityRepo.findLatest(200),
       this.sleepRepo.findLatest(200),
       this.heartRateRepo.findLatest(200),
+      this.teslaDriveRepo.findLatest(200),
     ]);
 
     // Index by date for fast join
     const sleepByDate = new Map(sleep.map((d) => [d.date, d]));
     const hrByDate = new Map(heartRate.map((d) => [d.date, d]));
+    const drivingByDate = new Map(driving.map((d) => [d.date, d]));
 
     // Build joined dataset
     const joined: {
@@ -350,6 +355,7 @@ export class HealthDataService {
       deepMin: number | null;
       efficiency: number | null;
       rhr: number | null;
+      minutesInCar: number | null;
     }[] = [];
 
     for (const a of activity) {
@@ -364,6 +370,7 @@ export class HealthDataService {
         deepMin: s?.minutesDeep ?? null,
         efficiency: s?.efficiency ?? null,
         rhr: h?.restingHeartRate ?? null,
+        minutesInCar: drivingByDate.get(a.date)?.minutesInCar ?? null,
       });
     }
 
@@ -488,6 +495,59 @@ export class HealthDataService {
       });
     }
 
+    // Time in car (Tesla) — does a heavy driving day coincide with
+    // fewer steps, worse sleep, or a higher resting HR? Same-day pairs.
+    const driveSteps = joined.filter((d) => d.minutesInCar != null);
+    if (driveSteps.length >= 10) {
+      const r = pearson(
+        driveSteps.map((d) => d.minutesInCar!),
+        driveSteps.map((d) => d.steps),
+      );
+      pairs.push({
+        xMetric: "minutesInCar",
+        yMetric: "steps",
+        xLabel: "Time in Car (min)",
+        yLabel: "Steps",
+        correlation: r,
+        points: driveSteps.map((d) => ({ x: d.minutesInCar!, y: d.steps, date: d.date })),
+        insight: describeCorrelation(r, "time in car", "steps"),
+      });
+    }
+
+    const driveSleep = joined.filter((d) => d.minutesInCar != null && d.sleepMin != null);
+    if (driveSleep.length >= 10) {
+      const r = pearson(
+        driveSleep.map((d) => d.minutesInCar!),
+        driveSleep.map((d) => d.sleepMin!),
+      );
+      pairs.push({
+        xMetric: "minutesInCar",
+        yMetric: "sleepMin",
+        xLabel: "Time in Car (min)",
+        yLabel: "Sleep (min)",
+        correlation: r,
+        points: driveSleep.map((d) => ({ x: d.minutesInCar!, y: d.sleepMin!, date: d.date })),
+        insight: describeCorrelation(r, "time in car", "sleep duration"),
+      });
+    }
+
+    const driveHr = joined.filter((d) => d.minutesInCar != null && d.rhr != null);
+    if (driveHr.length >= 10) {
+      const r = pearson(
+        driveHr.map((d) => d.minutesInCar!),
+        driveHr.map((d) => d.rhr!),
+      );
+      pairs.push({
+        xMetric: "minutesInCar",
+        yMetric: "rhr",
+        xLabel: "Time in Car (min)",
+        yLabel: "Resting HR (bpm)",
+        correlation: r,
+        points: driveHr.map((d) => ({ x: d.minutesInCar!, y: d.rhr!, date: d.date })),
+        insight: describeCorrelation(r, "time in car", "resting heart rate"),
+      });
+    }
+
     // Activity-sleep buckets
     const withNextDaySleep: { steps: number; sleepMin: number; deepMin: number; efficiency: number }[] = [];
     for (const a of activity) {
@@ -524,6 +584,29 @@ export class HealthDataService {
       pairs,
       activitySleepBuckets,
       dataPoints: joined.length,
+    };
+  }
+
+  /**
+   * Compact "time in car" summary for the dashboard stat card — latest
+   * day, last-7-day totals, and a short daily trend. Reads from the
+   * TeslaMate-derived `universe.tesla_drive_daily` (empty until the
+   * `ingest_tesla_drives` job has run).
+   */
+  async getDriving(): Promise<DrivingSummary> {
+    const days = await this.teslaDriveRepo.findLatest(30); // DESC by date
+    if (days.length === 0) {
+      return { latestDate: null, latestMinutes: null, weekMinutes: 0, weekDrives: 0, trend: [] };
+    }
+    const latest = days[0];
+    const weekStart = addDays(latest.date, -6);
+    const week = days.filter((d) => d.date >= weekStart);
+    return {
+      latestDate: latest.date,
+      latestMinutes: latest.minutesInCar,
+      weekMinutes: week.reduce((sum, d) => sum + d.minutesInCar, 0),
+      weekDrives: week.reduce((sum, d) => sum + d.drives, 0),
+      trend: [...days].reverse().map((d) => ({ date: d.date, minutes: d.minutesInCar })),
     };
   }
 

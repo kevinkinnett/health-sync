@@ -2,6 +2,7 @@ import { StatCard } from "../components/StatCard";
 import { WeeklyInsights } from "../components/WeeklyInsights";
 import { GoalRings } from "../components/GoalRings";
 import { ReadinessCard } from "../components/ReadinessCard";
+import { DrivingCard } from "../components/DrivingCard";
 import { QueryBoundary } from "../components/QueryBoundary";
 import { ActivityChart } from "../components/charts/ActivityChart";
 import { SleepStagesChart } from "../components/charts/SleepStagesChart";
@@ -15,6 +16,7 @@ import {
   useSleep,
   useHeartRate,
   useWeight,
+  useDriving,
 } from "../api/queries";
 import { useUnits } from "../stores/unitsStore";
 import { convertWeight, weightUnitLabel } from "../lib/units";
@@ -27,6 +29,7 @@ export function Dashboard() {
   const sleep = useSleep();
   const heartRate = useHeartRate();
   const weight = useWeight();
+  const driving = useDriving();
   const units = useUnits();
 
   if (summary.isLoading) {
@@ -51,7 +54,12 @@ export function Dashboard() {
         <div className="xl:col-span-2">
           {insights.data && <WeeklyInsights data={insights.data} />}
         </div>
-        <div>{s && <GoalRings summary={s} />}</div>
+        <div className="space-y-6">
+          {s && <GoalRings summary={s} />}
+          <QueryBoundary query={driving} skeleton={null}>
+            {(data) => <DrivingCard data={data} />}
+          </QueryBoundary>
+        </div>
       </div>
 
       {/* Stat Cards */}

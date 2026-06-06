@@ -24,6 +24,7 @@ export function createHealthRoutes(controller: HealthController): Router {
   router.get("/eight-sleep", wrap((req, res) => controller.getEightSleep(req, res)));
   router.get("/food", wrap((req, res) => controller.getFood(req, res)));
   router.get("/readiness", wrap((req, res) => controller.getReadiness(req, res)));
+  router.get("/driving", wrap((req, res) => controller.getDriving(req, res)));
 
   return router;
 }

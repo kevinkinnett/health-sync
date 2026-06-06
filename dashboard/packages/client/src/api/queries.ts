@@ -22,6 +22,7 @@ import type {
   CardioScoreDay,
   EightSleepDay,
   FoodLogDay,
+  DrivingSummary,
   ReadinessScore,
   AlertsResponse,
   NotificationSettings,
@@ -284,6 +285,19 @@ export function useFood() {
   return useQuery<FoodLogDay[]>({
     queryKey: ["health", "food", start, end],
     queryFn: () => apiFetch(`/health/food?start=${start}&end=${end}`),
+  });
+}
+
+/**
+ * Compact "time in car" summary (Tesla driving). No date params — always
+ * the latest window. Under the ["health"] prefix so an ingest run
+ * invalidates it with the rest.
+ */
+export function useDriving() {
+  return useQuery<DrivingSummary>({
+    queryKey: ["health", "driving"],
+    queryFn: () => apiFetch(`/health/driving`),
+    staleTime: 5 * 60 * 1000,
   });
 }
 

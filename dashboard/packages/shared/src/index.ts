@@ -12,6 +12,7 @@ export type { SkinTempDay } from "./types/skinTemp.js";
 export type { CardioScoreDay } from "./types/cardioScore.js";
 export type { EightSleepDay } from "./types/eightSleep.js";
 export type { FoodLogDay } from "./types/food.js";
+export type { DrivingDay, DrivingSummary } from "./types/driving.js";
 export type {
   IngestState,
   IngestRun,
