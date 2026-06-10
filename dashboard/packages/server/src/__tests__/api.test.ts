@@ -122,10 +122,13 @@ beforeAll(() => {
     fakeWeightRepo as any,
     fakeHrvRepo as any,
     fakeExerciseLogRepo as any,
-    fakeVitalsRepo as any,
-    fakeVitalsRepo as any,
-    fakeVitalsRepo as any,
-    fakeVitalsRepo as any,
+    fakeVitalsRepo as any, // spo2
+    fakeVitalsRepo as any, // breathing
+    fakeVitalsRepo as any, // skinTemp
+    fakeVitalsRepo as any, // cardioScore
+    fakeVitalsRepo as any, // eightSleep
+    fakeVitalsRepo as any, // food
+    fakeVitalsRepo as any, // teslaDrive
   );
   const controller = new HealthController(service);
   app = express();

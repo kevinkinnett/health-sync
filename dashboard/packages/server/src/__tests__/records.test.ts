@@ -48,10 +48,13 @@ function makeService({
     fakeWeightRepo,
     fakeHrvRepo,
     fakeExerciseLogRepo,
-    fakeVitalsRepo,
-    fakeVitalsRepo,
-    fakeVitalsRepo,
-    fakeVitalsRepo,
+    fakeVitalsRepo, // spo2
+    fakeVitalsRepo, // breathing
+    fakeVitalsRepo, // skinTemp
+    fakeVitalsRepo, // cardioScore
+    fakeVitalsRepo, // eightSleep
+    fakeVitalsRepo, // food
+    fakeVitalsRepo, // teslaDrive
   );
 }
 
