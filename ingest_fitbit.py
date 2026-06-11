@@ -27,6 +27,8 @@ import psycopg
 import requests
 import wmill
 
+from u.kevin.ingest_common import conn_kwargs, create_ingest_run, update_ingest_run
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -414,50 +416,7 @@ def ensure_tables(conn: psycopg.Connection) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Ingest run tracking
-# ---------------------------------------------------------------------------
-
-def create_ingest_run(conn: psycopg.Connection) -> int:
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            INSERT INTO universe.ingest_run (provider, job_name, status)
-            VALUES (%s, %s, 'running')
-            RETURNING ingest_run_id
-            """,
-            (PROVIDER, JOB_NAME),
-        )
-        run_id = cur.fetchone()[0]
-    conn.commit()
-    return run_id
-
-
-def update_ingest_run(
-    conn: psycopg.Connection,
-    run_id: int,
-    status: str,
-    rows_written: int,
-    error_count: int,
-    details: dict[str, Any],
-) -> None:
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            UPDATE universe.ingest_run
-            SET finished_at_utc = NOW(),
-                status = %s,
-                rows_written = %s,
-                error_count = %s,
-                details = %s
-            WHERE ingest_run_id = %s
-            """,
-            (status, rows_written, error_count, json.dumps(details), run_id),
-        )
-    conn.commit()
-
-
-# ---------------------------------------------------------------------------
-# State tracking
+# State tracking (run lifecycle lives in u/kevin/ingest_common)
 # ---------------------------------------------------------------------------
 
 def get_state(conn: psycopg.Connection, data_type: str) -> Optional[dict[str, Any]]:
@@ -1214,23 +1173,14 @@ def main(
     }
     enabled = {k for k, v in enabled_flags.items() if v}
 
-    conn_kwargs = {
-        "host": resolved_db["host"],
-        "port": int(resolved_db.get("port", 5432)),
-        "user": resolved_db["user"],
-        "password": resolved_db["password"],
-        "dbname": resolved_db["dbname"],
-        "sslmode": resolved_db.get("sslmode", "disable"),
-    }
-
     request_count = 0
     total_rows = 0
     error_count = 0
     type_summaries: dict[str, dict[str, Any]] = {}
 
-    with psycopg.connect(**conn_kwargs) as conn:
+    with psycopg.connect(**conn_kwargs(resolved_db)) as conn:
         ensure_tables(conn)
-        run_id = create_ingest_run(conn)
+        run_id = create_ingest_run(conn, PROVIDER, JOB_NAME)
         print(f"Ingest run {run_id} started. Enabled types: {sorted(enabled)}")
 
         # Detect Fitbit profile-TZ drift across runs. If the user's profile

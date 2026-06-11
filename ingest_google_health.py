@@ -38,6 +38,8 @@ import psycopg
 import requests
 import wmill
 
+from u.kevin.ingest_common import conn_kwargs, create_ingest_run, update_ingest_run
+
 PROVIDER = "google_health"
 JOB_NAME = "google_health_ingest"
 DEFAULT_OAUTH_RES = "u/kevin/google_health_oauth"
@@ -322,24 +324,19 @@ def main(
 ):
     token = google_access_token(creds_resource_path or DEFAULT_OAUTH_RES)
     db = wmill.get_resource(db_resource_path or DEFAULT_DB_RES)
-    conn_kwargs = {"host": db["host"], "port": int(db.get("port", 5432)), "user": db["user"],
-                   "password": db["password"], "dbname": db["dbname"], "sslmode": db.get("sslmode", "disable")}
-    with psycopg.connect(**conn_kwargs) as conn:
+    with psycopg.connect(**conn_kwargs(db)) as conn:
         cur = conn.cursor()
         ensure_raw_table(cur)
         conn.commit()
-        cur.execute("INSERT INTO universe.ingest_run (provider, job_name, status) VALUES (%s,%s,'running') RETURNING ingest_run_id", (PROVIDER, JOB_NAME))
-        run_id = cur.fetchone()[0]
-        conn.commit()
+        run_id = create_ingest_run(conn, PROVIDER, JOB_NAME)
 
         captured = capture_raw(conn, token, max_pages)
         rolled = run_rollups(conn, rollup_days) if write_daily else {"skipped": "write_daily=False (parallel-run; raw only)"}
 
         total_pts = sum(v.get("points", 0) for v in captured.values() if isinstance(v, dict))
         errors = sum(1 for v in captured.values() if isinstance(v, dict) and v.get("error"))
-        cur.execute("UPDATE universe.ingest_run SET finished_at_utc=NOW(), status=%s, rows_written=%s, error_count=%s, details=%s WHERE ingest_run_id=%s",
-                    ("completed" if errors == 0 else "partial", total_pts, errors, json.dumps({"captured": captured, "rolled": rolled}), run_id))
-        conn.commit()
+        update_ingest_run(conn, run_id, "completed" if errors == 0 else "partial",
+                          total_pts, errors, {"captured": captured, "rolled": rolled})
 
     return {"status": "ok", "raw_points": total_pts, "errors": errors,
             "write_daily": write_daily, "captured": captured, "rolled": rolled}

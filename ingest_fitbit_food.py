@@ -29,6 +29,8 @@ import psycopg
 import requests
 import wmill
 
+from u.kevin.ingest_common import conn_kwargs, create_ingest_run, update_ingest_run
+
 PROVIDER = "fitbit"
 JOB_NAME = "fitbit_food_ingest"
 DEFAULT_DB_RESOURCE_PATH = "u/kevin/universe_db"
@@ -91,28 +93,6 @@ def ensure_table(conn: psycopg.Connection) -> None:
     conn.commit()
 
 
-def create_ingest_run(conn: psycopg.Connection) -> int:
-    with conn.cursor() as cur:
-        cur.execute(
-            "INSERT INTO universe.ingest_run (provider, job_name, status) "
-            "VALUES (%s, %s, 'running') RETURNING ingest_run_id",
-            (PROVIDER, JOB_NAME),
-        )
-        rid = cur.fetchone()[0]
-    conn.commit()
-    return rid
-
-
-def update_ingest_run(conn, run_id, status, rows, errors, details) -> None:
-    with conn.cursor() as cur:
-        cur.execute(
-            "UPDATE universe.ingest_run SET finished_at_utc=NOW(), status=%s, "
-            "rows_written=%s, error_count=%s, details=%s WHERE ingest_run_id=%s",
-            (status, rows, errors, json.dumps(details), run_id),
-        )
-    conn.commit()
-
-
 def upsert_food(conn: psycopg.Connection, date_str: str, data: dict) -> int:
     foods = data.get("foods", []) or []
     summary = data.get("summary", {}) or {}
@@ -158,16 +138,11 @@ def main(
     days_back = backfill_days if backfill_days and backfill_days > 0 else recent_days
     today = datetime.now(timezone.utc).date()
 
-    conn_kwargs = {
-        "host": db["host"], "port": int(db.get("port", 5432)), "user": db["user"],
-        "password": db["password"], "dbname": db["dbname"],
-        "sslmode": db.get("sslmode", "disable"),
-    }
     rows = 0
     errors = 0
-    with psycopg.connect(**conn_kwargs) as conn:
+    with psycopg.connect(**conn_kwargs(db)) as conn:
         ensure_table(conn)
-        run_id = create_ingest_run(conn)
+        run_id = create_ingest_run(conn, PROVIDER, JOB_NAME)
         headers = {"Authorization": f"Bearer {creds['access_token']}"}
         for i in range(days_back + 1):
             d = (today - timedelta(days=days_back - i)).isoformat()

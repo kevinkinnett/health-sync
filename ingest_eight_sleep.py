@@ -38,6 +38,8 @@ import psycopg
 import requests
 import wmill
 
+from u.kevin.ingest_common import conn_kwargs, create_ingest_run, update_ingest_run
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -278,34 +280,8 @@ def ensure_tables(conn: psycopg.Connection) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Run + state tracking (shared universe.ingest_run, mirrors ingest_fitbit)
+# State tracking (run lifecycle lives in u/kevin/ingest_common)
 # ---------------------------------------------------------------------------
-
-def create_ingest_run(conn: psycopg.Connection) -> int:
-    with conn.cursor() as cur:
-        cur.execute(
-            "INSERT INTO universe.ingest_run (provider, job_name, status) "
-            "VALUES (%s, %s, 'running') RETURNING ingest_run_id",
-            (PROVIDER, JOB_NAME),
-        )
-        rid = cur.fetchone()[0]
-    conn.commit()
-    return rid
-
-
-def update_ingest_run(conn, run_id, status, rows_written, error_count, details) -> None:
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            UPDATE universe.ingest_run
-            SET finished_at_utc = NOW(), status = %s, rows_written = %s,
-                error_count = %s, details = %s
-            WHERE ingest_run_id = %s
-            """,
-            (status, rows_written, error_count, json.dumps(details), run_id),
-        )
-    conn.commit()
-
 
 def get_state(conn: psycopg.Connection) -> Optional[dict[str, Any]]:
     with conn.cursor() as cur:
@@ -465,21 +441,12 @@ def main(
     if not uid:
         return {"error": "Could not resolve Eight Sleep user id."}
 
-    conn_kwargs = {
-        "host": resolved_db["host"],
-        "port": int(resolved_db.get("port", 5432)),
-        "user": resolved_db["user"],
-        "password": resolved_db["password"],
-        "dbname": resolved_db["dbname"],
-        "sslmode": resolved_db.get("sslmode", "disable"),
-    }
-
     today = datetime.now(timezone.utc).date()
     rows = 0
     errors = 0
     day_dates: list[str] = []
 
-    with psycopg.connect(**conn_kwargs) as conn:
+    with psycopg.connect(**conn_kwargs(resolved_db)) as conn:
         ensure_tables(conn)
         state = get_state(conn)
 
@@ -492,7 +459,7 @@ def main(
         start_date = today - timedelta(days=days_back)
         print(f"Eight Sleep ingest: {start_date} → {today} (days_back={days_back}) user={uid}")
 
-        run_id = create_ingest_run(conn)
+        run_id = create_ingest_run(conn, PROVIDER, JOB_NAME)
 
         chunk_start = start_date
         while chunk_start <= today:
