@@ -287,7 +287,7 @@ export function buildV1Endpoints(): V1EndpointDef[] {
       path: "/correlations",
       summary: "Cross-metric correlations",
       description:
-        "Pearson r between every pair of metric series (steps, sleep, deep sleep, resting HR, daily RMSSD) over the joined day grain.",
+        "Pearson r for curated metric pairs over the joined day grain — activity (steps, active minutes), sleep (duration, deep), resting HR, HRV, calorie intake, Eight Sleep restlessness, Tesla time-in-car, and the readiness score. Pairs with lagDays=1 compare X on day D against Y dated D+1; for wake-dated overnight metrics that is THAT night (the night following day D), for readiness it is the next morning. A pair only appears once the two series overlap on 10+ days. Caveats: food pairs are conditioned on days intake was logged (partial logging reads as low intake); no-drive days count as 0 minutes in car within the tracked span.",
       handler: async (_args, ctx) => ctx.healthDataService.getCorrelations(),
     },
     {

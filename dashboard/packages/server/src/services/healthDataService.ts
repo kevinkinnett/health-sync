@@ -9,7 +9,6 @@ import type {
   SleepDay,
   HeartRateDay,
   CorrelationsData,
-  CorrelationPair,
   ActivityBucket,
   DayOfWeekHeatmapData,
   DayOfWeekHeatmapMetric,
@@ -31,10 +30,59 @@ import type { CardioScoreRepository } from "../repositories/cardioScoreRepo.js";
 import type { EightSleepRepository } from "../repositories/eightSleepRepo.js";
 import type { FoodRepository } from "../repositories/foodRepo.js";
 import type { TeslaDriveRepository } from "../repositories/teslaDriveRepo.js";
-import { avg, describeCorrelation, pearson } from "./stats.js";
+import { avg } from "./stats.js";
 import { addDays } from "./userTz.js";
 import { computeReadiness, type ReadinessDayInput } from "./readiness.js";
+import {
+  computeCorrelationPairs,
+  fillMissingDays,
+  seriesFrom,
+  type MetricSeries,
+  type PairSpec,
+} from "./correlationEngine.js";
 import type { ReadinessScore } from "@health-dashboard/shared";
+
+/**
+ * The curated cross-metric comparisons. Each spec is one line — the
+ * engine joins the two series (with optional day lag), gates on enough
+ * overlap, and writes the labels/insight from the series registry.
+ *
+ * DAY ATTRIBUTION drives the lags. Sleep and overnight signals (sleep
+ * minutes, deep sleep, restlessness, overnight HRV) are dated by WAKE
+ * day, so the night that FOLLOWS daytime activity on day D is recorded
+ * on D+1: "daytime X vs the sleep it precedes" is lag 1 with "that
+ * night" wording — lag 0 would pair X with the night that came BEFORE
+ * it. Readiness is a morning score, so lag 1 there genuinely means
+ * "the next morning" and keeps the default "next-day" wording.
+ *
+ * Readiness is only paired with metrics that are NOT among its inputs
+ * (steps, time in car, calorie intake — see readiness.ts WEIGHTS), so
+ * those pairs carry no built-in circularity. The overnight pairs
+ * (sleepMin, tnt) DO overlap with readiness inputs — they're raw-signal
+ * views kept alongside the composite, not independent evidence.
+ */
+const THAT_NIGHT = { lag: 1, ySuffix: "that night" } as const;
+const HEALTH_PAIR_SPECS: PairSpec[] = [
+  // Daytime activity vs the night it precedes.
+  { x: "steps", y: "sleepMin", ...THAT_NIGHT, yNounForm: "sleep that night" },
+  { x: "steps", y: "deepMin", ...THAT_NIGHT, yNounForm: "deep sleep that night" },
+  { x: "activeMin", y: "sleepMin", ...THAT_NIGHT, yNounForm: "sleep that night" },
+  // Same-day physiology.
+  { x: "steps", y: "rhr" },
+  // Last night's sleep vs the readings from that same night/morning.
+  { x: "sleepMin", y: "rhr" },
+  { x: "sleepMin", y: "hrv" },
+  // Driving.
+  { x: "minutesInCar", y: "steps" },
+  { x: "minutesInCar", y: "rhr" },
+  { x: "minutesInCar", y: "sleepMin", ...THAT_NIGHT, yNounForm: "sleep that night" },
+  { x: "minutesInCar", y: "tnt", ...THAT_NIGHT, yNounForm: "restlessness that night" },
+  { x: "minutesInCar", y: "readiness", lag: 1 },
+  // Activity & food → tonight's sleep / tomorrow's recovery.
+  { x: "steps", y: "readiness", lag: 1 },
+  { x: "caloriesIn", y: "sleepMin", ...THAT_NIGHT, yNounForm: "sleep that night" },
+  { x: "caloriesIn", y: "readiness", lag: 1 },
+];
 
 export class HealthDataService {
   constructor(
@@ -333,220 +381,67 @@ export class HealthDataService {
   }
 
   async getCorrelations(): Promise<CorrelationsData> {
-    // Fetch all available data
-    const [activity, sleep, heartRate, driving] = await Promise.all([
-      this.activityRepo.findLatest(200),
-      this.sleepRepo.findLatest(200),
-      this.heartRateRepo.findLatest(200),
-      this.teslaDriveRepo.findLatest(200),
-    ]);
+    // Pull every signal that participates in cross-metric correlations.
+    // Readiness (the composite score) is included as a series too —
+    // pairing it with signals that are NOT among its inputs (steps,
+    // driving, food) answers "does X affect my recovery?" directly,
+    // without the circularity of correlating readiness with its own
+    // ingredients (sleep, RHR, HRV, ...).
+    const [activity, sleep, heartRate, hrv, food, eightSleep, driving, readiness] =
+      await Promise.all([
+        this.activityRepo.findLatest(200),
+        this.sleepRepo.findLatest(200),
+        this.heartRateRepo.findLatest(200),
+        this.hrvRepo.findLatest(200),
+        this.foodRepo.findLatest(200),
+        this.eightSleepRepo.findLatest(200),
+        this.teslaDriveRepo.findLatest(200),
+        this.getReadiness(60),
+      ]);
 
-    // Index by date for fast join
+    // Register each signal once (date → value); the comparisons live in
+    // HEALTH_PAIR_SPECS. Activity-derived series only count "wear days"
+    // (steps > 0) so charger days don't read as zero-step days.
+    const wearDays = activity.filter((a) => a.steps != null && a.steps > 0);
+    const series = new Map<string, MetricSeries>();
+    for (const def of [
+      seriesFrom("steps", "Steps", "steps", wearDays, (a) => a.steps),
+      seriesFrom(
+        "activeMin", "Active Minutes", "active minutes", wearDays,
+        (a) => (a.minutesFairlyActive ?? 0) + (a.minutesVeryActive ?? 0),
+      ),
+      seriesFrom("sleepMin", "Sleep (min)", "sleep duration", sleep, (d) => d.totalMinutesAsleep),
+      seriesFrom("deepMin", "Deep Sleep (min)", "deep sleep", sleep, (d) => d.minutesDeep),
+      seriesFrom("rhr", "Resting HR (bpm)", "resting heart rate", heartRate, (d) => d.restingHeartRate),
+      seriesFrom("hrv", "HRV (ms)", "HRV", hrv, (d) => d.dailyRmssd),
+      // SELECTION BIAS, documented: food rows exist only on days intake
+      // was logged, and a partially-logged day passes as a fake low-cal
+      // day. Food pairs therefore read "among days I logged, ..." — we
+      // can't distinguish "didn't eat" from "didn't log", so no zero-fill.
+      seriesFrom(
+        "caloriesIn", "Calories In", "calorie intake",
+        food.filter((f) => (f.caloriesIn ?? 0) > 0), (d) => d.caloriesIn,
+      ),
+      seriesFrom("tnt", "Restlessness (toss & turns)", "restlessness", eightSleep, (d) => d.tnt),
+      // Driving IS zero-fillable (unlike food): TeslaMate logs every
+      // drive, so a gap between the first and last drive day is a true
+      // 0-minute day. Without the fill, every driving pair would be
+      // conditioned on "days I drove at all" and lose its control group.
+      fillMissingDays(
+        seriesFrom("minutesInCar", "Time in Car (min)", "time in car", driving, (d) => d.minutesInCar),
+        0,
+      ),
+      // Note: readiness history spans ~60 days vs ~200 for the rest, so
+      // readiness pairs are computed over a shorter, recent-only window.
+      seriesFrom("readiness", "Readiness", "readiness", readiness.history, (d) => d.score),
+    ]) {
+      series.set(def.key, def);
+    }
+
+    const pairs = computeCorrelationPairs(series, HEALTH_PAIR_SPECS);
+
+    // Index sleep by date for the activity → next-night buckets below.
     const sleepByDate = new Map(sleep.map((d) => [d.date, d]));
-    const hrByDate = new Map(heartRate.map((d) => [d.date, d]));
-    const drivingByDate = new Map(driving.map((d) => [d.date, d]));
-
-    // Build joined dataset
-    const joined: {
-      date: string;
-      steps: number;
-      activeMin: number;
-      sleepMin: number | null;
-      deepMin: number | null;
-      efficiency: number | null;
-      rhr: number | null;
-      minutesInCar: number | null;
-    }[] = [];
-
-    for (const a of activity) {
-      if (a.steps == null || a.steps === 0) continue;
-      const s = sleepByDate.get(a.date);
-      const h = hrByDate.get(a.date);
-      joined.push({
-        date: a.date,
-        steps: a.steps,
-        activeMin: (a.minutesFairlyActive ?? 0) + (a.minutesVeryActive ?? 0),
-        sleepMin: s?.totalMinutesAsleep ?? null,
-        deepMin: s?.minutesDeep ?? null,
-        efficiency: s?.efficiency ?? null,
-        rhr: h?.restingHeartRate ?? null,
-        minutesInCar: drivingByDate.get(a.date)?.minutesInCar ?? null,
-      });
-    }
-
-    // Compute correlation pairs
-    const pairs: CorrelationPair[] = [];
-
-    // Steps vs Sleep Duration
-    const stepsSleep = joined.filter(
-      (d) => d.sleepMin != null,
-    );
-    if (stepsSleep.length >= 10) {
-      const r = pearson(
-        stepsSleep.map((d) => d.steps),
-        stepsSleep.map((d) => d.sleepMin!),
-      );
-      pairs.push({
-        xMetric: "steps",
-        yMetric: "sleepMin",
-        xLabel: "Steps",
-        yLabel: "Sleep (min)",
-        correlation: r,
-        points: stepsSleep.map((d) => ({
-          x: d.steps,
-          y: d.sleepMin!,
-          date: d.date,
-        })),
-        insight: describeCorrelation(r, "steps", "sleep duration"),
-      });
-    }
-
-    // Steps vs Deep Sleep
-    const stepsDeep = joined.filter(
-      (d) => d.deepMin != null,
-    );
-    if (stepsDeep.length >= 10) {
-      const r = pearson(
-        stepsDeep.map((d) => d.steps),
-        stepsDeep.map((d) => d.deepMin!),
-      );
-      pairs.push({
-        xMetric: "steps",
-        yMetric: "deepMin",
-        xLabel: "Steps",
-        yLabel: "Deep Sleep (min)",
-        correlation: r,
-        points: stepsDeep.map((d) => ({
-          x: d.steps,
-          y: d.deepMin!,
-          date: d.date,
-        })),
-        insight: describeCorrelation(r, "steps", "deep sleep"),
-      });
-    }
-
-    // Active Minutes vs Sleep
-    const activeSleep = joined.filter(
-      (d) => d.sleepMin != null,
-    );
-    if (activeSleep.length >= 10) {
-      const r = pearson(
-        activeSleep.map((d) => d.activeMin),
-        activeSleep.map((d) => d.sleepMin!),
-      );
-      pairs.push({
-        xMetric: "activeMin",
-        yMetric: "sleepMin",
-        xLabel: "Active Minutes",
-        yLabel: "Sleep (min)",
-        correlation: r,
-        points: activeSleep.map((d) => ({
-          x: d.activeMin,
-          y: d.sleepMin!,
-          date: d.date,
-        })),
-        insight: describeCorrelation(r, "active minutes", "sleep duration"),
-      });
-    }
-
-    // Steps vs Resting HR
-    const stepsHr = joined.filter((d) => d.rhr != null);
-    if (stepsHr.length >= 10) {
-      const r = pearson(
-        stepsHr.map((d) => d.steps),
-        stepsHr.map((d) => d.rhr!),
-      );
-      pairs.push({
-        xMetric: "steps",
-        yMetric: "rhr",
-        xLabel: "Steps",
-        yLabel: "Resting HR (bpm)",
-        correlation: r,
-        points: stepsHr.map((d) => ({
-          x: d.steps,
-          y: d.rhr!,
-          date: d.date,
-        })),
-        insight: describeCorrelation(r, "steps", "resting heart rate"),
-      });
-    }
-
-    // Sleep vs Resting HR
-    const sleepHr = joined.filter(
-      (d) => d.sleepMin != null && d.rhr != null,
-    );
-    if (sleepHr.length >= 10) {
-      const r = pearson(
-        sleepHr.map((d) => d.sleepMin!),
-        sleepHr.map((d) => d.rhr!),
-      );
-      pairs.push({
-        xMetric: "sleepMin",
-        yMetric: "rhr",
-        xLabel: "Sleep (min)",
-        yLabel: "Resting HR (bpm)",
-        correlation: r,
-        points: sleepHr.map((d) => ({
-          x: d.sleepMin!,
-          y: d.rhr!,
-          date: d.date,
-        })),
-        insight: describeCorrelation(r, "sleep duration", "resting heart rate"),
-      });
-    }
-
-    // Time in car (Tesla) — does a heavy driving day coincide with
-    // fewer steps, worse sleep, or a higher resting HR? Same-day pairs.
-    const driveSteps = joined.filter((d) => d.minutesInCar != null);
-    if (driveSteps.length >= 10) {
-      const r = pearson(
-        driveSteps.map((d) => d.minutesInCar!),
-        driveSteps.map((d) => d.steps),
-      );
-      pairs.push({
-        xMetric: "minutesInCar",
-        yMetric: "steps",
-        xLabel: "Time in Car (min)",
-        yLabel: "Steps",
-        correlation: r,
-        points: driveSteps.map((d) => ({ x: d.minutesInCar!, y: d.steps, date: d.date })),
-        insight: describeCorrelation(r, "time in car", "steps"),
-      });
-    }
-
-    const driveSleep = joined.filter((d) => d.minutesInCar != null && d.sleepMin != null);
-    if (driveSleep.length >= 10) {
-      const r = pearson(
-        driveSleep.map((d) => d.minutesInCar!),
-        driveSleep.map((d) => d.sleepMin!),
-      );
-      pairs.push({
-        xMetric: "minutesInCar",
-        yMetric: "sleepMin",
-        xLabel: "Time in Car (min)",
-        yLabel: "Sleep (min)",
-        correlation: r,
-        points: driveSleep.map((d) => ({ x: d.minutesInCar!, y: d.sleepMin!, date: d.date })),
-        insight: describeCorrelation(r, "time in car", "sleep duration"),
-      });
-    }
-
-    const driveHr = joined.filter((d) => d.minutesInCar != null && d.rhr != null);
-    if (driveHr.length >= 10) {
-      const r = pearson(
-        driveHr.map((d) => d.minutesInCar!),
-        driveHr.map((d) => d.rhr!),
-      );
-      pairs.push({
-        xMetric: "minutesInCar",
-        yMetric: "rhr",
-        xLabel: "Time in Car (min)",
-        yLabel: "Resting HR (bpm)",
-        correlation: r,
-        points: driveHr.map((d) => ({ x: d.minutesInCar!, y: d.rhr!, date: d.date })),
-        insight: describeCorrelation(r, "time in car", "resting heart rate"),
-      });
-    }
 
     // Activity-sleep buckets
     const withNextDaySleep: { steps: number; sleepMin: number; deepMin: number; efficiency: number }[] = [];
@@ -580,10 +475,18 @@ export class HealthDataService {
       };
     });
 
+    // "Days of data" = the union of dates across every registered
+    // series. Individual pairs join on their own overlap (shown as "n"
+    // per panel), so a single series' count would describe none of them.
+    const allDates = new Set<string>();
+    for (const def of series.values()) {
+      for (const d of def.values.keys()) allDates.add(d);
+    }
+
     return {
       pairs,
       activitySleepBuckets,
-      dataPoints: joined.length,
+      dataPoints: allDates.size,
     };
   }
 

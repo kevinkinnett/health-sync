@@ -24,6 +24,7 @@ function makeService(opts: {
   activity?: any[];
   sleep?: any[];
   heartRate?: any[];
+  food?: any[];
   driving?: DrivingDay[];
 } = {}) {
   return new HealthDataService(
@@ -38,7 +39,7 @@ function makeService(opts: {
     empty, // skinTemp
     empty, // cardioScore
     empty, // eightSleep
-    empty, // food
+    repoOf(opts.food ?? []), // food
     repoOf(opts.driving ?? []), // teslaDrive
   );
 }
@@ -113,5 +114,85 @@ describe("HealthDataService.getCorrelations — time in car", () => {
     const { activity, heartRate } = overlappingData();
     const corr = await makeService({ activity, heartRate }).getCorrelations();
     expect(corr.pairs.find((p) => p.xMetric === "minutesInCar")).toBeUndefined();
+  });
+
+  it("wires lag-1 pairs through the service: calories TODAY vs sleep TONIGHT", async () => {
+    // Food on days 1..14; sleep recorded (wake date) on days 2..15 with
+    // sleepMin(D+1) proportional to caloriesIn(D) → lag-1 r must be high
+    // while the same-day join has only 13 mismatched overlaps.
+    const food: any[] = [];
+    const sleep: any[] = [];
+    for (let i = 0; i < 14; i++) {
+      food.push({
+        date: `2026-05-${String(1 + i).padStart(2, "0")}`,
+        caloriesIn: 1800 + i * 50,
+      });
+      sleep.push({
+        date: `2026-05-${String(2 + i).padStart(2, "0")}`,
+        totalMinutesAsleep: 360 + i * 10,
+      });
+    }
+    const corr = await makeService({ food, sleep }).getCorrelations();
+    const lagPair = corr.pairs.find(
+      (p) => p.xMetric === "caloriesIn" && p.yMetric === "sleepMin" && p.lagDays === 1,
+    );
+    expect(lagPair).toBeDefined();
+    expect(lagPair!.points.length).toBe(14); // every food day has a that-night sleep
+    expect(lagPair!.correlation).toBe(1); // constructed perfectly linear
+    // Wake-dated metric: the lag-1 night is "that night", not "next-day".
+    expect(lagPair!.yLabel).toBe("Sleep (min) (that night)");
+    expect(lagPair!.insight).toContain("sleep that night");
+    // The points are dated by the FOOD day (the cause).
+    expect(lagPair!.points[0].date).toBe("2026-05-01");
+  });
+
+  it("zero-fills no-drive days inside the driving span (the control group)", async () => {
+    // Drives on only 6 of 15 days, plus activity every day. The
+    // minutesInCar→steps pair must include the gap days as 0-minute
+    // observations — without them the pair would be conditioned on
+    // "days I drove at all" (and here would fall under the n≥10 gate).
+    const activity: any[] = [];
+    const driving: DrivingDay[] = [];
+    for (let i = 0; i < 15; i++) {
+      const date = `2026-05-${String(1 + i).padStart(2, "0")}`;
+      activity.push({
+        date, steps: 4000 + i * 50,
+        minutesVeryActive: 5, minutesFairlyActive: 5,
+        distanceKm: 3, caloriesOut: 2000,
+      });
+      if (i % 3 === 0) {
+        // drives on days 1, 4, 7, 10, 13 + day 15 boundary below
+        driving.push({ date, drives: 1, minutesInCar: 60, distanceKm: 30, maxSpeedKmh: 100 });
+      }
+    }
+    driving.push({
+      date: "2026-05-15", drives: 1, minutesInCar: 30, distanceKm: 10, maxSpeedKmh: 80,
+    });
+    const corr = await makeService({ activity, driving }).getCorrelations();
+    const pair = corr.pairs.find(
+      (p) => p.xMetric === "minutesInCar" && p.yMetric === "steps",
+    );
+    expect(pair).toBeDefined();
+    // All 15 days within [first drive, last drive] participate.
+    expect(pair!.points.length).toBe(15);
+    expect(pair!.points.filter((pt) => pt.x === 0).length).toBe(9);
+  });
+
+  it("pins the de-gating: sleep↔RHR joins on its own days, no activity required", async () => {
+    // Intentional behavior change from the registry refactor: pairs no
+    // longer require an activity wear-day on the joined date.
+    const sleep: any[] = [];
+    const heartRate: any[] = [];
+    for (let i = 0; i < 12; i++) {
+      const date = `2026-05-${String(1 + i).padStart(2, "0")}`;
+      sleep.push({ date, totalMinutesAsleep: 400 + i, minutesDeep: 60, efficiency: 90 });
+      heartRate.push({ date, restingHeartRate: 60 - (i % 4) });
+    }
+    const corr = await makeService({ sleep, heartRate }).getCorrelations();
+    const pair = corr.pairs.find(
+      (p) => p.xMetric === "sleepMin" && p.yMetric === "rhr",
+    );
+    expect(pair).toBeDefined();
+    expect(pair!.points.length).toBe(12);
   });
 });

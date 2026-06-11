@@ -62,7 +62,7 @@ DATA-GROUNDING RULES (read carefully — followed strictly):
 
 10. SHOW YOUR SOURCE for non-trivial figures by naming the tool you
     pulled them from in parentheses, e.g. "(query_records)" or
-    "(query_supplement_correlations)".
+    "(query_supplements_correlations)".
 `.trim();
 
 // ---------------------------------------------------------------------------

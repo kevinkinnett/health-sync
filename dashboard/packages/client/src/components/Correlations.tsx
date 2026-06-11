@@ -102,10 +102,10 @@ function ActivitySleepBuckets({ buckets }: { buckets: ActivityBucket[] }) {
 }
 
 /**
- * Cross-metric correlation grid. The Dashboard view caps the visible
- * pairs at two with an expand-to-reveal toggle, while the dedicated
- * `/analytics/correlations` page passes `expandedByDefault` so all
- * pairs render up-front.
+ * Cross-metric correlation grid. The `/analytics/correlations` page
+ * passes `expandedByDefault` so all pairs render up-front; the collapsed
+ * top-2 + expand-toggle mode is kept for embedding the grid on summary
+ * surfaces (the Dashboard used to, and may again).
  */
 export function Correlations({
   data,
@@ -116,9 +116,13 @@ export function Correlations({
 }) {
   const [expanded, setExpanded] = useState(expandedByDefault);
 
-  const sortedPairs = [...data.pairs].sort(
-    (a, b) => Math.abs(b.correlation) - Math.abs(a.correlation),
-  );
+  // Rank by |r|·√n (a t-statistic proxy), not raw |r|: per-pair sample
+  // sizes vary ~20x (sparse food/readiness series vs ~200-day activity
+  // series), and raw-|r| ranking would let a 10-day fluke outrank a
+  // solid 180-day moderate correlation in the headline slots.
+  const strength = (p: (typeof data.pairs)[number]) =>
+    Math.abs(p.correlation) * Math.sqrt(p.points.length);
+  const sortedPairs = [...data.pairs].sort((a, b) => strength(b) - strength(a));
   const visiblePairs = expanded ? sortedPairs : sortedPairs.slice(0, 2);
 
   return (
@@ -135,10 +139,13 @@ export function Correlations({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {visiblePairs.map((pair) => (
           <ScatterPanel
-            key={`${pair.xMetric}-${pair.yMetric}`}
+            // Lag in the key: the same metric pair can appear at lag 0
+            // AND lag 1 (e.g. time-in-car vs sleep today / tonight).
+            key={`${pair.xMetric}-${pair.yMetric}-${pair.lagDays ?? 0}`}
             title={`${pair.xLabel} vs ${pair.yLabel}`}
             insight={pair.insight}
             correlation={pair.correlation}
+            n={pair.points.length}
             points={pair.points}
             xAxisLabel={pair.xLabel}
             yAxisLabel={pair.yLabel}
