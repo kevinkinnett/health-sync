@@ -175,6 +175,12 @@ def main(
     teslamate_db_resource_path: Optional[str] = None,
     user_timezone: str = DEFAULT_TZ,
 ) -> dict[str, Any]:
+    # Windmill can invoke main() with None for any unset optional param
+    # (it does in previews). A None tz would reach the rollup SQL as
+    # AT TIME ZONE NULL → NULL drive_date → PK violations, so re-apply
+    # defaults defensively.
+    user_timezone = user_timezone or DEFAULT_TZ
+
     # Universe (write) connection.
     resolved_db = db if db is not None else wmill.get_resource(
         db_resource_path or DEFAULT_DB_RESOURCE_PATH

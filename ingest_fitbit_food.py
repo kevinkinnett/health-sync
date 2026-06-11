@@ -131,6 +131,9 @@ def main(
     recent_days: int = DEFAULT_RECENT_DAYS,
     backfill_days: int = 0,
 ) -> dict[str, Any]:
+    # Windmill can invoke main() with None for unset optional params.
+    recent_days = recent_days if recent_days is not None else DEFAULT_RECENT_DAYS
+
     db = wmill.get_resource(db_resource_path or DEFAULT_DB_RESOURCE_PATH)
     fpath = fitbit_resource_path or DEFAULT_FITBIT_RESOURCE_PATH
     creds = refresh_token_if_needed(wmill.get_resource(fpath), fpath)

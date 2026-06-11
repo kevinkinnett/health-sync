@@ -1137,6 +1137,10 @@ def main(
     # Useful for testing or when the Fitbit profile TZ is known-stable.
     user_timezone: Optional[str] = None,
 ) -> dict[str, Any]:
+    # Windmill can invoke main() with None for unset optional params (it
+    # does in previews); a None here would TypeError in the budget check.
+    max_requests_per_run = max_requests_per_run or 120
+
     resolved_db = resolve_db(db, db_resource_path)
     fitbit_path = fitbit_resource_path or DEFAULT_FITBIT_RESOURCE_PATH
     creds = resolve_fitbit_creds(fitbit_path)

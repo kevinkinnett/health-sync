@@ -322,6 +322,11 @@ def main(
     write_daily: bool = False,
     rollup_days: int = 45,
 ):
+    # Windmill can invoke main() with None for unset optional params.
+    days_back = days_back if days_back is not None else 3
+    max_pages = max_pages if max_pages is not None else 3
+    rollup_days = rollup_days if rollup_days is not None else 45
+
     token = google_access_token(creds_resource_path or DEFAULT_OAUTH_RES)
     db = wmill.get_resource(db_resource_path or DEFAULT_DB_RES)
     with psycopg.connect(**conn_kwargs(db)) as conn:

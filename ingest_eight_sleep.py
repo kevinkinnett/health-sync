@@ -426,6 +426,13 @@ def main(
     backfill_days: int = 0,
     user_timezone: str = DEFAULT_TZ,
 ) -> dict[str, Any]:
+    # Windmill can invoke main() with None for any unset optional param
+    # (it does in previews) — requests drops None params silently, and a
+    # tz-less trends call 400s. Re-apply defaults defensively.
+    recent_days = recent_days if recent_days is not None else DEFAULT_RECENT_DAYS
+    backfill_days = backfill_days or 0
+    user_timezone = user_timezone or DEFAULT_TZ
+
     resolved_db = db if db is not None else wmill.get_resource(
         db_resource_path or DEFAULT_DB_RESOURCE_PATH
     )
