@@ -120,7 +120,12 @@ def parse_point(dt: str, p: dict) -> dict:
         pdate = start[:10]
     key = p.get("name")
     if not key:
-        key = "|".join([dt, platform or "", app or "", pdate or start or ""])
+        # Most-granular-first: a sample's full timestamp keeps every
+        # intraday point distinct. Keying on the bare date collapsed all
+        # of a day's unnamed samples (SpO2/HRV) into ONE surviving row —
+        # the rollups then averaged 1-2 samples instead of the night.
+        # Date-only points (daily summaries) still key per-day, correctly.
+        key = "|".join([dt, platform or "", app or "", start or pdate or ""])
         if not (pdate or start):
             key += "|" + hashlib.md5(json.dumps(p, sort_keys=True).encode()).hexdigest()[:10]
     return {"key": key, "name": p.get("name"), "platform": platform, "app": app,
@@ -169,6 +174,9 @@ def capture_raw(conn, token: str, max_pages: int) -> dict:
 
 GH = "universe.google_health_data_point"
 MARK = json.dumps({"_src": "google_health"})
+# Must match the dashboard server's USER_TIMEZONE so rollup day buckets
+# line up with the legacy tables they replace.
+USER_TZ = "America/New_York"
 
 
 def _sql_rollups(cur, since: str) -> None:
@@ -223,51 +231,96 @@ def _sql_rollups(cur, since: str) -> None:
         ON CONFLICT (date) DO UPDATE SET avg_value=EXCLUDED.avg_value, min_value=EXCLUDED.min_value, max_value=EXCLUDED.max_value, raw_jsonb=EXCLUDED.raw_jsonb, fetched_at=NOW()
     """, (MARK, since))
 
-    # Steps — daily sum of intraday intervals.
+    # Steps — daily sum of intraday intervals, bucketed by the USER'S
+    # calendar day (point_date is the UTC date, which shifts evening
+    # steps into the next bucket and left settled days 0.7-1.9% short
+    # of legacy in validation).
     cur.execute(f"""
         INSERT INTO universe.fitbit_activity_daily (date, steps, raw_jsonb)
-        SELECT point_date, sum((value_jsonb->'steps'->>'count')::int), %s::jsonb
-        FROM {GH} WHERE data_type='steps' AND source_platform='FITBIT' AND point_date >= %s
-        GROUP BY point_date
+        SELECT (start_time AT TIME ZONE %s)::date, sum((value_jsonb->'steps'->>'count')::int), %s::jsonb
+        FROM {GH} WHERE data_type='steps' AND source_platform='FITBIT'
+              AND start_time IS NOT NULL AND point_date >= %s
+        GROUP BY 1
         ON CONFLICT (date) DO UPDATE SET steps=EXCLUDED.steps, raw_jsonb=EXCLUDED.raw_jsonb, fetched_at=NOW()
-    """, (MARK, since))
+    """, (USER_TZ, MARK, since))
 
 
 def _rollup_sleep(cur, since: str) -> int:
+    # Legacy semantics: total_minutes_asleep/in_bed sum ALL sessions that
+    # day (naps included); stage minutes + start/end come from the MAIN
+    # (longest) session. Efficiency isn't in Google's summary — computed
+    # as asleep/in-period of the main session (Fitbit's own formula is
+    # near-identical; readiness only uses it via z-scores anyway).
     cur.execute(f"""
         SELECT point_date, value_jsonb FROM {GH}
         WHERE data_type='sleep' AND source_platform='FITBIT' AND point_date >= %s
     """, (since,))
-    best = {}  # date -> the longest session that day
+    days = {}  # date -> {"sessions": [...], "best": {...}}
     for pdate, vj in cur.fetchall():
         s = (vj or {}).get("sleep", {})
         summ = s.get("summary", {})
         asleep = int(summ.get("minutesAsleep", 0) or 0)
-        if pdate not in best or asleep > best[pdate]["asleep"]:
+        inbed = int(summ.get("minutesInSleepPeriod", 0) or 0)
+        day = days.setdefault(pdate, {"asleep": 0, "inbed": 0, "records": 0, "best": None})
+        day["asleep"] += asleep
+        day["inbed"] += inbed
+        day["records"] += 1
+        if day["best"] is None or asleep > day["best"]["asleep"]:
             stages = {x.get("type"): int(x.get("minutes", 0) or 0) for x in summ.get("stagesSummary", [])}
             iv = s.get("interval", {})
-            best[pdate] = {
-                "asleep": asleep,
-                "inbed": int(summ.get("minutesInSleepPeriod", 0) or 0),
+            day["best"] = {
+                "asleep": asleep, "inbed": inbed,
                 "deep": stages.get("DEEP"), "light": stages.get("LIGHT"),
                 "rem": stages.get("REM"), "wake": stages.get("AWAKE"),
                 "start": iv.get("startTime"), "end": iv.get("endTime"),
             }
     n = 0
-    for d, b in best.items():
+    for d, day in days.items():
+        b = day["best"]
+        efficiency = round(b["asleep"] * 100 / b["inbed"]) if b["inbed"] else None
         cur.execute("""
             INSERT INTO universe.fitbit_sleep_daily
                 (date, total_minutes_asleep, total_minutes_in_bed, total_sleep_records,
                  minutes_deep, minutes_light, minutes_rem, minutes_wake,
-                 main_sleep_start_time, main_sleep_end_time, raw_jsonb)
-            VALUES (%s,%s,%s,1,%s,%s,%s,%s,%s,%s,%s)
+                 efficiency, main_sleep_start_time, main_sleep_end_time, raw_jsonb)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             ON CONFLICT (date) DO UPDATE SET
                 total_minutes_asleep=EXCLUDED.total_minutes_asleep, total_minutes_in_bed=EXCLUDED.total_minutes_in_bed,
+                total_sleep_records=EXCLUDED.total_sleep_records,
                 minutes_deep=EXCLUDED.minutes_deep, minutes_light=EXCLUDED.minutes_light,
                 minutes_rem=EXCLUDED.minutes_rem, minutes_wake=EXCLUDED.minutes_wake,
+                efficiency=EXCLUDED.efficiency,
                 main_sleep_start_time=EXCLUDED.main_sleep_start_time, main_sleep_end_time=EXCLUDED.main_sleep_end_time,
                 raw_jsonb=EXCLUDED.raw_jsonb, fetched_at=NOW()
-        """, (d, b["asleep"], b["inbed"], b["deep"], b["light"], b["rem"], b["wake"], b["start"], b["end"], MARK))
+        """, (d, day["asleep"], day["inbed"], day["records"],
+              b["deep"], b["light"], b["rem"], b["wake"], efficiency,
+              b["start"], b["end"], MARK))
+        n += 1
+    return n
+
+
+def _rollup_weight(cur, since: str) -> int:
+    # fitbit_body_weight PK is Fitbit's log_id; Google points carry a
+    # resource name instead. Derive a NEGATIVE synthetic id from the name
+    # hash — real Fitbit log ids are positive, so the two can't collide.
+    cur.execute(f"""
+        SELECT point_date, name, value_jsonb FROM {GH}
+        WHERE data_type='weight' AND source_platform='FITBIT'
+              AND point_date >= %s AND name IS NOT NULL
+    """, (since,))
+    n = 0
+    for pdate, name, vj in cur.fetchall():
+        w = (vj or {}).get("weight", {})
+        grams = w.get("grams")
+        if not grams:
+            continue
+        log_id = -(int(hashlib.md5(name.encode()).hexdigest()[:12], 16))
+        cur.execute("""
+            INSERT INTO universe.fitbit_body_weight (log_id, date, weight_kg, source, raw_jsonb)
+            VALUES (%s,%s,%s,'google_health',%s)
+            ON CONFLICT (log_id) DO UPDATE SET
+                date=EXCLUDED.date, weight_kg=EXCLUDED.weight_kg, raw_jsonb=EXCLUDED.raw_jsonb, fetched_at=NOW()
+        """, (log_id, pdate, round(grams / 1000.0, 2), MARK))
         n += 1
     return n
 
@@ -306,8 +359,9 @@ def run_rollups(conn, rollup_days: int) -> dict:
     _sql_rollups(cur, since)
     sleep_n = _rollup_sleep(cur, since)
     food_n = _rollup_food(cur, since)
+    weight_n = _rollup_weight(cur, since)
     conn.commit()
-    return {"since": since, "sleep_days": sleep_n, "food_days": food_n}
+    return {"since": since, "sleep_days": sleep_n, "food_days": food_n, "weight_logs": weight_n}
 
 
 # ---------------------------------------------------------------------------
@@ -318,13 +372,17 @@ def main(
     creds_resource_path=None,
     db_resource_path=None,
     days_back: int = 3,
-    max_pages: int = 3,
+    # Default is the DEEP-capture budget (40 pages × 1000 pts per type) so an
+    # argless manual run (e.g. Windmill MCP runScriptByPath, which cannot pass
+    # args) backfills history. The 4-hourly schedule passes max_pages=3
+    # explicitly, keeping routine runs light.
+    max_pages: int = 40,
     write_daily: bool = False,
     rollup_days: int = 45,
 ):
     # Windmill can invoke main() with None for unset optional params.
     days_back = days_back if days_back is not None else 3
-    max_pages = max_pages if max_pages is not None else 3
+    max_pages = max_pages if max_pages is not None else 40
     rollup_days = rollup_days if rollup_days is not None else 45
 
     token = google_access_token(creds_resource_path or DEFAULT_OAUTH_RES)
