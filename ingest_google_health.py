@@ -32,7 +32,7 @@ DB:   u/kevin/universe_db
 import hashlib
 import json
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import psycopg
 import requests
@@ -47,8 +47,9 @@ DEFAULT_DB_RES = "u/kevin/universe_db"
 BASE = "https://health.googleapis.com/v4"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 
-# Every type we capture raw. (total-calories/weight daily-mapping are TODO —
-# captured raw, but not yet rolled into fitbit_* : see notes at the bottom.)
+# Every type we capture raw via the List endpoint. Daily calories /
+# active-minutes / floors are NOT listed here — the API rejects List for them;
+# they come from the dailyRollUp endpoint instead (see _rollup_activity_daily).
 TYPES = [
     "daily-resting-heart-rate", "daily-respiratory-rate",
     "daily-sleep-temperature-derivations", "oxygen-saturation",
@@ -353,15 +354,112 @@ def _rollup_food(cur, since: str) -> int:
     return n
 
 
-def run_rollups(conn, rollup_days: int) -> dict:
+def _civil(d: date) -> dict:
+    return {"date": {"year": d.year, "month": d.month, "day": d.day}}
+
+
+def _rollup_activity_daily(token: str, cur, rollup_days: int) -> int:
+    """Daily activity columns Google only exposes via the dailyRollUp endpoint
+    (civil-day buckets), written into the EXISTING fitbit_activity_daily columns
+    the dashboard already reads — all validated EXACT vs legacy (2026-06-11):
+
+        total-calories  → calories_out      (kcalSum)
+        active-minutes  → minutes_*_active  (LIGHT/MODERATE/VIGOROUS
+                          → lightly/fairly/very)
+        distance        → distance_km       (millimetersSum / 1e6)
+        floors          → floors            (countSum)
+
+    `total-calories` CANNOT be listed raw (the API allows only rollup/dailyRollUp
+    for it), so this is the only route to calories_out. Deliberately NOT mapped:
+    active_calories / calories_bmr (Google's active-energy-burned is a different
+    definition, ~half of Fitbit's activityCalories, and neither column is
+    surfaced) and minutes_sedentary (sedentary-period differs from legacy too).
+    AZM (active-zone-minutes) is a HR-zone metric, not the MET-based legacy
+    active-minutes (r~=0.37), so it stays raw-only and is not rolled here.
+    """
+    h = {"Authorization": f"Bearer {token}"}
+    today = datetime.now(timezone.utc).date()
+    # dailyRollUp caps each request at maxDurationDays=14, so the rollup_days
+    # window is split into <=14-day closed-open spans.
+    spans, s, end = [], today - timedelta(days=rollup_days), today + timedelta(days=1)
+    while s < end:
+        e = min(s + timedelta(days=14), end)
+        spans.append((s, e))
+        s = e
+
+    def roll(dt: str) -> dict:
+        out: dict = {}
+        for cs, ce in spans:
+            page = None
+            while True:
+                body = {"range": {"start": _civil(cs), "end": _civil(ce)}}
+                if page:
+                    body["pageToken"] = page
+                r = requests.post(f"{BASE}/users/me/dataTypes/{dt}/dataPoints:dailyRollUp",
+                                  headers=h, json=body, timeout=60)
+                r.raise_for_status()
+                j = r.json()
+                for dp in j.get("rollupDataPoints", []):
+                    cd = (dp.get("civilStartTime") or {}).get("date") or {}
+                    if cd.get("year"):
+                        out[date(cd["year"], cd["month"], cd["day"])] = dp
+                page = j.get("nextPageToken")
+                if not page:
+                    break
+        return out
+
+    cal = roll("total-calories")
+    amin = roll("active-minutes")
+    dist = roll("distance")
+    flr = roll("floors")
+
+    n = 0
+    for d in sorted(cal):  # settled days only — today's partial total is absent
+        kcal = (cal[d].get("totalCalories") or {}).get("kcalSum")
+        if kcal is None:
+            continue
+        levels = {x.get("activityLevel"): int(x.get("activeMinutesSum", 0) or 0)
+                  for x in ((amin.get(d, {}) or {}).get("activeMinutes") or {})
+                           .get("activeMinutesRollupByActivityLevel", [])}
+        mm = ((dist.get(d, {}) or {}).get("distance") or {}).get("millimetersSum")
+        cnt = ((flr.get(d, {}) or {}).get("floors") or {}).get("countSum")
+        cur.execute("""
+            INSERT INTO universe.fitbit_activity_daily
+                (date, calories_out, distance_km, floors,
+                 minutes_lightly_active, minutes_fairly_active, minutes_very_active, raw_jsonb)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+            ON CONFLICT (date) DO UPDATE SET
+                calories_out=EXCLUDED.calories_out, distance_km=EXCLUDED.distance_km,
+                floors=EXCLUDED.floors,
+                minutes_lightly_active=EXCLUDED.minutes_lightly_active,
+                minutes_fairly_active=EXCLUDED.minutes_fairly_active,
+                minutes_very_active=EXCLUDED.minutes_very_active,
+                raw_jsonb=EXCLUDED.raw_jsonb, fetched_at=NOW()
+        """, (d, round(kcal),
+              round(int(mm) / 1_000_000, 3) if mm is not None else 0,
+              int(cnt) if cnt is not None else 0,
+              levels.get("LIGHT", 0), levels.get("MODERATE", 0), levels.get("VIGOROUS", 0), MARK))
+        n += 1
+    return n
+
+
+def run_rollups(conn, token: str, rollup_days: int) -> dict:
     since = (datetime.now(timezone.utc).date() - timedelta(days=rollup_days)).isoformat()
     cur = conn.cursor()
     _sql_rollups(cur, since)
     sleep_n = _rollup_sleep(cur, since)
     food_n = _rollup_food(cur, since)
     weight_n = _rollup_weight(cur, since)
-    conn.commit()
-    return {"since": since, "sleep_days": sleep_n, "food_days": food_n, "weight_logs": weight_n}
+    conn.commit()  # lock in the SQL/sleep/food/weight rollups before the network rollup
+    activity: dict = {}
+    try:
+        activity["activity_days"] = _rollup_activity_daily(token, cur, rollup_days)
+        conn.commit()
+    except Exception as exc:  # noqa: BLE001 — network rollup must not drop the committed SQL rollups
+        conn.rollback()
+        activity["activity_error"] = str(exc)[:200]
+    return {"since": since, "sleep_days": sleep_n, "food_days": food_n,
+            "weight_logs": weight_n, **activity}
 
 
 # ---------------------------------------------------------------------------
@@ -394,7 +492,7 @@ def main(
         run_id = create_ingest_run(conn, PROVIDER, JOB_NAME)
 
         captured = capture_raw(conn, token, max_pages)
-        rolled = run_rollups(conn, rollup_days) if write_daily else {"skipped": "write_daily=False (parallel-run; raw only)"}
+        rolled = run_rollups(conn, token, rollup_days) if write_daily else {"skipped": "write_daily=False (parallel-run; raw only)"}
 
         total_pts = sum(v.get("points", 0) for v in captured.values() if isinstance(v, dict))
         errors = sum(1 for v in captured.values() if isinstance(v, dict) and v.get("error"))
@@ -405,7 +503,13 @@ def main(
             "write_daily": write_daily, "captured": captured, "rolled": rolled}
 
 
-# NOTE — deferred (captured raw, not yet rolled into fitbit_* tables):
-#   total-calories  → needs the :rollup endpoint (rejects plain list)
-#   weight          → fitbit_body_weight PK is a Fitbit logId; needs a key strategy
-#   distance / AZM  → optional activity-table fields
+# NOTE — rollup coverage status:
+#   DONE  calories_out / active-minutes / distance / floors → _rollup_activity_daily
+#         (dailyRollUp endpoint; all validated EXACT vs legacy)
+#   DONE  weight → _rollup_weight (negative synthetic log_id)
+#   SKIP  active_calories / calories_bmr → Google's active-energy-burned is a
+#         different definition (~half of Fitbit's activityCalories) and unused
+#   SKIP  minutes_sedentary → sedentary-period differs from legacy, unused
+#   OPEN  AZM (active-zone-minutes) → captured raw; a HR-zone signal distinct
+#         from MET-based active-minutes (r~=0.37). Could be added as a NEW
+#         correlation series (new column), but it is NOT a legacy replacement.
