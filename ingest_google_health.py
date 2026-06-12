@@ -144,7 +144,14 @@ def capture_raw(conn, token: str, max_pages: int) -> dict:
             params = {"pageSize": 1000}
             if token_pg:
                 params["pageToken"] = token_pg
-            r = requests.get(f"{BASE}/users/me/dataTypes/{dt}/dataPoints", headers=h, params=params, timeout=90)
+            # A timeout/conn drop on ONE type must not kill the whole run
+            # (it did on 2026-06-12: a 90s timeout crashed the deep run and
+            # orphaned its ingest_run row mid-'running').
+            try:
+                r = requests.get(f"{BASE}/users/me/dataTypes/{dt}/dataPoints", headers=h, params=params, timeout=90)
+            except requests.RequestException as exc:
+                err = f"request failed: {str(exc)[:80]}"
+                break
             if r.status_code != 200:
                 err = f"{r.status_code}: {r.text[:80]}"
                 break
@@ -550,8 +557,22 @@ def main(
         conn.commit()
         run_id = create_ingest_run(conn, PROVIDER, JOB_NAME)
 
-        captured = capture_raw(conn, token, max_pages)
-        rolled = run_rollups(conn, token, rollup_days) if write_daily else {"skipped": "write_daily=False (parallel-run; raw only)"}
+        # Any crash below must still finalize the run row — an unhandled
+        # raise used to leave it 'running' forever (monitoring-blind).
+        captured: dict = {}
+        rolled = {"skipped": "write_daily=False (parallel-run; raw only)"}
+        try:
+            captured = capture_raw(conn, token, max_pages)
+            if write_daily:
+                rolled = run_rollups(conn, token, rollup_days)
+        except Exception as exc:  # noqa: BLE001
+            try:
+                conn.rollback()
+            except Exception:  # noqa: BLE001
+                pass
+            update_ingest_run(conn, run_id, "failed", 0, 1,
+                              {"crash": str(exc)[:300], "captured": captured})
+            raise
 
         total_pts = sum(v.get("points", 0) for v in captured.values() if isinstance(v, dict))
         errors = sum(1 for v in captured.values() if isinstance(v, dict) and v.get("error"))
