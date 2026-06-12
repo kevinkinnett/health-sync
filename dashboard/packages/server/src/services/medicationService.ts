@@ -4,6 +4,7 @@ import type {
   CreateMedicationItemBody,
   UpdateMedicationItemBody,
   CreateMedicationIntakeBody,
+  UpdateMedicationIntakeBody,
 } from "@health-dashboard/shared";
 import type { MedicationRepository } from "../repositories/medicationRepo.js";
 export { NotFoundError, ValidationError } from "./errors.js";
@@ -85,6 +86,19 @@ export class MedicationService {
       unit,
       notes: body.notes ?? null,
     });
+  }
+
+  /**
+   * Edits an existing intake (dose, unit, time, or notes). Only the
+   * provided fields change; the intake must exist.
+   */
+  async updateIntake(
+    id: number,
+    body: UpdateMedicationIntakeBody,
+  ): Promise<MedicationIntake> {
+    const updated = await this.repo.updateIntake(id, body);
+    if (!updated) throw new NotFoundError(`Intake ${id} not found`);
+    return updated;
   }
 
   async deleteIntake(id: number): Promise<void> {

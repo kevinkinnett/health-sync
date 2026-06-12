@@ -106,6 +106,7 @@ export type {
   CreateMedicationItemBody,
   UpdateMedicationItemBody,
   CreateMedicationIntakeBody,
+  UpdateMedicationIntakeBody,
 } from "./types/medication.js";
 export type {
   DossierItemType,

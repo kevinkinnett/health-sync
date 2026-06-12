@@ -45,6 +45,7 @@ import type {
   CreateMedicationItemBody,
   UpdateMedicationItemBody,
   CreateMedicationIntakeBody,
+  UpdateMedicationIntakeBody,
   DossierEntry,
   DossierItemType,
   SupplementAdherence,
@@ -663,6 +664,24 @@ export function useLogMedicationIntake() {
     mutationFn: (body) =>
       apiFetch("/medications/intakes", {
         method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      invalidateMedications(queryClient);
+    },
+  });
+}
+
+export function useUpdateMedicationIntake() {
+  const queryClient = useQueryClient();
+  return useMutation<
+    MedicationIntake,
+    Error,
+    { id: number; body: UpdateMedicationIntakeBody }
+  >({
+    mutationFn: ({ id, body }) =>
+      apiFetch(`/medications/intakes/${id}`, {
+        method: "PATCH",
         body: JSON.stringify(body),
       }),
     onSuccess: () => {

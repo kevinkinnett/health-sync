@@ -4,6 +4,7 @@ import type {
   MedicationIntake,
   CreateMedicationItemBody,
   UpdateMedicationItemBody,
+  UpdateMedicationIntakeBody,
 } from "@health-dashboard/shared";
 import { toTimestampStr } from "./mappers.js";
 
@@ -191,6 +192,38 @@ export class MedicationRepository {
       [body.itemId, body.takenAt, body.amount, body.unit, body.notes],
     );
     return mapIntake(rows[0]);
+  }
+
+  async updateIntake(
+    id: number,
+    body: UpdateMedicationIntakeBody,
+  ): Promise<MedicationIntake | null> {
+    const sets: string[] = [];
+    const values: unknown[] = [];
+    let n = 1;
+    const push = (col: string, v: unknown) => {
+      sets.push(`${col} = $${n++}`);
+      values.push(v);
+    };
+    if (body.takenAt !== undefined) push("taken_at", body.takenAt);
+    if (body.amount !== undefined) push("amount", body.amount);
+    if (body.unit !== undefined) push("unit", body.unit);
+    if (body.notes !== undefined) push("notes", body.notes);
+    if (sets.length === 0) {
+      const existing = await this.listIntakes(undefined, undefined, undefined);
+      return existing.find((i) => i.id === id) ?? null;
+    }
+    values.push(id);
+    const { rows } = await this.pool.query(
+      `UPDATE medication.intake
+         SET ${sets.join(", ")}
+       WHERE id = $${n}
+       RETURNING id, item_id,
+                 (SELECT name FROM medication.item WHERE id = medication.intake.item_id) AS item_name,
+                 taken_at, amount, unit, notes, created_at`,
+      values,
+    );
+    return rows[0] ? mapIntake(rows[0]) : null;
   }
 
   async deleteIntake(id: number): Promise<boolean> {

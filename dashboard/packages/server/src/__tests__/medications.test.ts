@@ -135,6 +135,23 @@ class FakeRepo {
     return intake;
   }
 
+  async updateIntake(
+    id: number,
+    body: { takenAt?: string; amount?: number; unit?: string; notes?: string | null },
+  ): Promise<MedicationIntake | null> {
+    const existing = this.intakes.get(id);
+    if (!existing) return null;
+    const updated: MedicationIntake = {
+      ...existing,
+      ...(body.takenAt !== undefined && { takenAt: body.takenAt }),
+      ...(body.amount !== undefined && { amount: body.amount }),
+      ...(body.unit !== undefined && { unit: body.unit }),
+      ...(body.notes !== undefined && { notes: body.notes }),
+    };
+    this.intakes.set(id, updated);
+    return updated;
+  }
+
   async deleteIntake(id: number): Promise<boolean> {
     return this.intakes.delete(id);
   }
@@ -294,6 +311,50 @@ describe("Medication API", () => {
         .send({ itemId: item.body.id })
         .expect(400);
       expect(res.body.error).toMatch(/default amount/i);
+    });
+
+    it("PATCH /intakes/:id edits the dose without touching other fields", async () => {
+      const item = await request(app).post("/api/medications/items").send({
+        name: "Escitalopram",
+        defaultAmount: 10,
+        defaultUnit: "mg",
+      });
+      const intake = await request(app)
+        .post("/api/medications/intakes")
+        .send({ itemId: item.body.id, takenAt: "2026-06-10T12:00:00Z" });
+      const res = await request(app)
+        .patch(`/api/medications/intakes/${intake.body.id}`)
+        .send({ amount: 20 })
+        .expect(200);
+      expect(res.body).toMatchObject({
+        id: intake.body.id,
+        amount: 20,
+        unit: "mg",
+        takenAt: "2026-06-10T12:00:00Z",
+        itemName: "Escitalopram",
+      });
+    });
+
+    it("PATCH /intakes/:id returns 404 for a missing intake", async () => {
+      await request(app)
+        .patch("/api/medications/intakes/999")
+        .send({ amount: 5 })
+        .expect(404);
+    });
+
+    it("PATCH /intakes/:id rejects an empty body with 400", async () => {
+      const item = await request(app).post("/api/medications/items").send({
+        name: "Escitalopram",
+        defaultAmount: 10,
+        defaultUnit: "mg",
+      });
+      const intake = await request(app)
+        .post("/api/medications/intakes")
+        .send({ itemId: item.body.id });
+      await request(app)
+        .patch(`/api/medications/intakes/${intake.body.id}`)
+        .send({})
+        .expect(400);
     });
 
     it("DELETE /intakes/:id removes the row", async () => {

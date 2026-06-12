@@ -48,3 +48,10 @@ export interface CreateMedicationIntakeBody {
   unit?: string;
   notes?: string | null;
 }
+
+export interface UpdateMedicationIntakeBody {
+  takenAt?: string;
+  amount?: number;
+  unit?: string;
+  notes?: string | null;
+}

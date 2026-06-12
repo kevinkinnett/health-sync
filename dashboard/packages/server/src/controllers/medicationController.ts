@@ -32,6 +32,18 @@ const createIntakeSchema = z.object({
   notes: z.string().nullable().optional(),
 });
 
+const updateIntakeSchema = z
+  .object({
+    takenAt: z.string().datetime({ offset: true }).optional(),
+    amount: z.number().nonnegative().optional(),
+    unit: z.string().trim().min(1).optional(),
+    notes: z.string().nullable().optional(),
+  })
+  .strict()
+  .refine((body) => Object.keys(body).length > 0, {
+    message: "at least one field is required",
+  });
+
 export class MedicationController {
   constructor(private service: MedicationService) {}
 
@@ -75,6 +87,12 @@ export class MedicationController {
   async createIntake(req: Request, res: Response): Promise<void> {
     const body = createIntakeSchema.parse(req.body);
     res.status(201).json(await this.service.logIntake(body));
+  }
+
+  async updateIntake(req: Request, res: Response): Promise<void> {
+    const id = parseId(req.params.id);
+    const body = updateIntakeSchema.parse(req.body);
+    res.json(await this.service.updateIntake(id, body));
   }
 
   async deleteIntake(req: Request, res: Response): Promise<void> {

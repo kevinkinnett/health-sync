@@ -26,6 +26,28 @@ const ITEM: MedicationItem = {
   updatedAt: "2026-04-26T00:00:00Z",
 };
 
+const JUN10_INTAKE = {
+  id: 55,
+  itemId: 1,
+  itemName: "Escitalopram",
+  takenAt: new Date(2026, 5, 10, 8).toISOString(),
+  amount: 10,
+  unit: "mg",
+  notes: null,
+  createdAt: new Date(2026, 5, 10, 8).toISOString(),
+};
+
+function mockWithJun10Intake() {
+  apiFetch.mockImplementation((path: string, init?: RequestInit) => {
+    if (path.startsWith("/medications/intakes")) {
+      if (init?.method === "POST" || init?.method === "PATCH") return Promise.resolve({});
+      if (init?.method === "DELETE") return Promise.resolve(undefined);
+      return Promise.resolve([JUN10_INTAKE]);
+    }
+    return Promise.resolve([]);
+  });
+}
+
 function renderCalendar(items: MedicationItem[] = [ITEM]) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
@@ -79,32 +101,60 @@ describe("MedicationCalendar", () => {
     });
   });
 
-  it("marks logged days and deletes the day's intake after confirmation", async () => {
-    apiFetch.mockImplementation((path: string, init?: RequestInit) => {
-      if (path.startsWith("/medications/intakes?") || path === "/medications/intakes") {
-        if (init?.method === "POST") return Promise.resolve({});
-        return Promise.resolve([
-          {
-            id: 55,
-            itemId: 1,
-            itemName: "Escitalopram",
-            takenAt: new Date(2026, 5, 10, 8).toISOString(),
-            amount: 10,
-            unit: "mg",
-            notes: null,
-            createdAt: new Date(2026, 5, 10, 8).toISOString(),
-          },
-        ]);
-      }
-      return Promise.resolve([]);
-    });
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+  it("opens the day detail sheet for a logged day, showing dose and time", async () => {
+    mockWithJun10Intake();
     renderCalendar();
 
     const logged = await screen.findByRole("button", {
-      name: "Remove 1 intake of Escitalopram on Jun 10",
+      name: "View 1 intake of Escitalopram on Jun 10",
     });
     fireEvent.click(logged);
+
+    expect(await screen.findByText(/Jun 10/)).toBeInTheDocument();
+    const amountInput = screen.getByLabelText(/amount for intake/i) as HTMLInputElement;
+    expect(amountInput.value).toBe("10");
+    const unitInput = screen.getByLabelText(/unit for intake/i) as HTMLInputElement;
+    expect(unitInput.value).toBe("mg");
+  });
+
+  it("edits a dose via PATCH from the day detail sheet", async () => {
+    mockWithJun10Intake();
+    renderCalendar();
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "View 1 intake of Escitalopram on Jun 10",
+      }),
+    );
+    const amountInput = await screen.findByLabelText(/amount for intake/i);
+    fireEvent.change(amountInput, { target: { value: "20" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      const patch = apiFetch.mock.calls.find(
+        ([path, init]) =>
+          path === "/medications/intakes/55" &&
+          (init as RequestInit | undefined)?.method === "PATCH",
+      );
+      expect(patch).toBeDefined();
+      expect(JSON.parse((patch![1] as { body: string }).body)).toEqual({
+        amount: 20,
+        unit: "mg",
+      });
+    });
+  });
+
+  it("deletes an intake from the sheet after confirmation", async () => {
+    mockWithJun10Intake();
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    renderCalendar();
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "View 1 intake of Escitalopram on Jun 10",
+      }),
+    );
+    fireEvent.click(await screen.findByLabelText(/delete intake at/i));
 
     await waitFor(() => {
       expect(confirmSpy).toHaveBeenCalledOnce();
@@ -119,31 +169,16 @@ describe("MedicationCalendar", () => {
   });
 
   it("does not delete when the confirmation is declined", async () => {
-    apiFetch.mockImplementation((path: string) => {
-      if (path.startsWith("/medications/intakes")) {
-        return Promise.resolve([
-          {
-            id: 55,
-            itemId: 1,
-            itemName: "Escitalopram",
-            takenAt: new Date(2026, 5, 10, 8).toISOString(),
-            amount: 10,
-            unit: "mg",
-            notes: null,
-            createdAt: new Date(2026, 5, 10, 8).toISOString(),
-          },
-        ]);
-      }
-      return Promise.resolve([]);
-    });
+    mockWithJun10Intake();
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
     renderCalendar();
 
     fireEvent.click(
       await screen.findByRole("button", {
-        name: "Remove 1 intake of Escitalopram on Jun 10",
+        name: "View 1 intake of Escitalopram on Jun 10",
       }),
     );
+    fireEvent.click(await screen.findByLabelText(/delete intake at/i));
 
     expect(
       apiFetch.mock.calls.find(
@@ -151,6 +186,30 @@ describe("MedicationCalendar", () => {
       ),
     ).toBeUndefined();
     confirmSpy.mockRestore();
+  });
+
+  it("adds another dose for the day from the detail sheet", async () => {
+    mockWithJun10Intake();
+    renderCalendar();
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "View 1 intake of Escitalopram on Jun 10",
+      }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: /add dose/i }));
+
+    await waitFor(() => {
+      const post = apiFetch.mock.calls.find(
+        ([path, init]) =>
+          path === "/medications/intakes" &&
+          (init as RequestInit | undefined)?.method === "POST",
+      );
+      expect(post).toBeDefined();
+      const body = JSON.parse((post![1] as { body: string }).body);
+      expect(body.itemId).toBe(1);
+      expect(body.takenAt).toBe(new Date(2026, 5, 10, 8).toISOString());
+    });
   });
 
   it("navigates to previous months and disables forward navigation at the current month", async () => {

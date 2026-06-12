@@ -14,6 +14,7 @@ export function createMedicationRoutes(controller: MedicationController): Router
 
   router.get("/intakes", wrap((req, res) => controller.listIntakes(req, res)));
   router.post("/intakes", wrap((req, res) => controller.createIntake(req, res)));
+  router.patch("/intakes/:id", wrap((req, res) => controller.updateIntake(req, res)));
   router.delete("/intakes/:id", wrap((req, res) => controller.deleteIntake(req, res)));
 
   return router;
