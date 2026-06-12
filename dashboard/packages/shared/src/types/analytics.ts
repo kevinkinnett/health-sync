@@ -74,9 +74,17 @@ export interface IntakeCorrelations {
   pairs: Array<{
     metric: "steps" | "sleepMin" | "deepMin" | "restingHr" | "dailyRmssd";
     metricLabel: string;
-    correlation: number; // -1 .. 1, rounded to 3 decimals
-    n: number; // joined day count
-    points: Array<{ x: 0 | 1; y: number; date: string }>;
+    /** Intake-axis label, e.g. "Daily dose (mg)" or "Doses taken (count)". */
+    xLabel: string;
+    /**
+     * Pearson r (-1..1, 3 decimals), or null when the intake series has
+     * no variation across the joined days (same dose every day, none
+     * skipped) — r is mathematically undefined there, not zero.
+     */
+    correlation: number | null;
+    n: number; // joined day count (skipped days inside the span count too)
+    /** x = the day's total dose (0 on skipped days). */
+    points: Array<{ x: number; y: number; date: string }>;
     insight: string;
   }>;
 }

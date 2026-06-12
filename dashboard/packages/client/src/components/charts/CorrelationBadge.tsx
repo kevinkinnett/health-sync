@@ -12,7 +12,16 @@
  *   |r| ≥ 0.2  → Weak
  *   otherwise  → None
  */
-export function CorrelationBadge({ r }: { r: number }) {
+export function CorrelationBadge({ r }: { r: number | null }) {
+  if (r === null) {
+    // Pearson r is undefined for a constant series (e.g. a medication
+    // taken every day at the same dose) — say so instead of faking 0.
+    return (
+      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold tabular-nums bg-surface-container-high text-outline">
+        r = n/a (no variation)
+      </span>
+    );
+  }
   const abs = Math.abs(r);
   let label: string;
   let color: string;

@@ -230,12 +230,12 @@ export function AnalyticsSupplements() {
                 {correlations.data.pairs.map((pair) => (
                   <ScatterPanel
                     key={pair.metric}
-                    title={`Took ${correlations.data!.itemName} vs ${pair.metricLabel}`}
+                    title={`${correlations.data!.itemName} vs ${pair.metricLabel}`}
                     insight={pair.insight}
                     correlation={pair.correlation}
                     n={pair.n}
                     points={pair.points}
-                    xAxisLabel="Took (1) / Skipped (0)"
+                    xAxisLabel={pair.xLabel}
                     yAxisLabel={pair.metricLabel}
                   />
                 ))}

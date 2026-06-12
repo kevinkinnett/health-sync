@@ -165,6 +165,22 @@ function makeIntake(
   };
 }
 
+function emptyHeartRate(date: string): HeartRateDay {
+  return {
+    date,
+    restingHeartRate: null,
+    zoneOutOfRangeMin: null,
+    zoneFatBurnMin: null,
+    zoneCardioMin: null,
+    zonePeakMin: null,
+    zoneOutOfRangeCal: null,
+    zoneFatBurnCal: null,
+    zoneCardioCal: null,
+    zonePeakCal: null,
+    fetchedAt: `${date}T00:00:00Z`,
+  };
+}
+
 function emptyActivity(date: string): ActivityDay {
   return {
     date,
@@ -353,14 +369,12 @@ describe("Analytics ingredient-by-day", () => {
 // ---------------------------------------------------------------------------
 
 describe("Analytics correlations", () => {
-  // Renamed from "finds r ≈ 1 when steps are perfectly aligned" — audit
-  // #14. The previous name promised r ≈ 1 but the assert was actually
-  // `correlation === 0`, because `listIntakes` only returns rows for
-  // *intake* days; after the day-grain join the x series is constant
-  // (every row has x=1). Constant series produce r=0 by our stats
-  // helper's degenerate-variance convention. This test now describes
-  // what it actually verifies.
-  it("returns r=0 for degenerate constant-x series (intake-only rows)", async () => {
+  // The original version of this test pinned a BUG: only taken days
+  // reached the join, so x was constant 1 and r degenerate for every
+  // item. Skipped days inside the span are now zero-filled (the control
+  // group), so alternating intake/skip vs high/low steps is a perfect
+  // positive correlation — what this test was named for all along.
+  it("finds r ≈ 1 when intake days align with high steps (skipped days zero-filled)", async () => {
     supRepo.items.set(1, makeSupplementItem(1, "Anxie-T"));
     // 30 alternating days: even index → intake + high steps,
     // odd index → no intake + low steps.
@@ -381,15 +395,66 @@ describe("Analytics correlations", () => {
       (p: { metric: string }) => p.metric === "steps",
     );
     expect(stepsPair).toBeDefined();
-    // intake series is 0/1 for non-intake days too — but listIntakes only
-    // returns intake rows. For non-intake days, we have no intake rows, so
-    // the bucket map only contains the *taken* days. The correlation here
-    // is computed only over those days, which all have x=1 → degenerate.
-    // To avoid that, the loop above produces alternating rows where every
-    // intake day has high steps; after the join the array is constant
-    // x=1, y=10000. den === 0 → r === 0 by stats convention.
-    expect(stepsPair.n).toBe(15);
-    expect(stepsPair.correlation).toBe(0);
+    // All 30 days join (15 intake days + 15 zero-filled skipped days).
+    expect(stepsPair.n).toBe(30);
+    expect(stepsPair.correlation).toBe(1);
+    expect(stepsPair.xLabel).toBe("Daily dose (dose)");
+    // Skipped days appear as x=0 control points.
+    expect(
+      stepsPair.points.filter((p: { x: number }) => p.x === 0),
+    ).toHaveLength(15);
+  });
+
+  it("returns correlation: null (not 0) when logged every day at the same dose", async () => {
+    supRepo.items.set(1, makeSupplementItem(1, "Anxie-T"));
+    for (let i = 0; i < 14; i++) {
+      const date = addDays("2026-01-01", i);
+      supRepo.intakes.push(makeIntake(i + 1, 1, "Anxie-T", date));
+      const a = emptyActivity(date);
+      a.steps = 4000 + i * 250;
+      actRepo.rows.push(a);
+    }
+    const res = await request(app).get(
+      "/api/analytics/supplements/correlations/1",
+    );
+    expect(res.status).toBe(200);
+    const stepsPair = res.body.pairs.find(
+      (p: { metric: string }) => p.metric === "steps",
+    );
+    expect(stepsPair).toBeDefined();
+    expect(stepsPair.correlation).toBeNull();
+    expect(stepsPair.insight).toMatch(/no variation/i);
+  });
+
+  it("correlates the dose value itself across a dose change (20mg era vs 10mg era)", async () => {
+    supRepo.items.set(1, makeSupplementItem(1, "Anxie-T"));
+    // First 10 days at 20mg with high resting HR, next 10 at 10mg with
+    // low resting HR — the dose-valued x-axis should find the strong
+    // positive correlation a binary took/skipped axis cannot see.
+    for (let i = 0; i < 20; i++) {
+      const date = addDays("2026-01-01", i);
+      const dose = i < 10 ? 20 : 10;
+      supRepo.intakes.push({
+        ...makeIntake(i + 1, 1, "Anxie-T", date),
+        amount: dose,
+        unit: "mg",
+      });
+      const hr = emptyHeartRate(date);
+      hr.restingHeartRate = i < 10 ? 68 : 62;
+      hrRepo.rows.push(hr);
+    }
+    const res = await request(app).get(
+      "/api/analytics/supplements/correlations/1",
+    );
+    expect(res.status).toBe(200);
+    const hrPair = res.body.pairs.find(
+      (p: { metric: string }) => p.metric === "restingHr",
+    );
+    expect(hrPair).toBeDefined();
+    expect(hrPair.xLabel).toBe("Daily dose (mg)");
+    expect(hrPair.correlation).toBe(1);
+    expect(hrPair.points.some((p: { x: number }) => p.x === 20)).toBe(true);
+    expect(hrPair.points.some((p: { x: number }) => p.x === 10)).toBe(true);
   });
 
   it("excludes pairs with fewer than 7 joined days", async () => {
@@ -440,12 +505,10 @@ describe("Analytics correlations", () => {
       actRepo.rows.push(a);
     }
 
-    // Lag 0: intake days line up with the *low* steps days → all x=1, y≈2000
-    // (degenerate, returns r=0). Lag 1: intake-day-set is shifted forward
-    // one day, so it now lines up with the *spike* days → again degenerate
-    // with r=0 since all x=1.
-    // The point of this test is that lag changes which days are joined,
-    // verified by the n count and the average y in the points.
+    // With zero-filled skipped days, the lag flips the SIGN of the
+    // correlation: at lag=0 intake days (even i) align with the LOW
+    // steps days → strong negative r; at lag=1 the intake-day-set
+    // shifts forward onto the spike days → strong positive r.
     const lag0 = await request(app).get(
       "/api/analytics/supplements/correlations/1?lag=0",
     );
@@ -462,21 +525,8 @@ describe("Analytics correlations", () => {
     );
     expect(lag0Steps).toBeDefined();
     expect(lag1Steps).toBeDefined();
-    // At lag=0, intake days (even i) are paired with low-steps days
-    const lag0AvgY =
-      lag0Steps.points.reduce(
-        (sum: number, p: { y: number }) => sum + p.y,
-        0,
-      ) / lag0Steps.points.length;
-    // At lag=1, the same intake days are pushed to odd days → high-steps
-    const lag1AvgY =
-      lag1Steps.points.reduce(
-        (sum: number, p: { y: number }) => sum + p.y,
-        0,
-      ) / lag1Steps.points.length;
-    expect(lag0AvgY).toBeLessThan(lag1AvgY);
-    expect(lag0AvgY).toBeCloseTo(2000, 0);
-    expect(lag1AvgY).toBeCloseTo(10000, 0);
+    expect(lag0Steps.correlation).toBeLessThan(-0.9);
+    expect(lag1Steps.correlation).toBeGreaterThan(0.9);
   });
 });
 

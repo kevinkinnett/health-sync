@@ -137,9 +137,10 @@ export class AnalyticsService {
       undefined,
       itemId,
     );
-    const intakeDays = bucketIntakesByDay(intakes, this.tz);
-    const shifted = shiftIntakeDays(intakeDays, lagDays);
-    const pairs = await this.computeMetricCorrelations(shifted, item.name);
+    const { days, xLabel } = doseSeriesByDay(intakes, this.tz);
+    const filled = fillSkippedDays(days, this.todayInTz());
+    const shifted = shiftIntakeDays(filled, lagDays);
+    const pairs = await this.computeMetricCorrelations(shifted, item.name, xLabel);
     return {
       itemId,
       itemName: item.name,
@@ -195,9 +196,10 @@ export class AnalyticsService {
       undefined,
       itemId,
     );
-    const intakeDays = bucketIntakesByDay(intakes, this.tz);
-    const shifted = shiftIntakeDays(intakeDays, lagDays);
-    const pairs = await this.computeMetricCorrelations(shifted, item.name);
+    const { days, xLabel } = doseSeriesByDay(intakes, this.tz);
+    const filled = fillSkippedDays(days, this.todayInTz());
+    const shifted = shiftIntakeDays(filled, lagDays);
+    const pairs = await this.computeMetricCorrelations(shifted, item.name, xLabel);
     return {
       itemId,
       itemName: item.name,
@@ -210,15 +212,25 @@ export class AnalyticsService {
   // Internals
   // ---------------------------------------------------------------------------
 
+  /** Today's calendar date in the user's timezone (YYYY-MM-DD). */
+  private todayInTz(): string {
+    return formatDateInTz(new Date().toISOString(), this.tz);
+  }
+
   /**
    * For each of the five canonical metrics, inner-joins the metric's
-   * daily series with the (possibly shifted) intake-day-set on date,
-   * then computes Pearson r over the joined arrays. Pairs with fewer
-   * than {@link MIN_PAIR_DAYS} joined days are dropped.
+   * daily dose series (0 on skipped days) with the metric's daily
+   * series on date, then computes Pearson r over the joined arrays.
+   * Pairs with fewer than {@link MIN_PAIR_DAYS} joined days are
+   * dropped. When the dose series has no variation across the joined
+   * days (logged every day at the same dose), r is undefined — the
+   * pair is returned with `correlation: null` and an insight that says
+   * why, instead of a misleading r=0.
    */
   private async computeMetricCorrelations(
     intakeDays: Map<string, number>,
     itemName: string,
+    xLabel: string,
   ): Promise<IntakeCorrelations["pairs"]> {
     if (intakeDays.size === 0) return [];
     const dates = [...intakeDays.keys()].sort();
@@ -273,24 +285,30 @@ export class AnalyticsService {
     for (const s of series) {
       const xs: number[] = [];
       const ys: number[] = [];
-      const points: Array<{ x: 0 | 1; y: number; date: string }> = [];
-      for (const [date, count] of intakeDays) {
+      const points: Array<{ x: number; y: number; date: string }> = [];
+      for (const [date, dose] of intakeDays) {
         const y = s.values.get(date);
         if (y == null) continue;
-        const x: 0 | 1 = count > 0 ? 1 : 0;
-        xs.push(x);
+        xs.push(dose);
         ys.push(y);
-        points.push({ x, y, date });
+        points.push({ x: dose, y, date });
       }
       if (xs.length < MIN_PAIR_DAYS) continue;
-      const r = pearson(xs, ys);
+      const degenerate = new Set(xs).size < 2;
+      const r = degenerate ? null : pearson(xs, ys);
       pairs.push({
         metric: s.metric,
         metricLabel: s.label,
+        xLabel,
         correlation: r,
         n: xs.length,
         points: points.sort((a, b) => a.date.localeCompare(b.date)),
-        insight: describeCorrelation(r, itemName, s.humanLabel),
+        insight:
+          r === null
+            ? `${itemName} was logged every joined day at the same dose — ` +
+              `there's no variation to correlate against ${s.humanLabel}. ` +
+              `A dose change or skipped days is what makes this comparison meaningful.`
+            : describeCorrelation(r, itemName, s.humanLabel),
       });
     }
     return pairs;
@@ -310,15 +328,11 @@ interface IntakeRow {
 }
 
 /**
- * Buckets a list of intake rows by *user-local* calendar day, returning
- * a Map<date, doseCount>. Used as the input to the lag-shift and the
- * adherence calculation.
- *
- * Always pass the user's IANA timezone (`tz`) — never rely on the
- * server's local zone or UTC. An evening intake at 20:00 EDT must
- * bucket as the same day, not the following UTC day.
+ * Buckets intake rows by *user-local* calendar day into per-day intake
+ * COUNTS — the input the adherence calculation wants (its heatmap and
+ * day-of-week averages are about how many times, not how much).
  */
-function bucketIntakesByDay(
+function countIntakesByDay(
   intakes: IntakeRow[],
   tz: string,
 ): Map<string, number> {
@@ -326,6 +340,58 @@ function bucketIntakesByDay(
   for (const i of intakes) {
     const day = formatDateInTz(i.takenAt, tz);
     out.set(day, (out.get(day) ?? 0) + 1);
+  }
+  return out;
+}
+
+/**
+ * Buckets intake rows into a per-*user-local*-day dose series for the
+ * correlation join: Map<date, totalDose>. When every intake shares one
+ * unit the value is the day's summed amount (e.g. 20 for 2×10 mg) and
+ * the label names it; with mixed units amounts aren't summable, so the
+ * value falls back to the day's intake count.
+ *
+ * Always pass the user's IANA timezone (`tz`) — never rely on the
+ * server's local zone or UTC. An evening intake at 20:00 EDT must
+ * bucket as the same day, not the following UTC day.
+ */
+function doseSeriesByDay(
+  intakes: IntakeRow[],
+  tz: string,
+): { days: Map<string, number>; xLabel: string } {
+  const units = new Set(intakes.map((i) => i.unit));
+  const uniform = units.size === 1;
+  const days = new Map<string, number>();
+  for (const i of intakes) {
+    const day = formatDateInTz(i.takenAt, tz);
+    days.set(day, (days.get(day) ?? 0) + (uniform ? i.amount : 1));
+  }
+  return {
+    days,
+    xLabel: uniform ? `Daily dose (${[...units][0]})` : "Doses taken (count)",
+  };
+}
+
+/**
+ * Densifies a dose-day series: every calendar day from the first
+ * logged day through `endDay` (inclusive) gets an entry, with 0 for
+ * skipped days. Without this the correlation join only ever sees
+ * "taken" days — x is constant and r is structurally undefined, which
+ * is exactly the bug this replaces. Zero days are the control group;
+ * for a discontinued item the trailing zeros capture the off-item
+ * contrast, which is the comparison being asked for.
+ */
+function fillSkippedDays(
+  days: Map<string, number>,
+  endDay: string,
+): Map<string, number> {
+  if (days.size === 0) return new Map();
+  const sorted = [...days.keys()].sort();
+  const last = sorted[sorted.length - 1];
+  const end = endDay > last ? endDay : last;
+  const out = new Map<string, number>();
+  for (let d = sorted[0]; d <= end; d = addDays(d, 1)) {
+    out.set(d, days.get(d) ?? 0);
   }
   return out;
 }
@@ -420,7 +486,7 @@ function buildAdherence(
   intakes: IntakeRow[],
   tz: string,
 ): SupplementAdherence {
-  const counts = bucketIntakesByDay(intakes, tz);
+  const counts = countIntakesByDay(intakes, tz);
   const totalDoses = intakes.length;
   const days = enumerateDays(start, end);
   const daily = days.map((date) => ({ date, doses: counts.get(date) ?? 0 }));

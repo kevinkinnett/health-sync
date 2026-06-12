@@ -147,6 +147,7 @@ describe("Analytics section", () => {
         {
           metric: "sleepMin",
           metricLabel: "Sleep (minutes)",
+          xLabel: "Daily dose (capsule)",
           correlation: 0.42,
           n: 18,
           insight: "Moderate positive: more sleep on intake days.",
@@ -159,6 +160,7 @@ describe("Analytics section", () => {
         {
           metric: "dailyRmssd",
           metricLabel: "Daily RMSSD",
+          xLabel: "Daily dose (capsule)",
           correlation: 0.18,
           n: 14,
           insight: "Weak positive lift in HRV.",
@@ -227,11 +229,11 @@ describe("Analytics section", () => {
     // Both ScatterPanels should render — one per pair.
     await waitFor(() => {
       expect(
-        screen.getByText(/Took Anxie-T vs Sleep \(minutes\)/i),
+        screen.getByText(/^Anxie-T vs Sleep \(minutes\)/i),
       ).toBeInTheDocument();
     });
     expect(
-      screen.getByText(/Took Anxie-T vs Daily RMSSD/i),
+      screen.getByText(/^Anxie-T vs Daily RMSSD/i),
     ).toBeInTheDocument();
   });
 

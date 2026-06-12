@@ -21,8 +21,12 @@ export interface ScatterPanelProps {
   title: string;
   /** One-liner appearing under the title — server-provided "insight". */
   insight: string;
-  /** Pearson r used to render the {@link CorrelationBadge}. */
-  correlation: number;
+  /**
+   * Pearson r used to render the {@link CorrelationBadge}. `null`
+   * means r is undefined (no variation in x) — the panel renders the
+   * insight with a placeholder instead of a degenerate scatter.
+   */
+  correlation: number | null;
   /** Optional sample-size pill ("n = 23 days") rendered next to the badge. */
   n?: number;
   /** Sorted by date so tooltip ordering is stable. */
@@ -65,6 +69,15 @@ export function ScatterPanel({
         </div>
       </div>
       <p className="text-xs text-on-surface-variant mb-3">{insight}</p>
+      {correlation === null ? (
+        <div className="h-48 flex items-center justify-center rounded-lg bg-surface-container-low">
+          <p className="text-xs text-outline text-center px-6">
+            Nothing to plot yet — every joined day has the same {xAxisLabel.toLowerCase()}.
+            <br />
+            This chart comes alive when the dose changes or days are skipped.
+          </p>
+        </div>
+      ) : (
       <div className="h-48">
         <ResponsiveContainer width="100%" height="100%">
           <ScatterChart margin={{ top: 5, right: 5, bottom: 20, left: 5 }}>
@@ -100,6 +113,7 @@ export function ScatterPanel({
           </ScatterChart>
         </ResponsiveContainer>
       </div>
+      )}
     </div>
   );
 }
