@@ -54,7 +54,7 @@ TYPES = [
     "daily-resting-heart-rate", "daily-respiratory-rate",
     "daily-sleep-temperature-derivations", "oxygen-saturation",
     "heart-rate-variability", "weight", "vo2-max", "steps", "distance",
-    "active-zone-minutes", "nutrition-log", "sleep",
+    "active-zone-minutes", "nutrition-log", "sleep", "exercise",
 ]
 
 
@@ -354,6 +354,64 @@ def _rollup_food(cur, since: str) -> int:
     return n
 
 
+def _rollup_exercise(cur, since: str) -> int:
+    """Exercise sessions → fitbit_exercise_log. Google's exercise point id IS
+    the legacy Fitbit logId (validated 2026-06-11: 79/79 overlap rows joined
+    exactly; dates/durations/avg-HR identical, calories slightly revised), so
+    upserts continue the same PK space. Conflict-update only the metric fields
+    like the legacy ingest did — activity_type_id/log_type aren't in Google's
+    payload, so they're preserved on legacy rows and derived/NULL on new ones.
+    Units matched to legacy: distance km (4dp), elevation meters (2dp).
+    """
+    cur.execute(f"""
+        SELECT name, value_jsonb FROM {GH}
+        WHERE data_type='exercise' AND source_platform='FITBIT'
+              AND point_date >= %s AND name IS NOT NULL
+    """, (since,))
+    n = 0
+    for name, vj in cur.fetchall():
+        ex = (vj or {}).get("exercise", {})
+        iv = ex.get("interval", {}) or {}
+        start = iv.get("startTime")
+        if not start:
+            continue
+        log_id = int(name.rsplit("/", 1)[-1])
+        # Legacy dated exercises by Fitbit's LOCAL start time, not UTC.
+        off = int(float(str(iv.get("startUtcOffset", "0s")).rstrip("s") or 0))
+        local_date = (datetime.fromisoformat(start.replace("Z", "+00:00"))
+                      + timedelta(seconds=off)).date()
+        ms = ex.get("metricsSummary", {}) or {}
+        dur = ex.get("activeDuration")
+        mm = ms.get("distanceMillimeters")
+        elev = ms.get("elevationGainMillimeters")
+        rec = (vj.get("dataSource", {}) or {}).get("recordingMethod", "")
+        cur.execute("""
+            INSERT INTO universe.fitbit_exercise_log
+                (log_id, date, start_time, activity_name, log_type, calories,
+                 duration_ms, distance, distance_unit, steps, average_heart_rate,
+                 elevation_gain, has_active_zone_minutes, raw_jsonb)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            ON CONFLICT (log_id) DO UPDATE SET
+                calories=EXCLUDED.calories, duration_ms=EXCLUDED.duration_ms,
+                distance=EXCLUDED.distance, steps=EXCLUDED.steps,
+                average_heart_rate=EXCLUDED.average_heart_rate,
+                raw_jsonb=EXCLUDED.raw_jsonb, fetched_at=NOW()
+        """, (log_id, local_date, start,
+              ex.get("displayName") or ex.get("exerciseType") or "Unknown",
+              "auto_detected" if rec == "PASSIVELY_MEASURED" else (rec.lower() or None),
+              round(ms["caloriesKcal"]) if ms.get("caloriesKcal") is not None else None,
+              int(float(str(dur).rstrip("s")) * 1000) if dur else None,
+              round(int(mm) / 1_000_000, 4) if mm is not None else None,
+              "Kilometer" if mm is not None else None,
+              int(ms["steps"]) if ms.get("steps") else None,
+              int(ms["averageHeartRateBeatsPerMinute"]) if ms.get("averageHeartRateBeatsPerMinute") else None,
+              round(int(elev) / 1000.0, 2) if elev is not None else None,
+              int(ms.get("activeZoneMinutes", 0) or 0) > 0,
+              json.dumps(vj)))
+        n += 1
+    return n
+
+
 def _civil(d: date) -> dict:
     return {"date": {"year": d.year, "month": d.month, "day": d.day}}
 
@@ -450,7 +508,8 @@ def run_rollups(conn, token: str, rollup_days: int) -> dict:
     sleep_n = _rollup_sleep(cur, since)
     food_n = _rollup_food(cur, since)
     weight_n = _rollup_weight(cur, since)
-    conn.commit()  # lock in the SQL/sleep/food/weight rollups before the network rollup
+    exercise_n = _rollup_exercise(cur, since)
+    conn.commit()  # lock in the SQL-sourced rollups before the network rollup
     activity: dict = {}
     try:
         activity["activity_days"] = _rollup_activity_daily(token, cur, rollup_days)
@@ -459,7 +518,7 @@ def run_rollups(conn, token: str, rollup_days: int) -> dict:
         conn.rollback()
         activity["activity_error"] = str(exc)[:200]
     return {"since": since, "sleep_days": sleep_n, "food_days": food_n,
-            "weight_logs": weight_n, **activity}
+            "weight_logs": weight_n, "exercise_logs": exercise_n, **activity}
 
 
 # ---------------------------------------------------------------------------
@@ -507,9 +566,13 @@ def main(
 #   DONE  calories_out / active-minutes / distance / floors → _rollup_activity_daily
 #         (dailyRollUp endpoint; all validated EXACT vs legacy)
 #   DONE  weight → _rollup_weight (negative synthetic log_id)
+#   DONE  exercise → _rollup_exercise (point id == legacy logId; 79/79 validated)
+#   DEAD  fitbit_cardio_score_daily → Google's vo2-max returns {} for this
+#         account; the table freezes at cutover (history retained)
 #   SKIP  active_calories / calories_bmr → Google's active-energy-burned is a
 #         different definition (~half of Fitbit's activityCalories) and unused
 #   SKIP  minutes_sedentary → sedentary-period differs from legacy, unused
+#   SKIP  food fiber/sodium/water/calorie_goal → not in Google's nutrition-log
 #   OPEN  AZM (active-zone-minutes) → captured raw; a HR-zone signal distinct
 #         from MET-based active-minutes (r~=0.37). Could be added as a NEW
 #         correlation series (new column), but it is NOT a legacy replacement.
