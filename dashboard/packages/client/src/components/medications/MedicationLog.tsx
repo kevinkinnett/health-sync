@@ -7,6 +7,7 @@ import {
   useDeleteMedicationIntake,
 } from "../../api/queries";
 import { DateTimePicker } from "../DateTimePicker";
+import { MedicationCalendar } from "./MedicationCalendar";
 import { formatDose } from "../../lib/dose";
 
 const inputClass =
@@ -236,6 +237,7 @@ export function MedicationLog() {
               <button
                 key={item.id}
                 onClick={() => setSelected(item)}
+                aria-label={`Quick log ${item.name}`}
                 className="bg-surface-container-high hover:bg-tertiary/10 rounded-xl p-4 text-left transition-colors group"
               >
                 <span
@@ -297,6 +299,11 @@ export function MedicationLog() {
           </div>
         )}
       </div>
+
+      {/* Calendar backfill */}
+      {items.data && items.data.length > 0 && (
+        <MedicationCalendar items={items.data} />
+      )}
 
       {/* History */}
       <div className="bg-surface-container rounded-xl p-5">

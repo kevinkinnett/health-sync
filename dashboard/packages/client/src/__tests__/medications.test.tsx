@@ -75,7 +75,7 @@ describe("Medications page", () => {
     });
     renderPage();
 
-    const card = await screen.findByRole("button", { name: /lisinopril/i });
+    const card = await screen.findByRole("button", { name: /^quick log lisinopril/i });
     fireEvent.click(card);
 
     expect(
@@ -121,7 +121,7 @@ describe("Medications page", () => {
     });
     renderPage();
 
-    const card = await screen.findByRole("button", { name: /lisinopril/i });
+    const card = await screen.findByRole("button", { name: /^quick log lisinopril/i });
     fireEvent.click(card);
 
     fireEvent.click(await screen.findByRole("button", { name: /confirm/i }));
