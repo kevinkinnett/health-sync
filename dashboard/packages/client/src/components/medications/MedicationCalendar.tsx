@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { MedicationIntake, MedicationItem } from "@health-dashboard/shared";
 import {
   useMedicationIntakes,
@@ -32,7 +32,19 @@ function dayKey(d: Date): string {
   ).padStart(2, "0")}`;
 }
 
-/** One editable intake row inside the day detail sheet. */
+/**
+ * Compact dose label for a day cell, e.g. "10mg" — summed when the day
+ * has multiple intakes in the same unit, "×N" when units are mixed.
+ */
+function cellDoseLabel(intakes: MedicationIntake[]): string {
+  const unit = intakes[0].unit;
+  if (intakes.some((i) => i.unit !== unit)) return `×${intakes.length}`;
+  const total = intakes.reduce((sum, i) => sum + i.amount, 0);
+  // Trim float noise (e.g. 0.1+0.2) without padding whole numbers.
+  return `${Number(total.toFixed(3))}${unit}`;
+}
+
+/** One editable intake row inside the day dialog. */
 function DayIntakeRow({ intake }: { intake: MedicationIntake }) {
   const [amount, setAmount] = useState(String(intake.amount));
   const [unit, setUnit] = useState(intake.unit);
@@ -76,11 +88,7 @@ function DayIntakeRow({ intake }: { intake: MedicationIntake }) {
         {update.isPending ? "Saving…" : "Save"}
       </button>
       <button
-        onClick={() => {
-          if (confirm(`Delete the ${formatDose(intake.amount, intake.unit)} intake at ${timeLabel(intake.takenAt)}?`)) {
-            del.mutate(intake.id);
-          }
-        }}
+        onClick={() => del.mutate(intake.id)}
         disabled={del.isPending}
         aria-label={`Delete intake at ${timeLabel(intake.takenAt)}`}
         className="text-outline hover:text-error transition-colors p-1 shrink-0"
@@ -91,16 +99,99 @@ function DayIntakeRow({ intake }: { intake: MedicationIntake }) {
   );
 }
 
+interface DayDialogProps {
+  date: Date;
+  item: MedicationItem;
+  intakes: MedicationIntake[];
+  onAddDose: () => void;
+  addPending: boolean;
+  onClose: () => void;
+}
+
+/**
+ * Modal dialog for a logged day: change each dose in place, delete a
+ * dose, or add another one. The dialog itself is the confirmation
+ * step, so deletes act immediately (a removed day is one tap to
+ * re-log).
+ */
+function DayDialog({ date, item, intakes, onAddDose, addPending, onClose }: DayDialogProps) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Doses on ${dayLabel(date)}`}
+        onClick={(e) => e.stopPropagation()}
+        className="bg-surface-container-high rounded-2xl p-5 border border-outline-variant/10 w-full max-w-md shadow-xl"
+      >
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="font-headline font-bold text-on-surface">
+            {date.toLocaleDateString([], {
+              weekday: "short",
+              month: "short",
+              day: "numeric",
+            })}{" "}
+            · {item.name}
+          </h3>
+          <button
+            onClick={onClose}
+            aria-label="Close day details"
+            className="text-outline hover:text-on-surface p-1"
+          >
+            <span className="material-symbols-outlined text-base">close</span>
+          </button>
+        </div>
+        <p className="text-xs text-outline mb-4">
+          Change the amount and save, delete a dose, or add another.
+        </p>
+        <div className="space-y-2 mb-4">
+          {intakes.map((i) => (
+            <DayIntakeRow key={i.id} intake={i} />
+          ))}
+        </div>
+        <div className="flex items-center justify-between">
+          <button
+            onClick={onAddDose}
+            disabled={addPending}
+            className="text-xs font-bold text-tertiary hover:text-on-surface flex items-center gap-1 transition-colors"
+          >
+            <span className="material-symbols-outlined text-sm">add</span>
+            Add dose ({formatDose(item.defaultAmount, item.defaultUnit)})
+          </button>
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-xs font-bold rounded-lg text-outline hover:bg-surface-container transition-colors"
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 interface MedicationCalendarProps {
   items: MedicationItem[];
 }
 
 /**
  * Month calendar for backfilling/correcting daily medication intakes.
- * Tapping an empty day logs the selected medication at its default dose;
- * tapping a logged day opens a detail sheet showing each intake's dose
- * and time, editable in place (PATCH), with per-intake delete and an
- * "add dose" for that day. Future days are disabled.
+ * Day cells show the day's total dose (e.g. "10mg"). Tapping an empty
+ * day logs the selected medication at its default dose; tapping a
+ * logged day opens a dialog to change the amount, delete a dose, or
+ * add another. Future days are disabled. The medication selector is
+ * always visible so the per-medication scope is obvious.
  */
 export function MedicationCalendar({ items }: MedicationCalendarProps) {
   const [selectedItemId, setSelectedItemId] = useState<number | null>(null);
@@ -148,9 +239,9 @@ export function MedicationCalendar({ items }: MedicationCalendarProps) {
 
   if (items.length === 0) return null;
 
-  function logDay(dateKeyParts: { y: number; m: number; d: number }) {
+  function logDay(y: number, m: number, d: number) {
     if (!item) return;
-    const takenAt = new Date(dateKeyParts.y, dateKeyParts.m, dateKeyParts.d, BACKFILL_HOUR);
+    const takenAt = new Date(y, m, d, BACKFILL_HOUR);
     setPendingDay(dayKey(takenAt));
     // amount/unit omitted — the server substitutes the item's defaults.
     log.mutate(
@@ -162,9 +253,9 @@ export function MedicationCalendar({ items }: MedicationCalendarProps) {
   function handleDayClick(date: Date, logged: MedicationIntake[] | undefined) {
     if (!item) return;
     if (logged && logged.length > 0) {
-      setDetailDay(dayKey(date)); // view/edit doses for the day
+      setDetailDay(dayKey(date)); // open the change/delete dialog
     } else {
-      logDay({ y: date.getFullYear(), m: date.getMonth(), d: date.getDate() });
+      logDay(date.getFullYear(), date.getMonth(), date.getDate());
     }
   }
 
@@ -222,29 +313,28 @@ export function MedicationCalendar({ items }: MedicationCalendarProps) {
         <span className="text-on-surface font-semibold">
           {item?.name} ({formatDose(item?.defaultAmount ?? null, item?.defaultUnit ?? "")})
         </span>{" "}
-        · tap a logged day to view or edit its doses.
+        · tap a logged day to change or remove its doses.
       </p>
 
-      {items.length > 1 && (
-        <div className="flex flex-wrap gap-1.5 mb-4">
-          {items.map((i) => (
-            <button
-              key={i.id}
-              onClick={() => {
-                setSelectedItemId(i.id);
-                setDetailDay(null);
-              }}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                i.id === item?.id
-                  ? "bg-tertiary text-on-tertiary"
-                  : "bg-surface-container-low text-outline hover:text-on-surface"
-              }`}
-            >
-              {i.name}
-            </button>
-          ))}
-        </div>
-      )}
+      <div className="flex flex-wrap gap-1.5 mb-4" role="group" aria-label="Medication shown">
+        {items.map((i) => (
+          <button
+            key={i.id}
+            onClick={() => {
+              setSelectedItemId(i.id);
+              setDetailDay(null);
+            }}
+            aria-pressed={i.id === item?.id}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              i.id === item?.id
+                ? "bg-tertiary text-on-tertiary"
+                : "bg-surface-container-low text-outline hover:text-on-surface"
+            }`}
+          >
+            {i.name}
+          </button>
+        ))}
+      </div>
 
       <div className="grid grid-cols-7 gap-1 text-center mb-1">
         {WEEKDAY_HEADERS.map((w, idx) => (
@@ -265,7 +355,6 @@ export function MedicationCalendar({ items }: MedicationCalendarProps) {
           const isFuture = key > todayKey;
           const isToday = key === todayKey;
           const isPending = pendingDay === key;
-          const isOpen = detailDay === key;
           const ariaLabel = isLogged
             ? `View ${logged!.length} intake${logged!.length > 1 ? "s" : ""} of ${item?.name} on ${dayLabel(date)}`
             : `Log ${item?.name} on ${dayLabel(date)}`;
@@ -287,61 +376,36 @@ export function MedicationCalendar({ items }: MedicationCalendarProps) {
                   : isFuture
                     ? "text-outline/30"
                     : "bg-surface-container-low text-on-surface-variant hover:bg-tertiary/10"
-              } ${isToday ? "ring-1 ring-primary" : ""} ${isOpen ? "ring-2 ring-tertiary" : ""} ${isPending ? "animate-pulse" : ""}`}
+              } ${isToday ? "ring-1 ring-primary" : ""} ${isPending ? "animate-pulse" : ""}`}
             >
               <span>{date.getDate()}</span>
               {isLogged && (
-                <span
-                  className="material-symbols-outlined text-tertiary"
-                  style={{ fontVariationSettings: "'FILL' 1", fontSize: 12 }}
-                >
-                  check_circle
+                <span className="text-[9px] leading-none text-tertiary font-bold">
+                  {cellDoseLabel(logged!)}
                 </span>
               )}
               {isLogged && logged!.length > 1 && (
-                <span className="text-[9px] text-tertiary -mt-0.5">×{logged!.length}</span>
+                <span className="text-[8px] leading-none text-tertiary/70">
+                  ×{logged!.length}
+                </span>
               )}
             </button>
           );
         })}
       </div>
 
-      {detailDay && detailDate && detailIntakes.length > 0 && (
-        <div className="mt-4 bg-surface-container-high rounded-2xl p-4 border border-outline-variant/10">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="font-headline font-bold text-sm text-on-surface">
-              {detailDate.toLocaleDateString([], {
-                weekday: "short",
-                month: "short",
-                day: "numeric",
-              })}{" "}
-              · {item?.name}
-            </h3>
-            <button
-              onClick={() => setDetailDay(null)}
-              aria-label="Close day details"
-              className="text-outline hover:text-on-surface p-1"
-            >
-              <span className="material-symbols-outlined text-base">close</span>
-            </button>
-          </div>
-          <div className="space-y-2 mb-3">
-            {detailIntakes.map((i) => (
-              <DayIntakeRow key={i.id} intake={i} />
-            ))}
-          </div>
-          <button
-            onClick={() => {
-              const [y, m, d] = detailDay.split("-").map(Number);
-              logDay({ y, m: m - 1, d });
-            }}
-            disabled={log.isPending}
-            className="text-xs font-bold text-tertiary hover:text-on-surface flex items-center gap-1 transition-colors"
-          >
-            <span className="material-symbols-outlined text-sm">add</span>
-            Add dose ({formatDose(item?.defaultAmount ?? null, item?.defaultUnit ?? "")})
-          </button>
-        </div>
+      {detailDate && item && detailIntakes.length > 0 && (
+        <DayDialog
+          date={detailDate}
+          item={item}
+          intakes={detailIntakes}
+          onAddDose={() => {
+            const [y, m, d] = detailDay!.split("-").map(Number);
+            logDay(y, m - 1, d);
+          }}
+          addPending={log.isPending}
+          onClose={() => setDetailDay(null)}
+        />
       )}
 
       {log.isError && (

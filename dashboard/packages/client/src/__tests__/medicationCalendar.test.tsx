@@ -37,12 +37,12 @@ const JUN10_INTAKE = {
   createdAt: new Date(2026, 5, 10, 8).toISOString(),
 };
 
-function mockWithJun10Intake() {
+function mockWithJun10Intakes(intakes: object[] = [JUN10_INTAKE]) {
   apiFetch.mockImplementation((path: string, init?: RequestInit) => {
     if (path.startsWith("/medications/intakes")) {
       if (init?.method === "POST" || init?.method === "PATCH") return Promise.resolve({});
       if (init?.method === "DELETE") return Promise.resolve(undefined);
-      return Promise.resolve([JUN10_INTAKE]);
+      return Promise.resolve(intakes);
     }
     return Promise.resolve([]);
   });
@@ -70,7 +70,7 @@ afterEach(() => {
 });
 
 describe("MedicationCalendar", () => {
-  it("renders the current month with future days disabled and today enabled", async () => {
+  it("renders the current month with future days disabled, today enabled, and the medication chip visible", async () => {
     renderCalendar();
     expect(await screen.findByText("June 2026")).toBeInTheDocument();
     // Jun 20 is in the future relative to the frozen Jun 15 clock.
@@ -78,6 +78,29 @@ describe("MedicationCalendar", () => {
     expect(future).toBeDisabled();
     const today = screen.getByRole("button", { name: "Log Escitalopram on Jun 15" });
     expect(today).toBeEnabled();
+    // The selector chip shows even with a single medication.
+    const chip = screen.getByRole("button", { name: "Escitalopram" });
+    expect(chip).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("shows the dose amount on logged day cells (summed for multi-dose days)", async () => {
+    mockWithJun10Intakes([
+      JUN10_INTAKE,
+      { ...JUN10_INTAKE, id: 56, takenAt: new Date(2026, 5, 10, 20).toISOString() },
+      { ...JUN10_INTAKE, id: 57, takenAt: new Date(2026, 5, 8, 8).toISOString() },
+    ]);
+    renderCalendar();
+
+    const single = await screen.findByRole("button", {
+      name: "View 1 intake of Escitalopram on Jun 8",
+    });
+    expect(single).toHaveTextContent("10mg");
+
+    const double = screen.getByRole("button", {
+      name: "View 2 intakes of Escitalopram on Jun 10",
+    });
+    expect(double).toHaveTextContent("20mg");
+    expect(double).toHaveTextContent("×2");
   });
 
   it("logs an intake at 8am local when an empty past day is tapped (server fills default dose)", async () => {
@@ -101,24 +124,26 @@ describe("MedicationCalendar", () => {
     });
   });
 
-  it("opens the day detail sheet for a logged day, showing dose and time", async () => {
-    mockWithJun10Intake();
+  it("opens a modal dialog for a logged day, showing dose and time", async () => {
+    mockWithJun10Intakes();
     renderCalendar();
 
-    const logged = await screen.findByRole("button", {
-      name: "View 1 intake of Escitalopram on Jun 10",
-    });
-    fireEvent.click(logged);
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "View 1 intake of Escitalopram on Jun 10",
+      }),
+    );
 
-    expect(await screen.findByText(/Jun 10/)).toBeInTheDocument();
+    const dialog = await screen.findByRole("dialog", { name: /doses on jun 10/i });
+    expect(dialog).toHaveTextContent(/change the amount and save, delete a dose/i);
     const amountInput = screen.getByLabelText(/amount for intake/i) as HTMLInputElement;
     expect(amountInput.value).toBe("10");
     const unitInput = screen.getByLabelText(/unit for intake/i) as HTMLInputElement;
     expect(unitInput.value).toBe("mg");
   });
 
-  it("edits a dose via PATCH from the day detail sheet", async () => {
-    mockWithJun10Intake();
+  it("edits a dose via PATCH from the day dialog", async () => {
+    mockWithJun10Intakes();
     renderCalendar();
 
     fireEvent.click(
@@ -144,9 +169,8 @@ describe("MedicationCalendar", () => {
     });
   });
 
-  it("deletes an intake from the sheet after confirmation", async () => {
-    mockWithJun10Intake();
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+  it("deletes a dose directly from the dialog (the dialog is the confirmation step)", async () => {
+    mockWithJun10Intakes();
     renderCalendar();
 
     fireEvent.click(
@@ -157,7 +181,6 @@ describe("MedicationCalendar", () => {
     fireEvent.click(await screen.findByLabelText(/delete intake at/i));
 
     await waitFor(() => {
-      expect(confirmSpy).toHaveBeenCalledOnce();
       const delCall = apiFetch.mock.calls.find(
         ([path, init]) =>
           path === "/medications/intakes/55" &&
@@ -165,12 +188,10 @@ describe("MedicationCalendar", () => {
       );
       expect(delCall).toBeDefined();
     });
-    confirmSpy.mockRestore();
   });
 
-  it("does not delete when the confirmation is declined", async () => {
-    mockWithJun10Intake();
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+  it("closes the dialog via the Done button without mutating anything", async () => {
+    mockWithJun10Intakes();
     renderCalendar();
 
     fireEvent.click(
@@ -178,18 +199,21 @@ describe("MedicationCalendar", () => {
         name: "View 1 intake of Escitalopram on Jun 10",
       }),
     );
-    fireEvent.click(await screen.findByLabelText(/delete intake at/i));
+    fireEvent.click(await screen.findByRole("button", { name: "Done" }));
 
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
     expect(
-      apiFetch.mock.calls.find(
-        ([, init]) => (init as RequestInit | undefined)?.method === "DELETE",
-      ),
+      apiFetch.mock.calls.find(([, init]) => {
+        const m = (init as RequestInit | undefined)?.method;
+        return m === "DELETE" || m === "PATCH" || m === "POST";
+      }),
     ).toBeUndefined();
-    confirmSpy.mockRestore();
   });
 
-  it("adds another dose for the day from the detail sheet", async () => {
-    mockWithJun10Intake();
+  it("adds another dose for the day from the dialog", async () => {
+    mockWithJun10Intakes();
     renderCalendar();
 
     fireEvent.click(
