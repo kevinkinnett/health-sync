@@ -4,11 +4,14 @@ import {
   useMedicationAdherence,
   useMedicationCorrelations,
   useMedicationDoseResponse,
+  useMedicationLagProfile,
   useMedicationIntakeByDay,
   useMedicationItems,
 } from "../../api/queries";
 import { useDateRangeStore } from "../../stores/dateRangeStore";
 import { ScatterPanel } from "../../components/charts/ScatterPanel";
+import { DoseDistribution } from "../../components/charts/DoseDistribution";
+import { LagCurve } from "../../components/charts/LagCurve";
 import { AdherenceCalendar } from "../../components/analytics/AdherenceCalendar";
 
 const LAG_OPTIONS = [
@@ -170,6 +173,7 @@ export function AnalyticsMedications() {
   const adherence = useMedicationAdherence(selectedItemId);
   const correlations = useMedicationCorrelations(selectedItemId, lagDays);
   const doseResponse = useMedicationDoseResponse(selectedItemId);
+  const lagProfile = useMedicationLagProfile(selectedItemId);
 
   const peakDow = useMemo(() => {
     if (!adherence.data) return null;
@@ -294,8 +298,26 @@ export function AnalyticsMedications() {
                   </span>
                 </div>
                 <DoseLevelTable data={doseResponse.data} />
+                <DoseDistribution data={doseResponse.data} />
               </section>
             )}
+
+          {lagProfile.data &&
+            lagProfile.data.metrics.some((m) =>
+              m.points.some((p) => p.r != null),
+            ) && (
+            <section>
+              <div className="flex items-baseline justify-between mb-3">
+                <h2 className="text-lg font-headline font-semibold text-on-surface">
+                  Effect Timing (Lag)
+                </h2>
+                <span className="text-xs text-outline">
+                  correlation across day-lags
+                </span>
+              </div>
+              <LagCurve data={lagProfile.data} />
+            </section>
+          )}
 
           <section>
             <div className="flex items-baseline justify-between mb-3">

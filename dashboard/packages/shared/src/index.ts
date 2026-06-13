@@ -119,6 +119,7 @@ export type {
 export type {
   SupplementAdherence,
   DoseResponseSummary,
+  LagProfile,
   IntakeByDay,
   IngredientByDay,
   IntakeCorrelations,

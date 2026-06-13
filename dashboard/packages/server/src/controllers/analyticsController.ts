@@ -73,4 +73,9 @@ export class AnalyticsController {
     const id = parseId(req.params.itemId, "itemId");
     res.json(await this.service.getMedicationDoseResponse(id));
   }
+
+  async getMedicationLagProfile(req: Request, res: Response): Promise<void> {
+    const id = parseId(req.params.itemId, "itemId");
+    res.json(await this.service.getMedicationLagProfile(id));
+  }
 }

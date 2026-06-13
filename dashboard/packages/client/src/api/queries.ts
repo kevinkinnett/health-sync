@@ -50,6 +50,7 @@ import type {
   DossierItemType,
   SupplementAdherence,
   DoseResponseSummary,
+  LagProfile,
   IntakeByDay,
   IngredientByDay,
   IntakeCorrelations,
@@ -670,6 +671,16 @@ export function useLogMedicationIntake() {
     onSuccess: () => {
       invalidateMedications(queryClient);
     },
+  });
+}
+
+/** Cross-correlation r vs day-lag (0..7) for one medication. */
+export function useMedicationLagProfile(itemId: number | null) {
+  return useQuery<LagProfile>({
+    queryKey: ["analytics", "medications", "lag-profile", itemId],
+    queryFn: () => apiFetch(`/analytics/medications/lag-profile/${itemId}`),
+    enabled: itemId != null,
+    staleTime: 5 * 60 * 1000,
   });
 }
 

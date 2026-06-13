@@ -111,6 +111,27 @@ export interface DoseResponseSummary {
   metrics: Array<{
     metric: "steps" | "sleepMin" | "deepMin" | "restingHr" | "dailyRmssd";
     metricLabel: string;
-    byLevel: Array<{ dose: number; n: number; mean: number }>;
+    /** `values` is every per-day metric reading at that dose, so the
+     *  client can draw the distribution (box/strip) and judge overlap —
+     *  not just the mean. */
+    byLevel: Array<{ dose: number; n: number; mean: number; values: number[] }>;
+  }>;
+}
+
+/**
+ * Cross-correlation profile: Pearson r between one medication's daily
+ * dose series and each health metric, swept across day-lags 0..maxLag.
+ * Answers "at what delay (if any) does the effect show up" in a single
+ * curve, instead of a manual same-day/+1/+2 toggle. `r` is null at a lag
+ * where the join is too small or the dose has no variation.
+ */
+export interface LagProfile {
+  itemId: number;
+  itemName: string;
+  maxLag: number;
+  metrics: Array<{
+    metric: "steps" | "sleepMin" | "deepMin" | "restingHr" | "dailyRmssd";
+    metricLabel: string;
+    points: Array<{ lag: number; r: number | null; n: number }>;
   }>;
 }

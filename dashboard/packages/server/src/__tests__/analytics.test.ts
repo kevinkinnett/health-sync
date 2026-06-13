@@ -593,7 +593,8 @@ describe("Analytics medications", () => {
     const hrMetric = res.body.metrics.find(
       (m: { metric: string }) => m.metric === "restingHr",
     );
-    expect(hrMetric.byLevel).toEqual([
+    // toMatchObject ignores the `values` array each level also carries.
+    expect(hrMetric.byLevel).toMatchObject([
       { dose: 0, n: 4, mean: 60 },
       { dose: 10, n: 10, mean: 62 },
       { dose: 20, n: 10, mean: 68 },
@@ -633,6 +634,83 @@ describe("Analytics medications", () => {
   it("dose-response returns 404 for an unknown medication id", async () => {
     const res = await request(app).get(
       "/api/analytics/medications/dose-response/999",
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("dose-response includes the raw per-level values for distributions", async () => {
+    medRepo.items.set(2, makeMedicationItem(2, "Escitalopram"));
+    for (let i = 0; i < 12; i++) {
+      const date = addDays("2026-01-01", i);
+      medRepo.intakes.push({
+        id: i + 1,
+        itemId: 2,
+        itemName: "Escitalopram",
+        takenAt: `${date}T12:00:00Z`,
+        amount: i < 6 ? 20 : 10,
+        unit: "mg",
+        notes: null,
+        createdAt: `${date}T12:00:00Z`,
+      });
+      const hr = emptyHeartRate(date);
+      hr.restingHeartRate = i < 6 ? 68 : 62;
+      hrRepo.rows.push(hr);
+    }
+    const res = await request(app).get(
+      "/api/analytics/medications/dose-response/2",
+    );
+    expect(res.status).toBe(200);
+    const hr = res.body.metrics.find((m: { metric: string }) => m.metric === "restingHr");
+    const l20 = hr.byLevel.find((b: { dose: number }) => b.dose === 20);
+    // values array carries one reading per day at that level (n of them).
+    expect(l20.values).toHaveLength(l20.n);
+    expect(l20.values.every((v: number) => v === 68)).toBe(true);
+  });
+
+  it("lag-profile finds a 2-day-lagged signal — r peaks at lag 2", async () => {
+    medRepo.items.set(2, makeMedicationItem(2, "Modafinil"));
+    // A non-trending, non-short-period dose sequence; steps echo the dose
+    // from TWO days earlier, so dose(D) vs steps(D+2) is a perfect line.
+    const v = [50, 90, 20, 70, 40, 80, 10, 60, 30, 100, 55, 95, 25, 75, 45, 85, 15, 65, 35, 99];
+    for (let i = 0; i < 20; i++) {
+      const date = addDays("2026-01-01", i);
+      medRepo.intakes.push({
+        id: i + 1,
+        itemId: 2,
+        itemName: "Modafinil",
+        takenAt: `${date}T12:00:00Z`,
+        amount: v[i],
+        unit: "mg",
+        notes: null,
+        createdAt: `${date}T12:00:00Z`,
+      });
+      if (i >= 2) {
+        const a = emptyActivity(date);
+        a.steps = v[i - 2]; // steps lag the dose by 2 days
+        actRepo.rows.push(a);
+      }
+    }
+    const res = await request(app).get(
+      "/api/analytics/medications/lag-profile/2",
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.maxLag).toBe(7);
+    const steps = res.body.metrics.find((m: { metric: string }) => m.metric === "steps");
+    const byLag = new Map<number, number | null>(
+      steps.points.map((p: { lag: number; r: number | null }) => [p.lag, p.r]),
+    );
+    // Perfect correlation at the true 2-day lag, and it's the argmax.
+    expect(byLag.get(2)).toBeGreaterThan(0.95);
+    const best = steps.points
+      .filter((p: { r: number | null }) => p.r != null)
+      .sort((a: { r: number }, b: { r: number }) => b.r - a.r)[0];
+    expect(best.lag).toBe(2);
+    expect(byLag.get(0)).toBeLessThan(0.95);
+  });
+
+  it("lag-profile returns 404 for an unknown medication id", async () => {
+    const res = await request(app).get(
+      "/api/analytics/medications/lag-profile/999",
     );
     expect(res.status).toBe(404);
   });

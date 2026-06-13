@@ -1,6 +1,7 @@
 import type {
   SupplementAdherence,
   DoseResponseSummary,
+  LagProfile,
   IntakeByDay,
   IngredientByDay,
   IntakeCorrelations,
@@ -270,29 +271,72 @@ export class AnalyticsService {
       allDates[allDates.length - 1],
     );
     const metrics = series.map((s) => {
-      const agg = new Map<number, { sum: number; n: number }>();
+      const agg = new Map<number, number[]>();
       for (const [date, dose] of filled) {
         const y = s.values.get(date);
         if (y == null) continue;
-        const a = agg.get(dose) ?? { sum: 0, n: 0 };
-        a.sum += y;
-        a.n += 1;
-        agg.set(dose, a);
+        const list = agg.get(dose);
+        if (list) list.push(y);
+        else agg.set(dose, [y]);
       }
       return {
         metric: s.metric,
         metricLabel: s.label,
         byLevel: [...agg.entries()]
-          .map(([dose, a]) => ({
+          .map(([dose, values]) => ({
             dose,
-            n: a.n,
-            mean: Math.round((a.sum / a.n) * 10) / 10,
+            n: values.length,
+            mean: Math.round((values.reduce((x, y) => x + y, 0) / values.length) * 10) / 10,
+            // Raw readings so the client can draw the distribution and
+            // judge overlap (rounded to keep the payload light).
+            values: values.map((v) => Math.round(v * 10) / 10),
           }))
           .sort((a, b) => a.dose - b.dose),
       };
     });
 
     return { itemId, itemName: item.name, xLabel, levels, metrics };
+  }
+
+  /**
+   * Cross-correlation profile: r between the medication's daily dose
+   * series and each metric across day-lags 0..maxLag, in one sweep. The
+   * metric series is fetched ONCE over the widest shifted window, then
+   * re-joined in memory per lag — no per-lag DB round-trips.
+   */
+  async getMedicationLagProfile(
+    itemId: number,
+    maxLag = 7,
+  ): Promise<LagProfile> {
+    const item = await this.medicationRepo.getItem(itemId);
+    if (!item) {
+      throw new AnalyticsNotFoundError(`Medication item ${itemId} not found`);
+    }
+    const intakes = await this.medicationRepo.listIntakes(undefined, undefined, itemId);
+    const { days } = doseSeriesByDay(intakes, this.tz);
+    const filled = fillSkippedDays(days, this.lastCompleteDay());
+    if (filled.size === 0) {
+      return { itemId, itemName: item.name, maxLag, metrics: [] };
+    }
+
+    const dates = [...filled.keys()].sort();
+    // Series must cover every lag-shifted date: lag L maps dose-day D → D+L.
+    const series = await this.fetchMetricSeries(
+      dates[0],
+      addDays(dates[dates.length - 1], maxLag),
+    );
+
+    const metrics = series.map((s) => ({
+      metric: s.metric,
+      metricLabel: s.label,
+      points: Array.from({ length: maxLag + 1 }, (_, lag) => {
+        const shifted = shiftIntakeDays(filled, lag);
+        const { r, n } = joinPearson(shifted, s.values);
+        return { lag, r, n };
+      }),
+    }));
+
+    return { itemId, itemName: item.name, maxLag, metrics };
   }
 
   /**
@@ -468,6 +512,30 @@ function doseSeriesByDay(
     days,
     xLabel: uniform ? `Daily dose (${[...units][0]})` : "Doses taken (count)",
   };
+}
+
+/**
+ * Inner-joins a dose-day map with a metric series on date and returns
+ * Pearson r (+ joined-day count). r is null when too few days overlap
+ * (< {@link MIN_PAIR_DAYS}) or the dose has no variation across them
+ * (constant x → r undefined, not zero). Used by the lag-profile sweep,
+ * which re-joins the same pre-fetched series at every lag.
+ */
+function joinPearson(
+  doseDays: Map<string, number>,
+  values: Map<string, number>,
+): { r: number | null; n: number } {
+  const xs: number[] = [];
+  const ys: number[] = [];
+  for (const [date, dose] of doseDays) {
+    const y = values.get(date);
+    if (y == null) continue;
+    xs.push(dose);
+    ys.push(y);
+  }
+  const n = xs.length;
+  if (n < MIN_PAIR_DAYS || new Set(xs).size < 2) return { r: null, n };
+  return { r: pearson(xs, ys), n };
 }
 
 /**
