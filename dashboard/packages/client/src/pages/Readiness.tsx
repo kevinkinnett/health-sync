@@ -10,6 +10,7 @@ import {
   MetricLineChart,
   type MetricPoint,
 } from "../components/charts/MetricLineChart";
+import { ReadinessWaterfall } from "../components/charts/ReadinessWaterfall";
 
 /**
  * Readiness detail screen — the "more information" view behind the
@@ -81,6 +82,9 @@ function ReadinessDetail({ data }: { data: ReadinessScore }) {
           data={data.history.map((p): MetricPoint => ({ date: p.date, value: p.score }))}
         />
       )}
+
+      {/* What's driving the score — the actionable lever view */}
+      <ReadinessWaterfall data={data} />
 
       {/* Per-signal breakdown */}
       <div className="bg-surface-container rounded-xl p-6 border border-outline-variant/10">

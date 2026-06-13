@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Readiness } from "../pages/Readiness";
@@ -95,7 +95,11 @@ describe("Readiness screen", () => {
   it("renders the band, score, and summary", async () => {
     apiFetchMock.mockResolvedValue(SCORE);
     renderScreen();
-    expect(await screen.findByText("72")).toBeInTheDocument();
+    // Score lives on the dial (the waterfall also prints it on its Today row,
+    // so target the dial's aria-label rather than the bare number).
+    expect(
+      await screen.findByLabelText(/Readiness score 72 of 100/i),
+    ).toBeInTheDocument();
     expect(screen.getByText("Primed")).toBeInTheDocument();
     expect(screen.getByText(/bright spot/i)).toBeInTheDocument();
   });
@@ -103,10 +107,15 @@ describe("Readiness screen", () => {
   it("shows EVERY scored signal — including neutral ones the card omits", async () => {
     apiFetchMock.mockResolvedValue(SCORE);
     renderScreen();
-    expect(await screen.findByText("HRV")).toBeInTheDocument();
-    expect(screen.getByText("Resting HR")).toBeInTheDocument();
+    // Scope to the Signal breakdown card — signal names also appear in the
+    // new "what's driving" waterfall above it.
+    const breakdown = (await screen.findByText("Signal breakdown")).closest(
+      "div",
+    )!;
+    expect(within(breakdown).getByText("HRV")).toBeInTheDocument();
+    expect(within(breakdown).getByText("Resting HR")).toBeInTheDocument();
     // Neutral SpO2 is NOT a driver chip on the card, but the detail lists it.
-    expect(screen.getByText("Blood oxygen")).toBeInTheDocument();
+    expect(within(breakdown).getByText("Blood oxygen")).toBeInTheDocument();
   });
 
   it("surfaces each sensor's per-source contribution and the disagreement flag", async () => {
