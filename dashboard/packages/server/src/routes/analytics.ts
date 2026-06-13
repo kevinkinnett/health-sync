@@ -24,6 +24,7 @@ export function createAnalyticsRoutes(
   router.get("/medications/adherence/:itemId", wrap((req, res) => controller.getMedicationAdherence(req, res)));
   router.get("/medications/intake-by-day", wrap((req, res) => controller.getMedicationIntakeByDay(req, res)));
   router.get("/medications/correlations/:itemId", wrap((req, res) => controller.getMedicationCorrelations(req, res)));
+  router.get("/medications/dose-response/:itemId", wrap((req, res) => controller.getMedicationDoseResponse(req, res)));
 
   return router;
 }

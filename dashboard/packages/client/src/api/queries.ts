@@ -49,6 +49,7 @@ import type {
   DossierEntry,
   DossierItemType,
   SupplementAdherence,
+  DoseResponseSummary,
   IntakeByDay,
   IngredientByDay,
   IntakeCorrelations,
@@ -872,6 +873,20 @@ export function useMedicationIntakeByDay(itemId?: number) {
     ],
     queryFn: () =>
       apiFetch(`/analytics/medications/intake-by-day?${params.toString()}`),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+/**
+ * Long-horizon dose-level comparison (metric averages per daily-dose
+ * level, 0 = skipped days). Suits slow-acting medications where the
+ * day-lag correlations can't see effects that build over weeks.
+ */
+export function useMedicationDoseResponse(itemId: number | null) {
+  return useQuery<DoseResponseSummary>({
+    queryKey: ["analytics", "medications", "dose-response", itemId],
+    queryFn: () => apiFetch(`/analytics/medications/dose-response/${itemId}`),
+    enabled: itemId != null,
     staleTime: 5 * 60 * 1000,
   });
 }

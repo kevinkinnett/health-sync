@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
+import type { DoseResponseSummary } from "@health-dashboard/shared";
 import {
   useMedicationAdherence,
   useMedicationCorrelations,
+  useMedicationDoseResponse,
   useMedicationIntakeByDay,
   useMedicationItems,
 } from "../../api/queries";
@@ -42,6 +44,98 @@ function StatTile({
   );
 }
 
+/**
+ * Long-horizon dose-level comparison: one column per daily-dose level
+ * (0 = skipped days), one row per metric, each cell the average across
+ * every day spent at that level. This is the view that suits
+ * slow-acting medications — day-lag correlations can't see effects
+ * that build over weeks, but a 20mg-era vs 10mg-era average can.
+ */
+function DoseLevelTable({ data }: { data: DoseResponseSummary }) {
+  const unit = data.xLabel.match(/\((.+)\)/)?.[1] ?? "";
+  // Mixed-unit items fall back to per-day intake counts server-side —
+  // "2 count" is not a dose, so phrase those columns as frequencies.
+  const isCount = unit === "count";
+  // A day-set at one level can be scattered (skipped days interleave with
+  // dose eras), so the range is a span, not a contiguous block — and it
+  // can cross years, so keep the year visible.
+  const fmtDay = (d: string) =>
+    new Date(`${d}T00:00:00`).toLocaleDateString([], {
+      month: "short",
+      day: "numeric",
+      year: "2-digit",
+    });
+  const fmtRange = (a: string, b: string) =>
+    a === b ? fmtDay(a) : `${fmtDay(a)} – ${fmtDay(b)}`;
+  // "Thin data" keys off how many days actually carried metric values
+  // at this level — the calendar day-count can be much larger (e.g. a
+  // long not-taken tail with no wearable data).
+  const metricN = (dose: number) =>
+    Math.max(
+      0,
+      ...data.metrics.map(
+        (m) => m.byLevel.find((b) => b.dose === dose)?.n ?? 0,
+      ),
+    );
+  const levelHeader = (dose: number) => {
+    if (dose === 0) return "Not taken";
+    if (isCount) return `${dose}× per day`;
+    return `${dose} ${unit}`;
+  };
+  return (
+    <div className="bg-surface-container rounded-xl p-5 overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-left">
+            <th className="pb-2 pr-4 text-[10px] text-outline uppercase font-bold tracking-widest">
+              Metric
+            </th>
+            {data.levels.map((l) => (
+              <th key={l.dose} className="pb-2 pr-4">
+                <div className="font-headline font-bold text-on-surface tabular-nums">
+                  {levelHeader(l.dose)}
+                </div>
+                <div className="text-[10px] text-outline font-normal tabular-nums">
+                  {l.days} {l.days === 1 ? "day" : "days"}
+                  {metricN(l.dose) < 7 ? " · thin data" : ""} ·{" "}
+                  {fmtRange(l.firstDay, l.lastDay)}
+                </div>
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {data.metrics.map((m) => (
+            <tr key={m.metric} className="border-t border-outline-variant/10">
+              <td className="py-2 pr-4 text-on-surface-variant">{m.metricLabel}</td>
+              {data.levels.map((l) => {
+                const cell = m.byLevel.find((b) => b.dose === l.dose);
+                return (
+                  <td key={l.dose} className="py-2 pr-4 tabular-nums">
+                    {cell ? (
+                      <span className={cell.n < 7 ? "text-outline" : "text-on-surface font-semibold"}>
+                        {cell.mean.toLocaleString()}
+                      </span>
+                    ) : (
+                      <span className="text-outline">--</span>
+                    )}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="text-[11px] text-outline mt-3">
+        Averages over every day at each dose level (days at one level can
+        be scattered across the timeline). This isn't a randomized
+        experiment — differences can also reflect seasons or habit
+        changes — so treat them as leads, not verdicts.
+      </p>
+    </div>
+  );
+}
+
 export function AnalyticsMedications() {
   const items = useMedicationItems();
   const { start, end } = useDateRangeStore();
@@ -75,6 +169,7 @@ export function AnalyticsMedications() {
 
   const adherence = useMedicationAdherence(selectedItemId);
   const correlations = useMedicationCorrelations(selectedItemId, lagDays);
+  const doseResponse = useMedicationDoseResponse(selectedItemId);
 
   const peakDow = useMemo(() => {
     if (!adherence.data) return null;
@@ -185,6 +280,22 @@ export function AnalyticsMedications() {
             </div>
             <AdherenceCalendar daily={adherence.data.daily} />
           </section>
+
+          {doseResponse.data &&
+            doseResponse.data.levels.length >= 2 &&
+            doseResponse.data.metrics.length > 0 && (
+              <section>
+                <div className="flex items-baseline justify-between mb-3">
+                  <h2 className="text-lg font-headline font-semibold text-on-surface">
+                    Dose Levels Over Time
+                  </h2>
+                  <span className="text-xs text-outline">
+                    long-horizon comparison
+                  </span>
+                </div>
+                <DoseLevelTable data={doseResponse.data} />
+              </section>
+            )}
 
           <section>
             <div className="flex items-baseline justify-between mb-3">

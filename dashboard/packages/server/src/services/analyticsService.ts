@@ -1,5 +1,6 @@
 import type {
   SupplementAdherence,
+  DoseResponseSummary,
   IntakeByDay,
   IngredientByDay,
   IntakeCorrelations,
@@ -138,7 +139,7 @@ export class AnalyticsService {
       itemId,
     );
     const { days, xLabel } = doseSeriesByDay(intakes, this.tz);
-    const filled = fillSkippedDays(days, this.todayInTz());
+    const filled = fillSkippedDays(days, this.lastCompleteDay());
     const shifted = shiftIntakeDays(filled, lagDays);
     const pairs = await this.computeMetricCorrelations(shifted, item.name, xLabel);
     return {
@@ -197,7 +198,7 @@ export class AnalyticsService {
       itemId,
     );
     const { days, xLabel } = doseSeriesByDay(intakes, this.tz);
-    const filled = fillSkippedDays(days, this.todayInTz());
+    const filled = fillSkippedDays(days, this.lastCompleteDay());
     const shifted = shiftIntakeDays(filled, lagDays);
     const pairs = await this.computeMetricCorrelations(shifted, item.name, xLabel);
     return {
@@ -212,43 +213,111 @@ export class AnalyticsService {
   // Internals
   // ---------------------------------------------------------------------------
 
-  /** Today's calendar date in the user's timezone (YYYY-MM-DD). */
-  private todayInTz(): string {
-    return formatDateInTz(new Date().toISOString(), this.tz);
+  /**
+   * The most recent COMPLETE calendar day in the user's timezone
+   * (yesterday). Intake analyses clamp here so the in-progress day's
+   * partial metrics — or its not-yet-logged dose — never skew a level
+   * mean or correlation.
+   */
+  private lastCompleteDay(): string {
+    return addDays(formatDateInTz(new Date().toISOString(), this.tz), -1);
   }
 
   /**
-   * For each of the five canonical metrics, inner-joins the metric's
-   * daily dose series (0 on skipped days) with the metric's daily
-   * series on date, then computes Pearson r over the joined arrays.
-   * Pairs with fewer than {@link MIN_PAIR_DAYS} joined days are
-   * dropped. When the dose series has no variation across the joined
-   * days (logged every day at the same dose), r is undefined — the
-   * pair is returned with `correlation: null` and an insight that says
-   * why, instead of a misleading r=0.
+   * Groups every joined day by its total daily dose and averages each
+   * metric per level — the long-horizon view that suits slow-acting
+   * medications (an SSRI's effects build over weeks; the day-lag
+   * correlations can't see that, a 20mg-era vs 10mg-era comparison can).
+   * Level 0 collects the skipped days inside the span.
    */
-  private async computeMetricCorrelations(
-    intakeDays: Map<string, number>,
-    itemName: string,
-    xLabel: string,
-  ): Promise<IntakeCorrelations["pairs"]> {
-    if (intakeDays.size === 0) return [];
-    const dates = [...intakeDays.keys()].sort();
-    const start = dates[0];
-    const end = dates[dates.length - 1];
+  async getMedicationDoseResponse(itemId: number): Promise<DoseResponseSummary> {
+    const item = await this.medicationRepo.getItem(itemId);
+    if (!item) {
+      throw new AnalyticsNotFoundError(`Medication item ${itemId} not found`);
+    }
+    const intakes = await this.medicationRepo.listIntakes(
+      undefined,
+      undefined,
+      itemId,
+    );
+    const { days, xLabel } = doseSeriesByDay(intakes, this.tz);
+    const filled = fillSkippedDays(days, this.lastCompleteDay());
+    if (filled.size === 0) {
+      return { itemId, itemName: item.name, xLabel, levels: [], metrics: [] };
+    }
+
+    const datesByDose = new Map<number, string[]>();
+    for (const [date, dose] of filled) {
+      const list = datesByDose.get(dose);
+      if (list) list.push(date);
+      else datesByDose.set(dose, [date]);
+    }
+    const levels = [...datesByDose.entries()]
+      .map(([dose, dates]) => {
+        dates.sort();
+        return {
+          dose,
+          days: dates.length,
+          firstDay: dates[0],
+          lastDay: dates[dates.length - 1],
+        };
+      })
+      .sort((a, b) => a.dose - b.dose);
+
+    const allDates = [...filled.keys()].sort();
+    const series = await this.fetchMetricSeries(
+      allDates[0],
+      allDates[allDates.length - 1],
+    );
+    const metrics = series.map((s) => {
+      const agg = new Map<number, { sum: number; n: number }>();
+      for (const [date, dose] of filled) {
+        const y = s.values.get(date);
+        if (y == null) continue;
+        const a = agg.get(dose) ?? { sum: 0, n: 0 };
+        a.sum += y;
+        a.n += 1;
+        agg.set(dose, a);
+      }
+      return {
+        metric: s.metric,
+        metricLabel: s.label,
+        byLevel: [...agg.entries()]
+          .map(([dose, a]) => ({
+            dose,
+            n: a.n,
+            mean: Math.round((a.sum / a.n) * 10) / 10,
+          }))
+          .sort((a, b) => a.dose - b.dose),
+      };
+    });
+
+    return { itemId, itemName: item.name, xLabel, levels, metrics };
+  }
+
+  /**
+   * Loads the five canonical daily metric series for a date window —
+   * the shared input of both the correlation pairs and the dose-level
+   * comparison.
+   */
+  private async fetchMetricSeries(
+    start: string,
+    end: string,
+  ): Promise<
+    Array<{
+      metric: IntakeCorrelations["pairs"][number]["metric"];
+      label: string;
+      humanLabel: string;
+      values: Map<string, number>;
+    }>
+  > {
     const [activity, sleep, heartRate, hrv] = await Promise.all([
       this.activityRepo.findByDateRange(start, end),
       this.sleepRepo.findByDateRange(start, end),
       this.heartRateRepo.findByDateRange(start, end),
       this.hrvRepo.findByDateRange(start, end),
     ]);
-
-    const series: Array<{
-      metric: IntakeCorrelations["pairs"][number]["metric"];
-      label: string;
-      humanLabel: string;
-      values: Map<string, number>;
-    }> = [
+    return [
       {
         metric: "steps",
         label: "Steps",
@@ -280,6 +349,29 @@ export class AnalyticsService {
         values: numericSeries(hrv, "date", "dailyRmssd"),
       },
     ];
+  }
+
+  /**
+   * For each of the five canonical metrics, inner-joins the intake
+   * dose series (0 on skipped days) with the metric's daily series on
+   * date, then computes Pearson r over the joined arrays. Pairs with
+   * fewer than {@link MIN_PAIR_DAYS} joined days are dropped. When the
+   * dose series has no variation across the joined days (logged every
+   * day at the same dose), r is undefined — the pair is returned with
+   * `correlation: null` and an insight that says why, instead of a
+   * misleading r=0.
+   */
+  private async computeMetricCorrelations(
+    intakeDays: Map<string, number>,
+    itemName: string,
+    xLabel: string,
+  ): Promise<IntakeCorrelations["pairs"]> {
+    if (intakeDays.size === 0) return [];
+    const dates = [...intakeDays.keys()].sort();
+    const series = await this.fetchMetricSeries(
+      dates[0],
+      dates[dates.length - 1],
+    );
 
     const pairs: IntakeCorrelations["pairs"] = [];
     for (const s of series) {
@@ -366,6 +458,12 @@ function doseSeriesByDay(
     const day = formatDateInTz(i.takenAt, tz);
     days.set(day, (days.get(day) ?? 0) + (uniform ? i.amount : 1));
   }
+  // Round summed doses to the column's NUMERIC(10,3) resolution — float
+  // noise (0.1+0.2 = 0.30000000000000004) must not mint a distinct dose
+  // level or leak into axis labels.
+  for (const [day, dose] of days) {
+    days.set(day, Math.round(dose * 1000) / 1000);
+  }
   return {
     days,
     xLabel: uniform ? `Daily dose (${[...units][0]})` : "Doses taken (count)",
@@ -380,6 +478,11 @@ function doseSeriesByDay(
  * is exactly the bug this replaces. Zero days are the control group;
  * for a discontinued item the trailing zeros capture the off-item
  * contrast, which is the comparison being asked for.
+ *
+ * The window is CLAMPED to `endDay` — callers pass *yesterday* so the
+ * incomplete current day never enters an analysis as a phantom
+ * "skipped" day (or with partial metrics), and a future-dated intake
+ * (typo'd year, pre-logged dose) can't inject not-yet-occurred days.
  */
 function fillSkippedDays(
   days: Map<string, number>,
@@ -387,10 +490,9 @@ function fillSkippedDays(
 ): Map<string, number> {
   if (days.size === 0) return new Map();
   const sorted = [...days.keys()].sort();
-  const last = sorted[sorted.length - 1];
-  const end = endDay > last ? endDay : last;
+  if (sorted[0] > endDay) return new Map();
   const out = new Map<string, number>();
-  for (let d = sorted[0]; d <= end; d = addDays(d, 1)) {
+  for (let d = sorted[0]; d <= endDay; d = addDays(d, 1)) {
     out.set(d, days.get(d) ?? 0);
   }
   return out;

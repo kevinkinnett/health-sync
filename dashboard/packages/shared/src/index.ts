@@ -118,6 +118,7 @@ export type {
 } from "./types/dossier.js";
 export type {
   SupplementAdherence,
+  DoseResponseSummary,
   IntakeByDay,
   IngredientByDay,
   IntakeCorrelations,

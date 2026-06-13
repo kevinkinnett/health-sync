@@ -88,3 +88,29 @@ export interface IntakeCorrelations {
     insight: string;
   }>;
 }
+
+/**
+ * Long-horizon dose-level comparison for one medication: every joined
+ * day is grouped by its total daily dose (0 = skipped days inside the
+ * span), and each health metric is averaged per level. This is the
+ * analysis that suits slow-acting medications, where day-lag
+ * correlations can't see effects that build over weeks.
+ */
+export interface DoseResponseSummary {
+  itemId: number;
+  itemName: string;
+  /** Same axis label as the correlations, e.g. "Daily dose (mg)". */
+  xLabel: string;
+  /** One row per distinct daily dose level, ascending. */
+  levels: Array<{
+    dose: number;
+    days: number;
+    firstDay: string;
+    lastDay: string;
+  }>;
+  metrics: Array<{
+    metric: "steps" | "sleepMin" | "deepMin" | "restingHr" | "dailyRmssd";
+    metricLabel: string;
+    byLevel: Array<{ dose: number; n: number; mean: number }>;
+  }>;
+}

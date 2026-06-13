@@ -68,4 +68,9 @@ export class AnalyticsController {
     const lag = parseLagDays(req.query.lag);
     res.json(await this.service.getMedicationCorrelations(id, lag));
   }
+
+  async getMedicationDoseResponse(req: Request, res: Response): Promise<void> {
+    const id = parseId(req.params.itemId, "itemId");
+    res.json(await this.service.getMedicationDoseResponse(id));
+  }
 }

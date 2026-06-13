@@ -556,6 +556,87 @@ describe("Analytics medications", () => {
     expect(res.body.daysWithIntake).toBe(1);
   });
 
+  it("dose-response groups days by dose level and averages each metric per level", async () => {
+    medRepo.items.set(2, makeMedicationItem(2, "Escitalopram"));
+    // 10 days at 20mg (RHR 68), 10 days at 10mg (RHR 62), then 4 skipped
+    // days (RHR 60) — three levels: 0, 10, 20.
+    for (let i = 0; i < 24; i++) {
+      const date = addDays("2026-01-01", i);
+      if (i < 20) {
+        medRepo.intakes.push({
+          id: i + 1,
+          itemId: 2,
+          itemName: "Escitalopram",
+          takenAt: `${date}T12:00:00Z`,
+          amount: i < 10 ? 20 : 10,
+          unit: "mg",
+          notes: null,
+          createdAt: `${date}T12:00:00Z`,
+        });
+      }
+      const hr = emptyHeartRate(date);
+      hr.restingHeartRate = i < 10 ? 68 : i < 20 ? 62 : 60;
+      hrRepo.rows.push(hr);
+    }
+    const res = await request(app).get(
+      "/api/analytics/medications/dose-response/2",
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.itemName).toBe("Escitalopram");
+    expect(res.body.xLabel).toBe("Daily dose (mg)");
+    const doses = res.body.levels.map((l: { dose: number }) => l.dose);
+    expect(doses).toEqual([0, 10, 20]);
+    const l20 = res.body.levels.find((l: { dose: number }) => l.dose === 20);
+    expect(l20.days).toBe(10);
+    expect(l20.firstDay).toBe("2026-01-01");
+    expect(l20.lastDay).toBe("2026-01-10");
+    const hrMetric = res.body.metrics.find(
+      (m: { metric: string }) => m.metric === "restingHr",
+    );
+    expect(hrMetric.byLevel).toEqual([
+      { dose: 0, n: 4, mean: 60 },
+      { dose: 10, n: 10, mean: 62 },
+      { dose: 20, n: 10, mean: 68 },
+    ]);
+  });
+
+  it("dose-response rounds float-noise daily totals into one level (0.1×3 == 0.3)", async () => {
+    medRepo.items.set(2, makeMedicationItem(2, "Liothyronine"));
+    let id = 1;
+    for (let i = 0; i < 8; i++) {
+      const date = addDays("2026-01-01", i);
+      // Even days: three 0.1mg intakes (floats sum to 0.30000000000000004);
+      // odd days: one 0.3mg intake. Same logical level either way.
+      const amounts = i % 2 === 0 ? [0.1, 0.1, 0.1] : [0.3];
+      for (const amount of amounts) {
+        medRepo.intakes.push({
+          id: id++,
+          itemId: 2,
+          itemName: "Liothyronine",
+          takenAt: `${date}T12:00:00Z`,
+          amount,
+          unit: "mg",
+          notes: null,
+          createdAt: `${date}T12:00:00Z`,
+        });
+      }
+    }
+    const res = await request(app).get(
+      "/api/analytics/medications/dose-response/2",
+    );
+    expect(res.status).toBe(200);
+    const nonZero = res.body.levels.filter((l: { dose: number }) => l.dose !== 0);
+    expect(nonZero).toHaveLength(1);
+    expect(nonZero[0].dose).toBe(0.3);
+  });
+
+  it("dose-response returns 404 for an unknown medication id", async () => {
+    const res = await request(app).get(
+      "/api/analytics/medications/dose-response/999",
+    );
+    expect(res.status).toBe(404);
+  });
+
   it("returns 404 for an unknown medication id on correlations", async () => {
     const res = await request(app).get(
       "/api/analytics/medications/correlations/999",
