@@ -1,7 +1,8 @@
 import { useMemo } from "react";
 import * as Plot from "@observablehq/plot";
 import type { DoseResponseSummary } from "@health-dashboard/shared";
-import { PlotFigure, PLOT_STYLE, METRIC_COLOR } from "./PlotFigure";
+import { PlotFigure } from "./PlotFigure";
+import { PLOT_STYLE, METRIC_COLOR } from "./plotTheme";
 
 function levelLabel(dose: number, unit: string): string {
   if (dose === 0) return "Not taken";

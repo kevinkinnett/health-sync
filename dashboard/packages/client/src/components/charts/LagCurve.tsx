@@ -1,7 +1,8 @@
 import { useMemo } from "react";
 import * as Plot from "@observablehq/plot";
 import type { LagProfile } from "@health-dashboard/shared";
-import { PlotFigure, PLOT_STYLE, METRIC_COLOR } from "./PlotFigure";
+import { PlotFigure } from "./PlotFigure";
+import { PLOT_STYLE, METRIC_COLOR } from "./plotTheme";
 
 interface Row {
   lag: number;
