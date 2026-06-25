@@ -82,20 +82,24 @@ export function loadConfig(): Config {
     },
     llm: {
       baseUrl: (
-        // The Claude proxy is exposed on the container's :4000 (Tailscale
-        // Serve maps :4000 → 127.0.0.1:4001 inside the container). The
-        // root :443 host serves a different app (a Claude-Code-built UI),
-        // not the OpenAI-compatible /v1 endpoint.
+        // OpenAI-compatible Claude proxy on the Tailnet (:4000/v1 →
+        // container 127.0.0.1:4000; an Anthropic-compatible twin lives on
+        // :4003). Both are backed by the Claude Agent SDK and bill against
+        // the Claude Code OAuth / Max subscription, so no API key is needed.
         process.env.LLM_API_URL ??
         "https://claude-code.tail322ce1.ts.net:4000/v1"
       ).replace(/\/+$/, ""),
-      // Optional — the local Claude proxy doesn't enforce auth. Leave empty
-      // (or set any string) when pointing at a self-hosted proxy that
-      // doesn't validate bearer tokens.
+      // Optional — the proxy doesn't enforce auth. Leave empty (or any
+      // string); the Agent SDK authenticates via the Claude subscription.
       apiKey: process.env.LLM_API_KEY ?? "",
-      dossierModel: process.env.LLM_MODEL_DOSSIER ?? "qwen3-max-2026-01-23",
-      insightsModel: process.env.LLM_MODEL_INSIGHTS ?? "qwen3-max-2026-01-23",
-      chatModel: process.env.LLM_MODEL_CHAT ?? "qwen3-max-2026-01-23",
+      // The proxy requires a CLAUDE model — aliases (opus/sonnet/haiku) or
+      // full ids (claude-opus-4-7, claude-sonnet-4-6, …). The old qwen
+      // shim names are now rejected. Sonnet is the tested default for the
+      // tool-calling insight/dossier/chat loops; bump to opus per-task via
+      // env for max quality (flat-rate subscription, just slower).
+      dossierModel: process.env.LLM_MODEL_DOSSIER ?? "sonnet",
+      insightsModel: process.env.LLM_MODEL_INSIGHTS ?? "sonnet",
+      chatModel: process.env.LLM_MODEL_CHAT ?? "sonnet",
     },
   };
 }
