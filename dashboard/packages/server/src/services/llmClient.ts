@@ -55,6 +55,14 @@ export interface ToolDef {
 
 export type ToolChoice = "auto" | "none" | "required";
 
+/** A model id, or a resolver evaluated per request (e.g. read from settings). */
+export type ModelSource = string | (() => string | Promise<string>);
+
+/** Normalize a {@link ModelSource} to a concrete model id. */
+export async function resolveModel(source: ModelSource): Promise<string> {
+  return typeof source === "function" ? source() : source;
+}
+
 export interface ChatCompletionRequest {
   model: string;
   messages: ChatMessage[];

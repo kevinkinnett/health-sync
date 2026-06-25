@@ -156,3 +156,90 @@ describe("SettingService — notification settings", () => {
     });
   });
 });
+
+describe("SettingService — LLM models", () => {
+  it("returns the env/default models on a fresh install", async () => {
+    const svc = new SettingService(fakeRepo(), {
+      dossier: "opus",
+      insights: "sonnet",
+      chat: "haiku",
+    });
+    expect(await svc.getLlmModelSettings()).toEqual({
+      dossier: "opus",
+      insights: "sonnet",
+      chat: "haiku",
+    });
+  });
+
+  it("defaults every task to sonnet when no defaults are supplied", async () => {
+    const svc = new SettingService(fakeRepo());
+    expect(await svc.getLlmModelSettings()).toEqual({
+      dossier: "sonnet",
+      insights: "sonnet",
+      chat: "sonnet",
+    });
+  });
+
+  it("a stored selection overrides the default per task", async () => {
+    const repo = fakeRepo();
+    repo.store.set("llm_models", {
+      dossier: "opus",
+      insights: "claude-sonnet-4-6",
+      chat: "haiku",
+    });
+    const svc = new SettingService(repo, {
+      dossier: "sonnet",
+      insights: "sonnet",
+      chat: "sonnet",
+    });
+    expect(await svc.getLlmModelSettings()).toEqual({
+      dossier: "opus",
+      insights: "claude-sonnet-4-6",
+      chat: "haiku",
+    });
+  });
+
+  it("ignores an invalid stored value and falls back to the default", async () => {
+    const repo = fakeRepo();
+    // A legacy qwen value that snuck in before validation existed.
+    repo.store.set("llm_models", { dossier: "qwen3-max", insights: "sonnet", chat: "haiku" });
+    const svc = new SettingService(repo, {
+      dossier: "opus",
+      insights: "opus",
+      chat: "opus",
+    });
+    const m = await svc.getLlmModelSettings();
+    expect(m.dossier).toBe("opus"); // qwen ignored → default
+    expect(m.insights).toBe("sonnet");
+    expect(m.chat).toBe("haiku");
+  });
+
+  it("updateLlmModelSettings persists a valid Claude selection", async () => {
+    const repo = fakeRepo();
+    const svc = new SettingService(repo);
+    const saved = await svc.updateLlmModelSettings({
+      dossier: "opus",
+      insights: "sonnet",
+      chat: "haiku",
+    });
+    expect(saved).toEqual({ dossier: "opus", insights: "sonnet", chat: "haiku" });
+    expect(repo.store.get("llm_models")).toEqual({
+      dossier: "opus",
+      insights: "sonnet",
+      chat: "haiku",
+    });
+  });
+
+  it("rejects a non-Claude model (qwen) and does not persist", async () => {
+    const repo = fakeRepo();
+    const svc = new SettingService(repo);
+    await expect(
+      svc.updateLlmModelSettings({
+        dossier: "qwen3-max-2026-01-23",
+        insights: "sonnet",
+        chat: "haiku",
+      }),
+    ).rejects.toBeInstanceOf(ZodError);
+    expect(repo.store.has("llm_models")).toBe(false);
+  });
+});

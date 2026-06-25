@@ -8,7 +8,8 @@ import {
   executeHealthTool,
 } from "./healthTools.js";
 import { addDays, todayInTz } from "./userTz.js";
-import type { LlmClient } from "./llmClient.js";
+import type { LlmClient, ModelSource } from "./llmClient.js";
+import { resolveModel } from "./llmClient.js";
 import {
   runAgenticLoop,
   type AgenticProgressEvent,
@@ -219,7 +220,7 @@ export class InsightService {
     private repo: InsightRepository,
     private llm: LlmClient,
     private v1Ctx: V1Context,
-    private opts: { model: string },
+    private opts: { model: ModelSource },
   ) {}
 
   async generate(
@@ -231,6 +232,7 @@ export class InsightService {
     const dateFrom = options.dateFrom ?? addDays(today, -90);
     const generationId = randomUUID();
     const allTools = buildHealthTools();
+    const model = await resolveModel(this.opts.model);
 
     // Run categories sequentially. Concurrency > 1 races inside the
     // local Claude proxy: when multiple `claude -p` subprocesses spawn
@@ -260,7 +262,7 @@ export class InsightService {
         try {
           const result = await runAgenticLoop({
             llm: this.llm,
-            model: this.opts.model,
+            model,
             messages: [
               // System prompt stays SHORT — proxies that shell-marshal
               // it via `--system-prompt "..."` reliably break with long

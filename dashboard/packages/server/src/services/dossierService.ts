@@ -18,8 +18,8 @@ import {
   MedicationService,
   NotFoundError as MedicationNotFoundError,
 } from "./medicationService.js";
-import type { ChatMessage, LlmClient } from "./llmClient.js";
-import { LlmHttpError } from "./llmClient.js";
+import type { ChatMessage, LlmClient, ModelSource } from "./llmClient.js";
+import { LlmHttpError, resolveModel } from "./llmClient.js";
 
 // ----------------------------------------------------------------------------
 // Errors
@@ -91,8 +91,11 @@ const contentSchema = z.object({
 // ----------------------------------------------------------------------------
 
 export interface DossierServiceOptions {
-  /** Model to request from the proxy (Qwen alias the proxy understands). */
-  model: string;
+  /**
+   * The Claude model to request — a static id or a resolver evaluated per
+   * refresh, so a UI model change takes effect without a restart.
+   */
+  model: ModelSource;
   /** Override for tests so we don't actually wait between retries. */
   retryDelayMs?: number;
 }
@@ -128,6 +131,7 @@ export class DossierService {
   ): Promise<DossierEntry> {
     const item = await this.loadItem(type, id);
     const baseMessages = buildPrompt(type, item);
+    const model = await resolveModel(this.opts.model);
 
     const start = Date.now();
     let lastErr: unknown;
@@ -136,7 +140,7 @@ export class DossierService {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         const response = await this.llm.chatCompletion({
-          model: this.opts.model,
+          model,
           messages,
           temperature: 0.1,
           max_tokens: 8000,
@@ -154,7 +158,7 @@ export class DossierService {
           await this.repo.recordUsage({
             itemType: type,
             itemId: id,
-            requestedModel: this.opts.model,
+            requestedModel: model,
             actualModel: response.model ?? null,
             promptTokens: response.usage?.prompt_tokens,
             completionTokens: response.usage?.completion_tokens,
@@ -177,7 +181,7 @@ export class DossierService {
           await this.repo.recordUsage({
             itemType: type,
             itemId: id,
-            requestedModel: this.opts.model,
+            requestedModel: model,
             actualModel: response.model ?? null,
             promptTokens: response.usage?.prompt_tokens,
             completionTokens: response.usage?.completion_tokens,
@@ -196,7 +200,7 @@ export class DossierService {
           await this.repo.recordUsage({
             itemType: type,
             itemId: id,
-            requestedModel: this.opts.model,
+            requestedModel: model,
             actualModel: response.model ?? null,
             promptTokens: response.usage?.prompt_tokens,
             completionTokens: response.usage?.completion_tokens,
@@ -223,7 +227,7 @@ export class DossierService {
           itemBrand: item.brand ?? null,
           itemForm: item.form ?? null,
           content: content_,
-          model: response.model ?? this.opts.model,
+          model: response.model ?? model,
           inputTokens: response.usage?.prompt_tokens ?? null,
           outputTokens: response.usage?.completion_tokens ?? null,
         });
@@ -231,7 +235,7 @@ export class DossierService {
         await this.repo.recordUsage({
           itemType: type,
           itemId: id,
-          requestedModel: this.opts.model,
+          requestedModel: model,
           actualModel: response.model ?? null,
           promptTokens: response.usage?.prompt_tokens,
           completionTokens: response.usage?.completion_tokens,
@@ -246,7 +250,7 @@ export class DossierService {
           await this.repo.recordUsage({
             itemType: type,
             itemId: id,
-            requestedModel: this.opts.model,
+            requestedModel: model,
             durationMs: Date.now() - start,
             status: "http_error",
           });

@@ -127,12 +127,23 @@ const llmClient = new LlmClient({
   baseUrl: config.llm.baseUrl,
   apiKey: config.llm.apiKey,
 });
+
+// Settings store (universe.app_setting). Constructed early because the
+// LLM services resolve their per-task model from it at CALL time (stored
+// selection > env default), so a model change in the UI takes effect
+// without a restart. config.llm.*Model is the env-or-"sonnet" fallback.
+const settingService = new SettingService(settingRepo, {
+  dossier: config.llm.dossierModel,
+  insights: config.llm.insightsModel,
+  chat: config.llm.chatModel,
+});
+
 const dossierService = new DossierService(
   dossierRepo,
   supplementService,
   medicationService,
   llmClient,
-  { model: config.llm.dossierModel },
+  { model: () => settingService.getLlmModelSettings().then((m) => m.dossier) },
 );
 const analyticsService = new AnalyticsService(
   supplementRepo,
@@ -182,10 +193,9 @@ app.use("/api/dossier", createDossierRoutes(dossierController));
 app.use("/api/analytics", createAnalyticsRoutes(analyticsController));
 app.use("/api/admin/api-logs", createApiLogRoutes(apiLogRepo));
 
-// User settings (persisted in universe.app_setting). The app's first
-// server-backed settings surface — drives the notifications control
-// screen and feeds detection thresholds + delivery policy below.
-const settingService = new SettingService(settingRepo);
+// User settings surface (settingService constructed above) — drives the
+// notifications + LLM-model control screens and feeds detection
+// thresholds + delivery policy below.
 const settingsController = new SettingsController(settingService);
 app.use("/api/settings", createSettingsRoutes(settingsController));
 
@@ -207,13 +217,13 @@ const v1Ctx = {
   medicationService,
 };
 const insightService = new InsightService(insightRepo, llmClient, v1Ctx, {
-  model: config.llm.insightsModel,
+  model: () => settingService.getLlmModelSettings().then((m) => m.insights),
 });
 const insightChatService = new InsightChatService(
   insightRepo,
   llmClient,
   v1Ctx,
-  { model: config.llm.chatModel },
+  { model: () => settingService.getLlmModelSettings().then((m) => m.chat) },
 );
 const insightJobs = new InsightJobManager(insightService);
 const insightController = new InsightController(

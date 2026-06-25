@@ -55,3 +55,20 @@ export interface NotificationSettings {
    */
   appriseUrl: string;
 }
+
+/** The three LLM-backed tasks whose model is independently selectable. */
+export type LlmTask = "dossier" | "insights" | "chat";
+
+/**
+ * Per-task Claude model selection, persisted in `app_setting` under
+ * `llm_models`. A stored value overrides the env/default for that task,
+ * so heavier tasks (insights) can run on opus while interactive ones
+ * (chat) stay on a faster model — resolved at call time, no redeploy.
+ * Values are Claude model ids/aliases (opus/sonnet/haiku or `claude-*`);
+ * the proxy rejects anything else.
+ */
+export interface LlmModelSettings {
+  dossier: string;
+  insights: string;
+  chat: string;
+}

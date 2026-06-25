@@ -20,4 +20,12 @@ export class SettingsController {
   async testNotification(_req: Request, res: Response): Promise<void> {
     res.json(await this.service.sendTestNotification());
   }
+
+  async getLlmModels(_req: Request, res: Response): Promise<void> {
+    res.json(await this.service.getLlmModelSettings());
+  }
+
+  async updateLlmModels(req: Request, res: Response): Promise<void> {
+    res.json(await this.service.updateLlmModelSettings(req.body));
+  }
 }

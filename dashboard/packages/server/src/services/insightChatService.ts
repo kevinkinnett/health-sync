@@ -9,7 +9,8 @@ import {
   buildHealthTools,
   executeHealthTool,
 } from "./healthTools.js";
-import type { LlmClient, ChatMessage } from "./llmClient.js";
+import type { LlmClient, ChatMessage, ModelSource } from "./llmClient.js";
+import { resolveModel } from "./llmClient.js";
 import { runAgenticLoop } from "./agenticLoop.js";
 
 /**
@@ -59,7 +60,7 @@ export class InsightChatService {
     private repo: InsightRepository,
     private llm: LlmClient,
     private v1Ctx: V1Context,
-    private opts: { model: string },
+    private opts: { model: ModelSource },
   ) {}
 
   async send(input: {
@@ -103,7 +104,7 @@ export class InsightChatService {
 
     const result = await runAgenticLoop({
       llm: this.llm,
-      model: this.opts.model,
+      model: await resolveModel(this.opts.model),
       messages,
       tools,
       executeTool: (name, args) =>

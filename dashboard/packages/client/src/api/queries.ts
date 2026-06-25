@@ -26,6 +26,7 @@ import type {
   ReadinessScore,
   AlertsResponse,
   NotificationSettings,
+  LlmModelSettings,
   IngestState,
   IngestRun,
   IngestOverview,
@@ -399,6 +400,29 @@ export function useTestNotification() {
   return useMutation<{ delivered: boolean; status: number }, Error, void>({
     mutationFn: () =>
       apiFetch(`/settings/notifications/test`, { method: "POST" }),
+  });
+}
+
+/** Per-task Claude model selection (dossier / insights / chat). */
+export function useLlmModelSettings() {
+  return useQuery<LlmModelSettings>({
+    queryKey: ["settings", "llm-models"],
+    queryFn: () => apiFetch(`/settings/llm-models`),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useUpdateLlmModelSettings() {
+  const queryClient = useQueryClient();
+  return useMutation<LlmModelSettings, Error, LlmModelSettings>({
+    mutationFn: (body) =>
+      apiFetch(`/settings/llm-models`, {
+        method: "PUT",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: (saved) => {
+      queryClient.setQueryData(["settings", "llm-models"], saved);
+    },
   });
 }
 

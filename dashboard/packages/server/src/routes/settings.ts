@@ -25,6 +25,14 @@ export function createSettingsRoutes(controller: SettingsController): Router {
     "/notifications/test",
     wrap((req, res) => controller.testNotification(req, res)),
   );
+  router.get(
+    "/llm-models",
+    wrap((req, res) => controller.getLlmModels(req, res)),
+  );
+  router.put(
+    "/llm-models",
+    wrap((req, res) => controller.updateLlmModels(req, res)),
+  );
 
   return router;
 }

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type {
   AlertSeverity,
+  LlmModelSettings,
   NotificationSettings,
 } from "@health-dashboard/shared";
 import type { SettingRepository } from "../repositories/settingRepo.js";
@@ -24,6 +25,27 @@ import { logger } from "../logger.js";
  */
 
 const NOTIFICATION_KEY = "notifications";
+const LLM_MODELS_KEY = "llm_models";
+
+/**
+ * A model the proxy will accept: the short aliases or any `claude-*` id.
+ * The old qwen shim names (and anything else) are rejected here so a bad
+ * value can't be persisted and then 400 every AI call at runtime.
+ */
+function isAcceptedModel(v: string): boolean {
+  return v === "opus" || v === "sonnet" || v === "haiku" || /^claude-[a-z0-9.-]+$/.test(v);
+}
+
+const modelField = z
+  .string()
+  .trim()
+  .refine(isAcceptedModel, "must be opus/sonnet/haiku or a claude-* id");
+
+const llmModelsSchema = z.object({
+  dossier: modelField,
+  insights: modelField,
+  chat: modelField,
+});
 
 // Apprise stores one shared, multi-target config under the key `apprise`;
 // each target is tagged. The `?tag=health` query scopes delivery to the
@@ -171,7 +193,36 @@ export function clampNotificationSettings(
 }
 
 export class SettingService {
-  constructor(private repo: SettingRepository) {}
+  /**
+   * `llmDefaults` are the env-resolved per-task models (config.llm.*Model,
+   * already `env ?? "sonnet"`). A stored `llm_models` value overrides them
+   * per task; that's the DB > env > "sonnet" precedence.
+   */
+  constructor(
+    private repo: SettingRepository,
+    private llmDefaults: LlmModelSettings = {
+      dossier: "sonnet",
+      insights: "sonnet",
+      chat: "sonnet",
+    },
+  ) {}
+
+  /** Current per-task model, stored value falling back to the env default. */
+  async getLlmModelSettings(): Promise<LlmModelSettings> {
+    const stored = await this.repo.get<Partial<LlmModelSettings>>(LLM_MODELS_KEY);
+    const pick = (task: keyof LlmModelSettings): string => {
+      const v = stored?.[task];
+      return typeof v === "string" && isAcceptedModel(v) ? v : this.llmDefaults[task];
+    };
+    return { dossier: pick("dossier"), insights: pick("insights"), chat: pick("chat") };
+  }
+
+  /** Validate (zod, Claude-only) + persist; returns the saved selection. */
+  async updateLlmModelSettings(patch: unknown): Promise<LlmModelSettings> {
+    const parsed = llmModelsSchema.parse(patch);
+    await this.repo.set(LLM_MODELS_KEY, parsed);
+    return parsed;
+  }
 
   /** Always returns a complete object, even on a fresh install. */
   async getNotificationSettings(): Promise<NotificationSettings> {

@@ -81,6 +81,8 @@ export type {
   NotificationThresholds,
   NotificationKindToggles,
   NotificationSettings,
+  LlmTask,
+  LlmModelSettings,
 } from "./types/settings.js";
 export type {
   PersonalRecord,
