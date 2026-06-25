@@ -82,12 +82,12 @@ export function loadConfig(): Config {
     },
     llm: {
       baseUrl: (
-        // OpenAI-compatible Claude proxy on the Tailnet (:4000/v1 →
-        // container 127.0.0.1:4000; an Anthropic-compatible twin lives on
-        // :4003). Both are backed by the Claude Agent SDK and bill against
-        // the Claude Code OAuth / Max subscription, so no API key is needed.
+        // Anthropic Messages-API Claude proxy on the Tailnet (:4003 →
+        // container 127.0.0.1:4003). Backed by the Claude Agent SDK,
+        // billing the Claude Code OAuth / Max subscription, so no API key
+        // is needed. The client appends /v1/messages.
         process.env.LLM_API_URL ??
-        "https://claude-code.tail322ce1.ts.net:4000/v1"
+        "https://claude-code.tail322ce1.ts.net:4003"
       ).replace(/\/+$/, ""),
       // Optional — the proxy doesn't enforce auth. Leave empty (or any
       // string); the Agent SDK authenticates via the Claude subscription.

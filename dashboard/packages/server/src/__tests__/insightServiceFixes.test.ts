@@ -158,8 +158,12 @@ describe("LlmClient retry-on-5xx", () => {
       {
         ok: true,
         status: 200,
+        // Anthropic Messages shape — the client translates it to the
+        // OpenAI-shaped result the rest of the app consumes.
         json: async () => ({
-          choices: [{ message: { content: "ok" } }],
+          content: [{ type: "text", text: "ok" }],
+          stop_reason: "end_turn",
+          usage: { input_tokens: 1, output_tokens: 1 },
         }),
       },
     ];
