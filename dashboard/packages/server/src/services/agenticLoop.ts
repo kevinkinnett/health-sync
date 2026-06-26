@@ -6,6 +6,7 @@ import {
   type ToolChoice,
   type ToolCall,
   type ToolDef,
+  isSessionExpired,
 } from "./llmClient.js";
 import {
   looksLikeHallucinatedToolCall,
@@ -120,6 +121,9 @@ export async function runAgenticLoop(
 ): Promise<AgenticLoopResult> {
   const maxRounds = opts.maxRounds ?? 10;
   const maxNags = opts.maxNags ?? 2;
+  // The proxy's tool session can expire mid-loop (restart / >10min idle);
+  // allow one replay from the first user turn before giving up.
+  const maxRestarts = 1;
   const callTimeoutMs = opts.callTimeoutMs ?? 90_000;
   const totalBudgetMs = opts.totalBudgetMs ?? 5 * 60_000;
   const required = new Set(opts.requiredTools ?? []);
@@ -129,6 +133,7 @@ export async function runAgenticLoop(
   const label = opts.label ?? opts.task;
   const loopStarted = Date.now();
   let nagsUsed = 0;
+  let restarts = 0;
   let placeholder = false;
   let finalContent = "";
   let sanitized = false;
@@ -178,6 +183,25 @@ export async function runAgenticLoop(
         { task: opts.task, retries: 2, timeoutMs: callTimeoutMs },
       );
     } catch (err) {
+      // Proxy tool session expired mid-loop — the stale tool_use_ids in
+      // our transcript are dead, so retrying the same continuation just
+      // 410s again. Replay from the first user turn: reset to the initial
+      // messages and let the model regenerate tool calls with fresh ids.
+      // Tools are idempotent reads, so re-running them is safe.
+      if (isSessionExpired(err) && restarts < maxRestarts) {
+        restarts++;
+        logger.warn(
+          { label, round, restarts },
+          "Proxy tool session expired; replaying loop from the first user turn",
+        );
+        transcript.length = 0;
+        transcript.push(...opts.messages);
+        called.clear();
+        lastSignatures.length = 0;
+        nagsUsed = 0;
+        round = 0; // for-loop ++ brings it back to 1; totalBudgetMs still caps wall time
+        continue;
+      }
       const durationMs = Date.now() - roundStart;
       logger.warn(
         { label, round, durationMs, err: (err as Error).message },

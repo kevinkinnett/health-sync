@@ -113,6 +113,21 @@ export class LlmHttpError extends Error {
   }
 }
 
+/**
+ * The proxy keeps a mid-loop tool conversation in memory and correlates
+ * the follow-up by tool_use_id. If it restarts (or the loop idles past
+ * its ~10min TTL) between the tool_use turn and the tool_result, the
+ * continuation returns 410 `session_expired`. Recovery is to replay the
+ * conversation from the first user turn — a same-request retry just 410s
+ * again — so this is surfaced for the agentic loop to handle, NOT auto-
+ * retried at the transport level.
+ */
+export function isSessionExpired(err: unknown): boolean {
+  return (
+    err instanceof LlmHttpError && err.status === 410 && /session_expired/.test(err.body)
+  );
+}
+
 export interface LlmClientConfig {
   /** Base URL of the Anthropic-compatible proxy (a trailing `/v1` is ok). */
   baseUrl: string;
