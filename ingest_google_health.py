@@ -333,7 +333,51 @@ def _rollup_weight(cur, since: str) -> int:
     return n
 
 
+# Per-day nutrients summed out of Google's nutrition-log nutrients[] array.
+# Google reports every nutrient in grams; the tuple is (column, gram->unit
+# multiplier). SODIUM/CHOLESTEROL/POTASSIUM are stored in mg to match the
+# legacy column convention (sodium ×1000 validated EXACT vs legacy on the
+# overlap days; fiber + protein in grams also exact). sugar/saturated_fat/
+# cholesterol/potassium are net-new — Fitbit's daily summary never carried them.
+_FOOD_NUTRIENTS = {
+    "PROTEIN":       ("protein", 1),
+    "DIETARY_FIBER": ("fiber", 1),
+    "SUGAR":         ("sugar", 1),
+    "SATURATED_FAT": ("saturated_fat", 1),
+    "SODIUM":        ("sodium", 1000),
+    "CHOLESTEROL":   ("cholesterol", 1000),
+    "POTASSIUM":     ("potassium", 1000),
+}
+
+
+def _ensure_food_table(cur) -> None:
+    # Legacy ingest_fitbit_food used to own this table; it is now retired, so the
+    # Google rollup ensures its own schema. Idempotent: creates the table on a
+    # clean install and adds the richer-nutrient columns to an existing one.
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS universe.fitbit_food_log_daily (
+            date DATE PRIMARY KEY, calories_in INTEGER, carbs NUMERIC(8,2),
+            fat NUMERIC(8,2), fiber NUMERIC(8,2), protein NUMERIC(8,2),
+            sodium NUMERIC(10,2), water NUMERIC(10,2), calorie_goal INTEGER,
+            food_count INTEGER, raw_jsonb JSONB NOT NULL,
+            fetched_at TIMESTAMPTZ DEFAULT NOW())
+    """)
+    cur.execute("""
+        ALTER TABLE universe.fitbit_food_log_daily
+            ADD COLUMN IF NOT EXISTS sugar         NUMERIC(8,2),
+            ADD COLUMN IF NOT EXISTS saturated_fat NUMERIC(8,2),
+            ADD COLUMN IF NOT EXISTS cholesterol   NUMERIC(10,2),
+            ADD COLUMN IF NOT EXISTS potassium     NUMERIC(10,2)
+    """)
+
+
 def _rollup_food(cur, since: str) -> int:
+    # Google's nutrition-log is PER-FOOD-ENTRY; sum each day's entries. Calories
+    # and total carbs/fat are top-level; everything else lives in nutrients[]
+    # (the legacy rollup only pulled PROTEIN and dropped fiber/sodium/etc — they
+    # were in the payload all along). Water + calorie_goal are genuinely absent
+    # from Google's payload, so those columns stay NULL post-cutover.
+    _ensure_food_table(cur)
     cur.execute(f"""
         SELECT point_date, value_jsonb FROM {GH}
         WHERE data_type='nutrition-log' AND source_platform='FITBIT' AND point_date >= %s
@@ -341,22 +385,36 @@ def _rollup_food(cur, since: str) -> int:
     agg = {}
     for pdate, vj in cur.fetchall():
         nl = (vj or {}).get("nutritionLog", {})
-        a = agg.setdefault(pdate, {"cal": 0.0, "carbs": 0.0, "fat": 0.0, "protein": 0.0, "n": 0})
+        a = agg.setdefault(pdate, {"cal": 0.0, "carbs": 0.0, "fat": 0.0, "n": 0,
+                                   "protein": 0.0, "fiber": 0.0, "sugar": 0.0,
+                                   "saturated_fat": 0.0, "sodium": 0.0,
+                                   "cholesterol": 0.0, "potassium": 0.0})
         a["cal"] += (nl.get("energy", {}) or {}).get("kcal", 0) or 0
         a["carbs"] += (nl.get("totalCarbohydrate", {}) or {}).get("grams", 0) or 0
         a["fat"] += (nl.get("totalFat", {}) or {}).get("grams", 0) or 0
         for nut in nl.get("nutrients", []) or []:
-            if nut.get("nutrient") == "PROTEIN":
-                a["protein"] += (nut.get("quantity", {}) or {}).get("grams", 0) or 0
+            col_mult = _FOOD_NUTRIENTS.get(nut.get("nutrient"))
+            if col_mult:
+                col, mult = col_mult
+                a[col] += ((nut.get("quantity", {}) or {}).get("grams", 0) or 0) * mult
         a["n"] += 1
     n = 0
     for d, a in agg.items():
         cur.execute("""
-            INSERT INTO universe.fitbit_food_log_daily (date, calories_in, carbs, fat, protein, food_count, raw_jsonb)
-            VALUES (%s,%s,%s,%s,%s,%s,%s)
-            ON CONFLICT (date) DO UPDATE SET calories_in=EXCLUDED.calories_in, carbs=EXCLUDED.carbs,
-                fat=EXCLUDED.fat, protein=EXCLUDED.protein, food_count=EXCLUDED.food_count, raw_jsonb=EXCLUDED.raw_jsonb, fetched_at=NOW()
-        """, (d, round(a["cal"]), round(a["carbs"], 2), round(a["fat"], 2), round(a["protein"], 2), a["n"], MARK))
+            INSERT INTO universe.fitbit_food_log_daily
+                (date, calories_in, carbs, fat, protein, fiber, sugar,
+                 saturated_fat, sodium, cholesterol, potassium, food_count, raw_jsonb)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            ON CONFLICT (date) DO UPDATE SET
+                calories_in=EXCLUDED.calories_in, carbs=EXCLUDED.carbs, fat=EXCLUDED.fat,
+                protein=EXCLUDED.protein, fiber=EXCLUDED.fiber, sugar=EXCLUDED.sugar,
+                saturated_fat=EXCLUDED.saturated_fat, sodium=EXCLUDED.sodium,
+                cholesterol=EXCLUDED.cholesterol, potassium=EXCLUDED.potassium,
+                food_count=EXCLUDED.food_count, raw_jsonb=EXCLUDED.raw_jsonb, fetched_at=NOW()
+        """, (d, round(a["cal"]), round(a["carbs"], 2), round(a["fat"], 2),
+              round(a["protein"], 2), round(a["fiber"], 2), round(a["sugar"], 2),
+              round(a["saturated_fat"], 2), round(a["sodium"], 2),
+              round(a["cholesterol"], 2), round(a["potassium"], 2), a["n"], MARK))
         n += 1
     return n
 
@@ -593,7 +651,11 @@ def main(
 #   SKIP  active_calories / calories_bmr → Google's active-energy-burned is a
 #         different definition (~half of Fitbit's activityCalories) and unused
 #   SKIP  minutes_sedentary → sedentary-period differs from legacy, unused
-#   SKIP  food fiber/sodium/water/calorie_goal → not in Google's nutrition-log
+#   DONE  food fiber/sodium/sugar/saturated-fat/cholesterol/potassium →
+#         _rollup_food sums them from nutrition-log nutrients[] (fiber+sodium
+#         validated EXACT vs legacy; sodium/cholesterol/potassium ×1000 g→mg)
+#   SKIP  food water / calorie_goal → genuinely absent from Google's
+#         nutrition-log (no hydration type captured; goal isn't Health Connect)
 #   OPEN  AZM (active-zone-minutes) → captured raw; a HR-zone signal distinct
 #         from MET-based active-minutes (r~=0.37). Could be added as a NEW
 #         correlation series (new column), but it is NOT a legacy replacement.
