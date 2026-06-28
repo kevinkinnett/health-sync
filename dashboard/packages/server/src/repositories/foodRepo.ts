@@ -3,8 +3,9 @@ import type { FoodLogDay } from "@health-dashboard/shared";
 import { toDateStr } from "./mappers.js";
 
 /**
- * Reads Fitbit food-log daily summaries (ingested by the Windmill
- * `ingest_fitbit_food` job). One row per day the user logged food.
+ * Reads daily food-log summaries from `universe.fitbit_food_log_daily`
+ * (rolled up from Google Health's nutrition-log by the Windmill
+ * `ingest_google_health` job since the cutover). One row per logged day.
  */
 export class FoodRepository {
   constructor(private pool: Pool) {}
@@ -27,8 +28,8 @@ export class FoodRepository {
 }
 
 const SELECT = `
-  SELECT date, calories_in, carbs, fat, fiber, protein, sodium, water,
-         calorie_goal, food_count
+  SELECT date, calories_in, carbs, fat, fiber, protein, sugar, saturated_fat,
+         sodium, cholesterol, potassium, water, calorie_goal, food_count
   FROM universe.fitbit_food_log_daily`;
 
 function num(v: unknown): number | null {
@@ -43,7 +44,11 @@ function mapRow(row: Record<string, unknown>): FoodLogDay {
     fat: num(row.fat),
     fiber: num(row.fiber),
     protein: num(row.protein),
+    sugar: num(row.sugar),
+    saturatedFat: num(row.saturated_fat),
     sodium: num(row.sodium),
+    cholesterol: num(row.cholesterol),
+    potassium: num(row.potassium),
     water: num(row.water),
     calorieGoal: num(row.calorie_goal),
     foodCount: num(row.food_count),

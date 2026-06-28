@@ -7,8 +7,9 @@ import {
 import { EmptyState, QueryBoundary } from "../../components/QueryBoundary";
 
 /**
- * Nutrition / food-intake screen. Calorie + macro data from the Fitbit
- * food log (manual or AI photo logging), ingested by ingest_fitbit_food.
+ * Nutrition / food-intake screen. Calorie + nutrient data rolled up from
+ * Google Health's nutrition-log (manual or AI photo logging) by
+ * ingest_google_health.
  *
  * Only days the user actually logged food appear — gaps mean "unlogged",
  * not zero intake — so the empty state and the copy lean on that.
@@ -76,12 +77,37 @@ function NutritionBody({ data }: { data: FoodLogDay[] }) {
         digits={0}
         data={data.map((d): MetricPoint => ({ date: d.date, value: d.fat }))}
       />
+      <MetricLineChart
+        title="Fiber"
+        description="Grams of fiber logged per day."
+        unit="g"
+        color="#c9b6ff"
+        digits={0}
+        data={data.map((d): MetricPoint => ({ date: d.date, value: d.fiber }))}
+      />
+      <MetricLineChart
+        title="Sugar"
+        description="Grams of sugar logged per day (a subset of carbohydrates)."
+        unit="g"
+        color="#ff9ecb"
+        digits={0}
+        data={data.map((d): MetricPoint => ({ date: d.date, value: d.sugar }))}
+      />
+      <MetricLineChart
+        title="Sodium"
+        description="Milligrams of sodium logged per day."
+        unit="mg"
+        color="#9fe0ff"
+        digits={0}
+        data={data.map((d): MetricPoint => ({ date: d.date, value: d.sodium }))}
+      />
     </div>
   );
 }
 
 function LatestDayCard({ day }: { day: FoodLogDay }) {
   const g = (v: number | null) => (v != null ? `${Math.round(v)} g` : "—");
+  const mg = (v: number | null) => (v != null ? `${Math.round(v)} mg` : "—");
   const stats: { label: string; value: string | number }[] = [
     {
       label: "Calories",
@@ -92,8 +118,13 @@ function LatestDayCard({ day }: { day: FoodLogDay }) {
     },
     { label: "Protein", value: g(day.protein) },
     { label: "Carbs", value: g(day.carbs) },
+    { label: "Sugar", value: g(day.sugar) },
     { label: "Fat", value: g(day.fat) },
+    { label: "Sat Fat", value: g(day.saturatedFat) },
     { label: "Fiber", value: g(day.fiber) },
+    { label: "Sodium", value: mg(day.sodium) },
+    { label: "Cholesterol", value: mg(day.cholesterol) },
+    { label: "Potassium", value: mg(day.potassium) },
     { label: "Items", value: day.foodCount ?? "—" },
   ];
   return (
