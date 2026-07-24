@@ -247,7 +247,11 @@ export function toAnthropicRequest(req: ChatCompletionRequest): AnthropicRequest
       input_schema: t.function.parameters,
     }));
   }
-  if (req.tool_choice) {
+  // Only meaningful alongside a non-empty tools array — sending it with
+  // no tools is a 400 ("tool_choice may only be specified when tools are
+  // given"), which would turn a harmless empty-tools call into a hard
+  // failure. Drop it instead.
+  if (req.tool_choice && out.tools?.length) {
     out.tool_choice = {
       type: req.tool_choice === "required" ? "any" : req.tool_choice,
     };
@@ -347,7 +351,22 @@ function isTransientError(err: unknown): boolean {
   return false;
 }
 
-export class LlmClient {
+/**
+ * The only capability consumers actually need. The agentic loop and the
+ * three LLM services depend on THIS, not on {@link LlmClient} — they have
+ * no business knowing about base URLs, retry policy or the Anthropic wire
+ * format, and typing them to the concrete class forced every test double
+ * through an `as unknown as LlmClient` cast to satisfy private fields it
+ * never used.
+ */
+export interface ChatCompleter {
+  chatCompletion(
+    req: ChatCompletionRequest,
+    opts?: LlmCallOptions,
+  ): Promise<ChatCompletionResponse>;
+}
+
+export class LlmClient implements ChatCompleter {
   constructor(private readonly cfg: LlmClientConfig) {}
 
   async chatCompletion(
@@ -403,49 +422,57 @@ export class LlmClient {
     const controller = new AbortController();
     const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
 
-    let response: Response;
+    // NB: the timeout must stay armed until the BODY is read, not just
+    // until headers land — fetch() resolves on headers, so clearing it
+    // here would leave a slow/hung body stream unbounded.
+    let result: ChatCompletionResponse;
+    let status: number;
     try {
-      response = await fetch(url, {
-        method: "POST",
-        headers,
-        body,
-        signal: controller.signal,
-      });
-    } catch (err) {
-      const duration = Date.now() - start;
-      const aborted = controller.signal.aborted;
-      logger.warn(
-        {
-          url,
-          duration,
-          model: req.model,
-          task: opts.task,
-          aborted,
-          err: (err as Error).message,
-        },
-        aborted ? "LLM call aborted (timeout)" : "LLM fetch failed",
-      );
-      throw err;
+      let response: Response;
+      try {
+        response = await fetch(url, {
+          method: "POST",
+          headers,
+          body,
+          signal: controller.signal,
+        });
+      } catch (err) {
+        const duration = Date.now() - start;
+        const aborted = controller.signal.aborted;
+        logger.warn(
+          {
+            url,
+            duration,
+            model: req.model,
+            task: opts.task,
+            aborted,
+            err: (err as Error).message,
+          },
+          aborted ? "LLM call aborted (timeout)" : "LLM fetch failed",
+        );
+        throw err;
+      }
+      status = response.status;
+
+      if (!response.ok) {
+        const text = await response.text();
+        logger.warn(
+          { url, status, duration: Date.now() - start, model: req.model, task: opts.task },
+          "LLM proxy error",
+        );
+        throw new LlmHttpError(status, text);
+      }
+
+      const anthropic = (await response.json()) as AnthropicResponse;
+      result = fromAnthropicResponse(anthropic);
     } finally {
       clearTimeout(timeoutHandle);
     }
     const duration = Date.now() - start;
-
-    if (!response.ok) {
-      const text = await response.text();
-      logger.warn(
-        { url, status: response.status, duration, model: req.model, task: opts.task },
-        "LLM proxy error",
-      );
-      throw new LlmHttpError(response.status, text);
-    }
-
-    const anthropic = (await response.json()) as AnthropicResponse;
-    const result = fromAnthropicResponse(anthropic);
     logger.debug(
       {
         url,
-        status: response.status,
+        status,
         duration,
         task: opts.task,
         requestedModel: req.model,

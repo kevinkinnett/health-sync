@@ -9,7 +9,7 @@ import {
   buildHealthTools,
   executeHealthTool,
 } from "./healthTools.js";
-import type { LlmClient, ChatMessage, ModelSource } from "./llmClient.js";
+import type { ChatCompleter, ChatMessage, ModelSource } from "./llmClient.js";
 import { resolveModel } from "./llmClient.js";
 import { runAgenticLoop } from "./agenticLoop.js";
 
@@ -58,7 +58,7 @@ export interface ChatTurnResult {
 export class InsightChatService {
   constructor(
     private repo: InsightRepository,
-    private llm: LlmClient,
+    private llm: ChatCompleter,
     private v1Ctx: V1Context,
     private opts: { model: ModelSource },
   ) {}

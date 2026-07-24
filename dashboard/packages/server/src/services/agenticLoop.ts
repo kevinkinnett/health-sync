@@ -1,7 +1,7 @@
 import {
   type ChatMessage,
   type ChatCompletionResponse,
-  type LlmClient,
+  type ChatCompleter,
   type LlmTask,
   type ToolChoice,
   type ToolCall,
@@ -35,7 +35,7 @@ import { logger } from "../logger.js";
  */
 
 export interface AgenticLoopOptions {
-  llm: LlmClient;
+  llm: ChatCompleter;
   model: string;
   /**
    * Caller-built initial messages. Should already include the system
@@ -137,6 +137,15 @@ export async function runAgenticLoop(
   let placeholder = false;
   let finalContent = "";
   let sanitized = false;
+  /**
+   * Total LLM rounds actually issued, across restarts. Reported as
+   * `rounds`. Deliberately NOT derived from `lastSignatures`, which is a
+   * fixed 3-entry sliding window for stuck detection and therefore caps
+   * out at 3 no matter how long the loop ran.
+   */
+  let roundsRun = 0;
+  /** True once a real final answer was accepted (may be empty text). */
+  let answered = false;
 
   for (let round = 1; round <= maxRounds; round++) {
     if (Date.now() - loopStarted > totalBudgetMs) {
@@ -157,6 +166,7 @@ export async function runAgenticLoop(
     const stillMissing = [...required].filter((t) => !called.has(t));
     const toolChoice: ToolChoice = stillMissing.length > 0 ? "required" : "auto";
 
+    roundsRun++;
     opts.onProgress?.({ kind: "round-start", round, toolChoice });
     logger.info(
       { label, round, toolChoice, missing: stillMissing.length, called: called.size },
@@ -349,29 +359,28 @@ export async function runAgenticLoop(
     const cleaned = sanitizeAssistantContent(text);
     sanitized = cleaned !== text;
     finalContent = cleaned;
+    answered = true;
     transcript.push({ role: "assistant", content: cleaned });
     break;
   }
 
-  // If we hit the round cap without finishing, emit a placeholder
-  // rather than return nothing.
-  if (!finalContent) {
+  // Fell out of the loop without accepting an answer or bailing — i.e.
+  // the round cap was exhausted. Keyed off `answered` rather than an
+  // empty `finalContent` so a legitimately empty final answer isn't
+  // misreported as a placeholder.
+  if (!answered && !placeholder) {
     placeholder = true;
     const stillMissingFinal = [...required].filter((t) => !called.has(t));
     finalContent = placeholderMessage(stillMissingFinal);
   }
 
-  opts.onProgress?.({
-    kind: "complete",
-    rounds: lastSignatures.length || 1,
-    sanitized,
-  });
+  opts.onProgress?.({ kind: "complete", rounds: roundsRun, sanitized });
 
   return {
     content: finalContent,
     transcript,
     toolsCalled: [...called],
-    rounds: lastSignatures.length || 1,
+    rounds: roundsRun,
     sanitized,
     placeholder,
   };

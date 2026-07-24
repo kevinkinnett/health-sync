@@ -8,7 +8,7 @@ import {
   executeHealthTool,
 } from "./healthTools.js";
 import { addDays, todayInTz } from "./userTz.js";
-import type { LlmClient, ModelSource } from "./llmClient.js";
+import type { ChatCompleter, ModelSource } from "./llmClient.js";
 import { resolveModel } from "./llmClient.js";
 import {
   runAgenticLoop,
@@ -218,7 +218,7 @@ export interface GenerateInsightsResult {
 export class InsightService {
   constructor(
     private repo: InsightRepository,
-    private llm: LlmClient,
+    private llm: ChatCompleter,
     private v1Ctx: V1Context,
     private opts: { model: ModelSource },
   ) {}

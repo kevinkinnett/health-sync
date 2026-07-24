@@ -18,7 +18,7 @@ import {
   MedicationService,
   NotFoundError as MedicationNotFoundError,
 } from "./medicationService.js";
-import type { ChatMessage, LlmClient, ModelSource } from "./llmClient.js";
+import type { ChatMessage, ChatCompleter, ModelSource } from "./llmClient.js";
 import { LlmHttpError, resolveModel } from "./llmClient.js";
 
 // ----------------------------------------------------------------------------
@@ -105,7 +105,7 @@ export class DossierService {
     private readonly repo: DossierRepository,
     private readonly supplements: SupplementService,
     private readonly medications: MedicationService,
-    private readonly llm: LlmClient,
+    private readonly llm: ChatCompleter,
     private readonly opts: DossierServiceOptions,
   ) {}
 
