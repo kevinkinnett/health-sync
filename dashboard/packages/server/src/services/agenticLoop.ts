@@ -12,6 +12,12 @@ import {
   looksLikeHallucinatedToolCall,
   sanitizeAssistantContent,
 } from "./groundingRules.js";
+import {
+  Allowance,
+  BudgetClock,
+  RequiredTools,
+  StuckDetector,
+} from "./agentic/policies.js";
 import { logger } from "../logger.js";
 
 /**
@@ -32,6 +38,9 @@ import { logger } from "../logger.js";
  *   result rows + final assistant text) only after the loop succeeds
  *   so a mid-loop crash doesn't leave orphans. The caller decides
  *   what to persist and where.
+ *
+ * The individual rules live in {@link ./agentic/policies.js} so each is
+ * testable on its own; this function only sequences them.
  */
 
 export interface AgenticLoopOptions {
@@ -104,6 +113,7 @@ export interface AgenticLoopResult {
   transcript: ChatMessage[];
   /** Tools that actually fired during the loop. */
   toolsCalled: string[];
+  /** Total LLM rounds issued, across restarts. */
   rounds: number;
   /** True if the sanitizer stripped suspect content from the final text. */
   sanitized: boolean;
@@ -120,56 +130,54 @@ export async function runAgenticLoop(
   opts: AgenticLoopOptions,
 ): Promise<AgenticLoopResult> {
   const maxRounds = opts.maxRounds ?? 10;
-  const maxNags = opts.maxNags ?? 2;
+  const callTimeoutMs = opts.callTimeoutMs ?? 90_000;
+  const label = opts.label ?? opts.task;
+
+  const clock = new BudgetClock(opts.totalBudgetMs ?? 5 * 60_000);
+  const tools = new RequiredTools(opts.requiredTools ?? []);
+  const stuck = new StuckDetector(3);
+  const nags = new Allowance(opts.maxNags ?? 2);
   // The proxy's tool session can expire mid-loop (restart / >10min idle);
   // allow one replay from the first user turn before giving up.
-  const maxRestarts = 1;
-  const callTimeoutMs = opts.callTimeoutMs ?? 90_000;
-  const totalBudgetMs = opts.totalBudgetMs ?? 5 * 60_000;
-  const required = new Set(opts.requiredTools ?? []);
-  const called = new Set<string>();
+  const restarts = new Allowance(1);
+
   const transcript: ChatMessage[] = [...opts.messages];
-  const lastSignatures: string[] = [];
-  const label = opts.label ?? opts.task;
-  const loopStarted = Date.now();
-  let nagsUsed = 0;
-  let restarts = 0;
   let placeholder = false;
   let finalContent = "";
   let sanitized = false;
-  /**
-   * Total LLM rounds actually issued, across restarts. Reported as
-   * `rounds`. Deliberately NOT derived from `lastSignatures`, which is a
-   * fixed 3-entry sliding window for stuck detection and therefore caps
-   * out at 3 no matter how long the loop ran.
-   */
+  /** Total LLM rounds actually issued, across restarts. */
   let roundsRun = 0;
   /** True once a real final answer was accepted (may be empty text). */
   let answered = false;
 
+  const bail = (missing: string[]): void => {
+    placeholder = true;
+    finalContent = placeholderMessage(missing);
+  };
+
   for (let round = 1; round <= maxRounds; round++) {
-    if (Date.now() - loopStarted > totalBudgetMs) {
+    if (clock.expired()) {
       logger.warn(
-        {
-          label,
-          round,
-          elapsedMs: Date.now() - loopStarted,
-          totalBudgetMs,
-        },
+        { label, round, elapsedMs: clock.elapsedMs, totalBudgetMs: clock.budget },
         "Agentic loop exceeded total wall-time budget; emitting placeholder",
       );
-      placeholder = true;
-      finalContent = placeholderMessage([...required].filter((t) => !called.has(t)));
+      bail(tools.missing());
       break;
     }
 
-    const stillMissing = [...required].filter((t) => !called.has(t));
-    const toolChoice: ToolChoice = stillMissing.length > 0 ? "required" : "auto";
+    const toolChoice: ToolChoice = tools.satisfied() ? "auto" : "required";
+    const missingAtRoundStart = tools.missing();
 
     roundsRun++;
     opts.onProgress?.({ kind: "round-start", round, toolChoice });
     logger.info(
-      { label, round, toolChoice, missing: stillMissing.length, called: called.size },
+      {
+        label,
+        round,
+        toolChoice,
+        missing: missingAtRoundStart.length,
+        called: tools.invokedCount,
+      },
       "Agentic round start",
     );
 
@@ -198,64 +206,61 @@ export async function runAgenticLoop(
       // 410s again. Replay from the first user turn: reset to the initial
       // messages and let the model regenerate tool calls with fresh ids.
       // Tools are idempotent reads, so re-running them is safe.
-      if (isSessionExpired(err) && restarts < maxRestarts) {
-        restarts++;
+      if (isSessionExpired(err) && restarts.tryUse()) {
         logger.warn(
-          { label, round, restarts },
+          { label, round, restarts: restarts.spent },
           "Proxy tool session expired; replaying loop from the first user turn",
         );
         transcript.length = 0;
         transcript.push(...opts.messages);
-        called.clear();
-        lastSignatures.length = 0;
-        nagsUsed = 0;
-        round = 0; // for-loop ++ brings it back to 1; totalBudgetMs still caps wall time
+        tools.reset();
+        stuck.reset();
+        nags.reset();
+        round = 0; // for-loop ++ brings it back to 1; the clock still caps wall time
         continue;
       }
-      const durationMs = Date.now() - roundStart;
       logger.warn(
-        { label, round, durationMs, err: (err as Error).message },
+        {
+          label,
+          round,
+          durationMs: Date.now() - roundStart,
+          err: (err as Error).message,
+        },
         "Agentic round LLM call failed after retries; emitting placeholder",
       );
-      placeholder = true;
-      finalContent = placeholderMessage([...required].filter((t) => !called.has(t)));
+      bail(tools.missing());
       break;
     }
+
+    const message = response.choices[0]?.message;
+    const toolCalls = message?.tool_calls ?? [];
     logger.info(
       {
         label,
         round,
         durationMs: Date.now() - roundStart,
-        toolCalls: response.choices[0]?.message?.tool_calls?.length ?? 0,
-        contentChars: (response.choices[0]?.message?.content ?? "").length,
+        toolCalls: toolCalls.length,
+        contentChars: (message?.content ?? "").length,
       },
       "Agentic round complete",
     );
-
-    const choice = response.choices[0];
-    const message = choice?.message;
-    const toolCalls = message?.tool_calls ?? [];
 
     if (toolCalls.length > 0) {
       // Persist the assistant turn that emitted these tool calls so
       // the next loop iteration carries it as context.
       transcript.push({
         role: "assistant",
-        content: message.content ?? null,
+        content: message?.content ?? null,
         tool_calls: toolCalls,
       });
 
       const toolNames = toolCalls.map((c) => c.function.name).sort();
-      const sig = toolNames.join(",");
-      lastSignatures.push(sig);
-      while (lastSignatures.length > 3) lastSignatures.shift();
-
+      stuck.record(toolNames.join(","));
       opts.onProgress?.({ kind: "tool-calls", round, tools: toolNames });
 
       for (const call of toolCalls) {
-        const args = parseArgs(call);
-        const result = await opts.executeTool(call.function.name, args);
-        called.add(call.function.name);
+        const result = await opts.executeTool(call.function.name, parseArgs(call));
+        tools.markCalled(call.function.name);
         transcript.push({
           role: "tool",
           tool_call_id: call.id,
@@ -269,26 +274,21 @@ export async function runAgenticLoop(
         });
       }
 
-      // Stuck detector: same tool signature 3 rounds in a row AND we
-      // still haven't satisfied requiredTools — the model is spinning.
-      if (
-        stillMissing.length > 0 &&
-        lastSignatures.length === 3 &&
-        lastSignatures.every((s) => s === lastSignatures[0])
-      ) {
+      // Same tool signature `depth` rounds running AND requiredTools
+      // still unsatisfied — the model is spinning, so stop early.
+      if (missingAtRoundStart.length > 0 && stuck.isStuck()) {
         opts.onProgress?.({ kind: "stuck", round });
-        placeholder = true;
-        finalContent = placeholderMessage(stillMissing);
+        bail(missingAtRoundStart);
         break;
       }
 
-      // If we just satisfied the last required tool, the next round
-      // will run with tool_choice=auto and the model can answer.
-      const nowMissing = [...required].filter((t) => !called.has(t));
-      if (nowMissing.length === 0) continue;
+      // If that satisfied the last required tool, the next round runs
+      // with tool_choice=auto and the model can answer.
+      if (tools.satisfied()) continue;
 
-      // Otherwise, push an explicit nag naming the next missing tool.
-      // Keeps the model from substituting "close enough" tools.
+      // Otherwise nag, naming the next missing tool explicitly. Keeps
+      // the model from substituting "close enough" tools.
+      const nowMissing = tools.missing();
       transcript.push({
         role: "user",
         content:
@@ -308,6 +308,8 @@ export async function runAgenticLoop(
     const text = message?.content ?? "";
 
     if (looksLikeHallucinatedToolCall(text)) {
+      // Deliberately does NOT consume the nag allowance — a fabricated
+      // tool call is a formatting failure, not a refusal to use tools.
       transcript.push({ role: "assistant", content: text });
       transcript.push({
         role: "user",
@@ -325,34 +327,29 @@ export async function runAgenticLoop(
       continue;
     }
 
-    const stillMissingNow = [...required].filter((t) => !called.has(t));
-    if (stillMissingNow.length > 0 && nagsUsed < maxNags) {
-      // Final-text response while required tools missing — nag and
-      // retry. The grounding rules already say "don't fabricate" but
-      // some models still do; an explicit retry catches the rest.
-      nagsUsed++;
+    const missingNow = tools.missing();
+    if (missingNow.length > 0) {
+      // Final-text response while required tools are missing. The
+      // grounding rules already say "don't fabricate" but some models
+      // still do; an explicit retry catches the rest.
+      if (!nags.tryUse()) {
+        bail(missingNow);
+        break;
+      }
       transcript.push({ role: "assistant", content: text });
       transcript.push({
         role: "user",
         content:
           `That answer is incomplete: you have not yet called the required ` +
-          `tools (${stillMissingNow.join(", ")}). Do NOT fabricate values. ` +
-          `Call ${stillMissingNow[0]} now and base your answer on its result.`,
+          `tools (${missingNow.join(", ")}). Do NOT fabricate values. ` +
+          `Call ${missingNow[0]} now and base your answer on its result.`,
       });
       opts.onProgress?.({
         kind: "nag",
         round,
-        reason: `text without ${stillMissingNow.join(", ")}`,
+        reason: `text without ${missingNow.join(", ")}`,
       });
       continue;
-    }
-
-    if (stillMissingNow.length > 0) {
-      // Nag budget exhausted — bail with a placeholder rather than
-      // accept fabricated text.
-      placeholder = true;
-      finalContent = placeholderMessage(stillMissingNow);
-      break;
     }
 
     // Accept the final answer. Sanitize as last-line-of-defense.
@@ -368,18 +365,14 @@ export async function runAgenticLoop(
   // the round cap was exhausted. Keyed off `answered` rather than an
   // empty `finalContent` so a legitimately empty final answer isn't
   // misreported as a placeholder.
-  if (!answered && !placeholder) {
-    placeholder = true;
-    const stillMissingFinal = [...required].filter((t) => !called.has(t));
-    finalContent = placeholderMessage(stillMissingFinal);
-  }
+  if (!answered && !placeholder) bail(tools.missing());
 
   opts.onProgress?.({ kind: "complete", rounds: roundsRun, sanitized });
 
   return {
     content: finalContent,
     transcript,
-    toolsCalled: [...called],
+    toolsCalled: tools.invoked(),
     rounds: roundsRun,
     sanitized,
     placeholder,
