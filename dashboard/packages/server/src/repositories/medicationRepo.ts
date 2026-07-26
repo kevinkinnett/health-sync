@@ -6,7 +6,7 @@ import type {
   UpdateMedicationItemBody,
   UpdateMedicationIntakeBody,
 } from "@health-dashboard/shared";
-import { toTimestampStr } from "./mappers.js";
+import { toDateStr, toTimestampStr } from "./mappers.js";
 
 /**
  * Repository for the user-input medication catalog and intake log.
@@ -175,6 +175,38 @@ export class MedicationRepository {
       values,
     );
     return rows.map(mapIntake);
+  }
+
+  /**
+   * Flat dose history, oldest first — the input to intervention
+   * derivation, which looks for the day a dose changed.
+   *
+   * Bucketed to the user's calendar day (a morning dose logged at 08:00
+   * ET is 12:00 UTC; the UTC date would be right here but not for an
+   * evening one), and returns only what the deriver needs rather than
+   * full intake rows.
+   */
+  async listDoseHistory(userTimezone: string): Promise<
+    { itemId: number; itemName: string; date: string; amount: number; unit: string }[]
+  > {
+    const { rows } = await this.pool.query(
+      `SELECT i.item_id,
+              it.name AS item_name,
+              (i.taken_at AT TIME ZONE $1)::date AS local_date,
+              i.amount,
+              i.unit
+         FROM medication.intake i
+         JOIN medication.item it ON it.id = i.item_id
+        ORDER BY i.item_id, i.taken_at`,
+      [userTimezone],
+    );
+    return rows.map((r) => ({
+      itemId: Number(r.item_id),
+      itemName: String(r.item_name),
+      date: toDateStr(r.local_date),
+      amount: Number(r.amount),
+      unit: String(r.unit),
+    }));
   }
 
   async createIntake(body: {

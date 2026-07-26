@@ -97,6 +97,7 @@ describe("createApp — composition root boots", () => {
     "/api/settings/notifications",
     "/api/settings/llm-models",
     "/api/insights/list",
+    "/api/interventions",
     "/api/admin/api-logs/stats",
     "/api/v1/summary",
   ])("mounts a handler at %s", async (path) => {

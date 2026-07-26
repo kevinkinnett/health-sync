@@ -30,6 +30,11 @@ import { AlertService } from "./services/alertService.js";
 import { AlertController } from "./controllers/alertController.js";
 import { createAlertRoutes } from "./routes/alerts.js";
 import { SettingRepository } from "./repositories/settingRepo.js";
+import { InterventionRepository } from "./repositories/interventionRepo.js";
+import { InterventionService } from "./services/interventions/interventionService.js";
+import { MedicationDoseDeriver } from "./services/interventions/deriver.js";
+import { InterventionController } from "./controllers/interventionController.js";
+import { createInterventionRoutes } from "./routes/interventions.js";
 import { SettingService } from "./services/settingService.js";
 import { SettingsController } from "./controllers/settingsController.js";
 import { createSettingsRoutes } from "./routes/settings.js";
@@ -104,6 +109,7 @@ export async function createApp(pool: Pool, config: Config): Promise<Express> {
   const insightRepo = new InsightRepository(pool);
   const alertRepo = new AlertRepository(pool);
   const settingRepo = new SettingRepository(pool);
+  const interventionRepo = new InterventionRepository(pool);
 
   // Ensure user-input tables exist before serving traffic
   await supplementRepo.ensureTables();
@@ -113,6 +119,7 @@ export async function createApp(pool: Pool, config: Config): Promise<Express> {
   await insightRepo.ensureTables();
   await alertRepo.ensureTables();
   await settingRepo.ensureTables();
+  await interventionRepo.ensureTables();
 
   // Services
   const healthDataService = new HealthDataService(
@@ -208,6 +215,21 @@ export async function createApp(pool: Pool, config: Config): Promise<Express> {
   // thresholds + delivery policy below.
   const settingsController = new SettingsController(settingService);
   app.use("/api/settings", createSettingsRoutes(settingsController));
+
+  // Interventions — the dated changes ("got an Eight Sleep", "halved the
+  // dose") that before/after analysis is measured against. Derivers infer
+  // what the logged data already implies; the list is the extension point,
+  // so a supplement or device source is a new entry rather than a change
+  // to the service.
+  const interventionService = new InterventionService(interventionRepo, [
+    new MedicationDoseDeriver({
+      listDoseHistory: () => medicationRepo.listDoseHistory(config.userTimezone),
+    }),
+  ]);
+  const interventionController = new InterventionController(interventionService, {
+    userTimezone: config.userTimezone,
+  });
+  app.use("/api/interventions", createInterventionRoutes(interventionController));
 
   // Proactive health alerts (anomaly detection over recovery signals).
   // Reads thresholds/toggles from settings; the evaluate response carries

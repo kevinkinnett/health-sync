@@ -135,3 +135,13 @@ export type { AppConfig } from "./types/config.js";
 // with ERR_UNKNOWN_FILE_EXTENSION. Do not add `export { someFn }` of a
 // runtime value. Pure runtime helpers live in each runtime's own lib
 // (e.g. server `services/userTz.ts`, client `lib/userTz.ts`).
+export type {
+  Intervention,
+  InterventionKind,
+  InterventionCategory,
+  InterventionSource,
+  DerivedIntervention,
+  CreateInterventionBody,
+  UpdateInterventionBody,
+} from "./types/intervention.js";
+export { isActiveOn } from "./types/intervention.js";

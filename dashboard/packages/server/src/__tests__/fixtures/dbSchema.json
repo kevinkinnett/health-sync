@@ -303,6 +303,19 @@
     "tool_calls",
     "tool_name"
   ],
+  "universe.intervention": [
+    "category",
+    "created_at",
+    "detail",
+    "ended_on",
+    "id",
+    "kind",
+    "name",
+    "source",
+    "source_ref",
+    "started_on",
+    "updated_at"
+  ],
   "universe.ingest_run": [
     "details",
     "error_count",
