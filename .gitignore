@@ -20,3 +20,7 @@ dist/
 .playwright-mcp/
 *.png
 
+
+# Playwright
+dashboard/packages/client/test-results/
+dashboard/packages/client/playwright-report/
