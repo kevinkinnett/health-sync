@@ -293,6 +293,19 @@ const EXPERIMENT: ExperimentReport = {
     'After "Eight Sleep Pod", time asleep improved — but something else could explain it.',
 };
 
+/**
+ * Spans 2026-05-01..2026-05-10 so it overlaps the seeded intervention
+ * dates — annotations only draw on dates the axis actually contains, so
+ * a non-overlapping fixture would test nothing.
+ */
+const SPO2 = Array.from({ length: 10 }, (_, i) => ({
+  date: `2026-05-${String(i + 1).padStart(2, "0")}`,
+  avgValue: 95 + (i % 3),
+  minValue: 90,
+  maxValue: 99,
+  fetchedAt: FETCHED,
+}));
+
 const ALERTS: AlertsResponse = { alerts: [], unreadCount: 0 };
 const LLM_MODELS: LlmModelSettings = { dossier: "sonnet", insights: "sonnet", chat: "sonnet" };
 
@@ -388,6 +401,7 @@ const ROUTES: [RegExp, unknown][] = [
   [/\/api\/health\/readiness/, READINESS],
   [/\/api\/experiments\/interventions\//, EXPERIMENT],
   [/\/api\/interventions$/, INTERVENTIONS],
+  [/\/api\/health\/spo2/, SPO2],
   [/\/api\/alerts/, ALERTS],
   [/\/api\/settings\/llm-models$/, LLM_MODELS],
   [/\/api\/settings\/notifications$/, NOTIFICATIONS],

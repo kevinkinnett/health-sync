@@ -124,12 +124,27 @@ export function MetricLineChart({
               stroke={a.color}
               strokeDasharray="3 3"
               strokeWidth={1}
-              label={{
-                value: a.label,
-                position: "insideTopLeft",
-                fill: a.color,
-                fontSize: 10,
-              }}
+              /*
+               * A render function, not `label="text"` or a <Label> child.
+               * Both of those typecheck and silently draw nothing here: a
+               * VERTICAL reference line's viewBox has zero width, and
+               * Recharts' position keywords ("insideTopLeft", …) resolve
+               * against that box, so the caption lands nowhere. Placing
+               * the <text> ourselves from the box's x/y is the only form
+               * that reliably renders — and the caption is the whole
+               * point of the marker, since a bare dashed line says
+               * something happened but not what.
+               */
+              label={({ viewBox }: { viewBox: { x: number; y: number } }) => (
+                <text
+                  x={viewBox.x + 4}
+                  y={viewBox.y + 11}
+                  fill={a.color}
+                  fontSize={10}
+                >
+                  {a.label}
+                </text>
+              )}
             />
           ))}
           <Line

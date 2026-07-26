@@ -155,6 +155,25 @@ test("the timeline runs a before/after report and surfaces its caveat", async ({
   expect(significant(errors)).toEqual([]);
 });
 
+test("intervention markers render WITH their labels", async ({ page }) => {
+  // A bare dashed line tells you something happened but not what. The
+  // label is the entire value of the annotation, and it is the part that
+  // silently failed to render on the first deploy.
+  const errors = collectErrors(page);
+  await page.goto("/analytics/vitals");
+
+  const lines = page.locator(".recharts-reference-line");
+  await expect(lines.first()).toBeAttached({ timeout: 15_000 });
+
+  const labels = await page
+    .locator(".recharts-reference-line text")
+    .allTextContents();
+  expect(labels.join(" "), "reference lines drew no label text").toContain(
+    "Eight Sleep Pod",
+  );
+  expect(significant(errors)).toEqual([]);
+});
+
 test("client-side navigation works (no full reload, no stale shell)", async ({
   page,
 }) => {
