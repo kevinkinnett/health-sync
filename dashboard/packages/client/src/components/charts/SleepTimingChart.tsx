@@ -12,6 +12,7 @@ import {
 import type { SleepDay } from "@health-dashboard/shared";
 import { useChartTheme } from "../../stores/themeStore";
 import { useUserTimezone } from "../../api/queries";
+import { formatNumber, labelFromPayloadDate } from "./tooltipFormat";
 
 // Internal Y-axis units: minutes since 6:00 PM in the user's timezone.
 // 0   = 6:00 PM
@@ -179,10 +180,8 @@ export function SleepTimingChart({ data }: Props) {
             contentStyle={ct.tooltip.contentStyle}
             labelStyle={ct.tooltip.labelStyle}
             itemStyle={ct.tooltip.itemStyle}
-            formatter={(value: number) => [anchoredToLabel(Math.round(value))]}
-            labelFormatter={(_: unknown, payload: Array<{ payload?: { date?: string } }>) =>
-              payload?.[0]?.payload?.date ?? ""
-            }
+            formatter={formatNumber((v) => anchoredToLabel(Math.round(v)))}
+            labelFormatter={labelFromPayloadDate}
           />
           <Legend />
           <ReferenceLine

@@ -10,6 +10,7 @@ import {
 } from "recharts";
 import type { HrvDay } from "@health-dashboard/shared";
 import { useChartTheme } from "../../stores/themeStore";
+import { formatWithUnit } from "./tooltipFormat";
 
 interface Props {
   data: HrvDay[];
@@ -66,7 +67,7 @@ export function HrvChart({ data }: Props) {
             contentStyle={ct.tooltip.contentStyle}
             labelStyle={{ ...ct.tooltip.labelStyle, fontWeight: 600 }}
             itemStyle={ct.tooltip.itemStyle}
-            formatter={(value: number) => [`${value} ms`]}
+            formatter={formatWithUnit("ms")}
           />
           <Legend />
           <Line

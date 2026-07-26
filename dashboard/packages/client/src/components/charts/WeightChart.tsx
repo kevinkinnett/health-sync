@@ -11,6 +11,7 @@ import type { WeightEntry } from "@health-dashboard/shared";
 import { useChartTheme } from "../../stores/themeStore";
 import { useUnits } from "../../stores/unitsStore";
 import { convertWeight, weightUnitLabel } from "../../lib/units";
+import { formatNumber } from "./tooltipFormat";
 
 interface Props {
   data: WeightEntry[];
@@ -55,7 +56,7 @@ export function WeightChart({ data }: Props) {
             contentStyle={ct.tooltip.contentStyle}
             labelStyle={ct.tooltip.labelStyle}
             itemStyle={ct.tooltip.itemStyle}
-            formatter={(value: number) => [`${value.toFixed(1)} ${unitLabel}`]}
+            formatter={formatNumber((v) => `${v.toFixed(1)} ${unitLabel}`)}
           />
           <Line
             type="monotone"

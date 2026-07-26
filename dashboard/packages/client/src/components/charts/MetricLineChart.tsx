@@ -10,6 +10,7 @@ import {
   ReferenceLine,
 } from "recharts";
 import { useChartTheme } from "../../stores/themeStore";
+import { formatWithUnit } from "./tooltipFormat";
 
 export interface MetricPoint {
   date: string;
@@ -102,7 +103,7 @@ export function MetricLineChart({
             contentStyle={ct.tooltip.contentStyle}
             labelStyle={{ ...ct.tooltip.labelStyle, fontWeight: 600 }}
             itemStyle={ct.tooltip.itemStyle}
-            formatter={(value: number) => [`${value} ${unit}`]}
+            formatter={formatWithUnit(unit)}
           />
           {(movingAverage || referenceZero) && <Legend />}
           {referenceZero && (

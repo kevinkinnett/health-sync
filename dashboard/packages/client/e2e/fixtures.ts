@@ -204,24 +204,27 @@ const DRIVING: DrivingSummary = {
   ],
 };
 
+/** Several days so the line charts actually draw a path, not a single dot. */
 const FOOD: FoodLogDay[] = [
-  {
-    date: TODAY,
-    caloriesIn: 2100,
-    carbs: 180,
-    fat: 90,
-    fiber: 22,
-    protein: 130,
-    sugar: 40,
-    saturatedFat: 25,
-    sodium: 2300,
-    cholesterol: 210,
-    potassium: 3100,
-    water: null,
-    calorieGoal: null,
-    foodCount: 6,
-  },
-];
+  ["2026-07-24", 1980, 170, 84],
+  ["2026-07-25", 2240, 195, 96],
+  [TODAY, 2100, 180, 90],
+].map(([date, caloriesIn, carbs, fat]) => ({
+  date: date as string,
+  caloriesIn: caloriesIn as number,
+  carbs: carbs as number,
+  fat: fat as number,
+  fiber: 22,
+  protein: 130,
+  sugar: 40,
+  saturatedFat: 25,
+  sodium: 2300,
+  cholesterol: 210,
+  potassium: 3100,
+  water: null,
+  calorieGoal: null,
+  foodCount: 6,
+}));
 
 const ALERTS: AlertsResponse = { alerts: [], unreadCount: 0 };
 const LLM_MODELS: LlmModelSettings = { dossier: "sonnet", insights: "sonnet", chat: "sonnet" };

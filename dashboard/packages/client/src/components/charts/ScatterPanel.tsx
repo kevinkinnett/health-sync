@@ -9,6 +9,7 @@ import {
 } from "recharts";
 import { useChartTheme } from "../../stores/themeStore";
 import { CorrelationBadge } from "./CorrelationBadge";
+import { formatNumber } from "./tooltipFormat";
 
 export interface ScatterPanelPoint {
   x: number;
@@ -106,7 +107,7 @@ export function ScatterPanel({
               contentStyle={ct.tooltip.contentStyle}
               labelStyle={ct.tooltip.labelStyle}
               itemStyle={ct.tooltip.itemStyle}
-              formatter={(value: number) => [value.toLocaleString()]}
+              formatter={formatNumber((v) => v.toLocaleString())}
               labelFormatter={() => ""}
             />
             <Scatter data={points} fill="#8083ff" fillOpacity={0.6} r={3} />

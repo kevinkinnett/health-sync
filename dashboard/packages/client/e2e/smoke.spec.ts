@@ -75,6 +75,27 @@ test("the nutrition screen shows the richer nutrient set", async ({ page }) => {
   }
 });
 
+test("charts actually render marks, not just an empty frame", async ({ page }) => {
+  // Guards the charting library itself. A version bump that breaks
+  // rendering (or a formatter that throws inside a tooltip) leaves the
+  // page structurally fine while the plot area is blank — every other
+  // assertion in this file would still pass.
+  const errors = collectErrors(page);
+  await page.goto("/analytics/nutrition");
+
+  const surface = page.locator(".recharts-surface").first();
+  await expect(surface).toBeVisible({ timeout: 15_000 });
+
+  // A rendered line series draws a <path> with real geometry.
+  const drawn = await page
+    .locator(".recharts-surface path[d]")
+    .evaluateAll((nodes) =>
+      nodes.filter((n) => (n.getAttribute("d") ?? "").length > 10).length,
+    );
+  expect(drawn, "no chart paths with geometry were drawn").toBeGreaterThan(0);
+  expect(significant(errors)).toEqual([]);
+});
+
 test("client-side navigation works (no full reload, no stale shell)", async ({
   page,
 }) => {

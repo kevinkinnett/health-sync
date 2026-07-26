@@ -13,6 +13,7 @@ import {
 } from "recharts";
 import type { HeartRateDay } from "@health-dashboard/shared";
 import { useChartTheme } from "../../stores/themeStore";
+import { formatWithUnit } from "./tooltipFormat";
 
 const ZONE_COLORS = {
   outOfRange: "#938f99",
@@ -87,7 +88,7 @@ export function HrZoneChart({ data }: Props) {
                   contentStyle={ct.tooltip.contentStyle}
                   labelStyle={ct.tooltip.labelStyle}
                   itemStyle={ct.tooltip.itemStyle}
-                  formatter={(value: number) => [`${value} min`]}
+                  formatter={formatWithUnit("min")}
                 />
               </PieChart>
             </ResponsiveContainer>
