@@ -62,34 +62,87 @@ export const analyzeNavItems: NavLinkDef[] = [
   },
   {
     to: "/analytics/supplements",
-    label: "Supplements",
+    label: "Supplement Trends",
     icon: "medication",
   },
   {
     to: "/analytics/medications",
-    label: "Medications",
+    label: "Medication Trends",
     icon: "prescriptions",
   },
   { to: "/insights", label: "AI Insights", icon: "auto_awesome" },
 ];
 
-const navSections: NavSectionDef[] = [
+/**
+ * Look up a shared analytics item by path.
+ *
+ * The sidebar groups links by the QUESTION they answer, while the
+ * analytics pill strip needs them in route order — so the two orders
+ * differ, but the definitions must not. Selecting by path keeps one
+ * declaration per link; throwing on a miss means a renamed route breaks
+ * the build rather than silently dropping a nav entry.
+ */
+const ANALYZE_BY_PATH = new Map(analyzeNavItems.map((i) => [i.to, i]));
+
+function analyze(...paths: string[]): NavLinkDef[] {
+  return paths.map((path) => {
+    const item = ANALYZE_BY_PATH.get(path);
+    if (!item) throw new Error(`Unknown analytics nav path: ${path}`);
+    return item;
+  });
+}
+
+/**
+ * Sidebar grouping.
+ *
+ * Organised by what the user is trying to find out, not by which table
+ * the data came from. The audit's finding was that 22 screens mirrored
+ * the database rather than the questions — "how am I now", "what's
+ * moving", "what did I change", "did it work", "what did I take".
+ *
+ * Nothing was removed in the regrouping: every route that existed still
+ * exists, and `nav-parity` asserts each analytics item appears exactly
+ * once across these sections.
+ */
+export const navSections: NavSectionDef[] = [
   {
     items: [
       { to: "/", label: "Dashboard", icon: "dashboard", end: true },
       { to: "/readiness", label: "Readiness", icon: "bolt" },
-      { to: "/timeline", label: "Timeline", icon: "timeline" },
     ],
   },
   {
-    header: "Analyze",
-    items: analyzeNavItems,
+    header: "Trends",
+    items: analyze(
+      "/analytics/overview",
+      "/analytics/activity",
+      "/analytics/sleep",
+      "/analytics/heart-rate",
+      "/analytics/hrv",
+      "/analytics/vitals",
+      "/analytics/eight-sleep",
+      "/analytics/nutrition",
+      "/analytics/weight",
+      "/analytics/exercises",
+      "/analytics/records",
+    ),
   },
   {
-    header: "Track",
+    // The three "find me a relationship" surfaces the audit flagged as
+    // overlapping, now sitting together with the changepoint view.
+    header: "Experiments",
+    items: [
+      { to: "/timeline", label: "Timeline", icon: "timeline" },
+      ...analyze("/analytics/correlations", "/insights"),
+    ],
+  },
+  {
+    // One domain, one place: the logging screen and its trend view.
+    header: "Log",
     items: [
       { to: "/supplements", label: "Supplement Log", icon: "edit_note" },
       { to: "/medications", label: "Medication Log", icon: "edit_note" },
+      ...analyze("/analytics/supplements", "/analytics/medications"),
     ],
   },
   {
