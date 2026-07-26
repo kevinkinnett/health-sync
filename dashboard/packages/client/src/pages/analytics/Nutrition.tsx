@@ -6,6 +6,7 @@ import {
 } from "../../components/charts/MetricLineChart";
 import { EmptyState, QueryBoundary } from "../../components/QueryBoundary";
 import { METRIC_COLOR } from "../../components/charts/chartPalette";
+import { useChartAnnotations } from "../../components/charts/annotations";
 
 /**
  * Nutrition / food-intake screen. Calorie + nutrient data rolled up from
@@ -42,11 +43,15 @@ export function AnalyticsNutrition() {
 
 function NutritionBody({ data }: { data: FoodLogDay[] }) {
   const latest = data[data.length - 1];
+  // Dated changes drawn onto every series, so a shift in intake can be
+  // read against what was happening at the time.
+  const marks = useChartAnnotations(data.map((d) => d.date));
   return (
     <div className="space-y-4">
       {latest && <LatestDayCard day={latest} />}
 
       <MetricLineChart
+        annotations={marks}
         title="Calories In"
         description="Total calories logged per day. Pair with your activity / calories-out for energy balance."
         unit="cal"
@@ -55,6 +60,7 @@ function NutritionBody({ data }: { data: FoodLogDay[] }) {
         data={data.map((d): MetricPoint => ({ date: d.date, value: d.caloriesIn }))}
       />
       <MetricLineChart
+        annotations={marks}
         title="Protein"
         description="Grams of protein logged per day."
         unit="g"
@@ -63,6 +69,7 @@ function NutritionBody({ data }: { data: FoodLogDay[] }) {
         data={data.map((d): MetricPoint => ({ date: d.date, value: d.protein }))}
       />
       <MetricLineChart
+        annotations={marks}
         title="Carbohydrates"
         description="Grams of carbohydrate logged per day."
         unit="g"
@@ -71,6 +78,7 @@ function NutritionBody({ data }: { data: FoodLogDay[] }) {
         data={data.map((d): MetricPoint => ({ date: d.date, value: d.carbs }))}
       />
       <MetricLineChart
+        annotations={marks}
         title="Fat"
         description="Grams of fat logged per day."
         unit="g"
@@ -79,6 +87,7 @@ function NutritionBody({ data }: { data: FoodLogDay[] }) {
         data={data.map((d): MetricPoint => ({ date: d.date, value: d.fat }))}
       />
       <MetricLineChart
+        annotations={marks}
         title="Fiber"
         description="Grams of fiber logged per day."
         unit="g"
@@ -87,6 +96,7 @@ function NutritionBody({ data }: { data: FoodLogDay[] }) {
         data={data.map((d): MetricPoint => ({ date: d.date, value: d.fiber }))}
       />
       <MetricLineChart
+        annotations={marks}
         title="Sugar"
         description="Grams of sugar logged per day (a subset of carbohydrates)."
         unit="g"
@@ -95,6 +105,7 @@ function NutritionBody({ data }: { data: FoodLogDay[] }) {
         data={data.map((d): MetricPoint => ({ date: d.date, value: d.sugar }))}
       />
       <MetricLineChart
+        annotations={marks}
         title="Sodium"
         description="Milligrams of sodium logged per day."
         unit="mg"

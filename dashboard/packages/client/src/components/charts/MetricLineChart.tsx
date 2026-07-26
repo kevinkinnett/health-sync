@@ -11,6 +11,7 @@ import {
 } from "recharts";
 import { useChartTheme } from "../../stores/themeStore";
 import { formatWithUnit } from "./tooltipFormat";
+import type { ChartAnnotation } from "./annotations";
 import { DEFAULT_SERIES } from "./chartPalette";
 
 export interface MetricPoint {
@@ -33,6 +34,11 @@ interface Props {
   domain?: [number | string, number | string];
   /** Decimal places for the tooltip/axis. */
   digits?: number;
+  /**
+   * Vertical markers for dated changes (see `annotations.ts`).
+   * Passed in as data so this component stays presentational.
+   */
+  annotations?: ChartAnnotation[];
 }
 
 /**
@@ -54,6 +60,7 @@ export function MetricLineChart({
   movingAverage = false,
   domain = ["dataMin - 1", "dataMax + 1"],
   digits = 1,
+  annotations = [],
 }: Props) {
   const ct = useChartTheme();
   const round = (v: number) => Math.round(v * 10 ** digits) / 10 ** digits;
@@ -110,6 +117,21 @@ export function MetricLineChart({
           {referenceZero && (
             <ReferenceLine y={0} stroke={ct.grid} strokeDasharray="4 4" />
           )}
+          {annotations.map((a) => (
+            <ReferenceLine
+              key={`${a.date}-${a.label}`}
+              x={a.date}
+              stroke={a.color}
+              strokeDasharray="3 3"
+              strokeWidth={1}
+              label={{
+                value: a.label,
+                position: "insideTopLeft",
+                fill: a.color,
+                fontSize: 10,
+              }}
+            />
+          ))}
           <Line
             type="monotone"
             dataKey="value"

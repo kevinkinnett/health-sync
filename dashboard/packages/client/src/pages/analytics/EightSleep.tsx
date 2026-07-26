@@ -6,6 +6,7 @@ import {
 } from "../../components/charts/MetricLineChart";
 import { EmptyState, QueryBoundary } from "../../components/QueryBoundary";
 import { METRIC_COLOR, SERIES } from "../../components/charts/chartPalette";
+import { useChartAnnotations } from "../../components/charts/annotations";
 
 /**
  * Eight Sleep nightly screen (roadmap Phase 2). The mattress is a
@@ -35,6 +36,9 @@ export function AnalyticsEightSleep() {
 
 function EightSleepBody({ data }: { data: EightSleepDay[] }) {
   const latest = data[data.length - 1];
+  // The Eight Sleep's own arrival is an intervention, so these series
+  // are exactly the ones worth annotating.
+  const marks = useChartAnnotations(data.map((d) => d.date));
   const hours = (min: number | null) =>
     min != null ? Math.round(min / 6) / 10 : null;
 
@@ -43,6 +47,7 @@ function EightSleepBody({ data }: { data: EightSleepDay[] }) {
       {latest && <LastNightCard night={latest} />}
 
       <MetricLineChart
+        annotations={marks}
         title="Sleep Score"
         description="Eight Sleep's nightly sleep score (0–100)."
         unit=""
@@ -52,6 +57,7 @@ function EightSleepBody({ data }: { data: EightSleepDay[] }) {
         data={data.map((d): MetricPoint => ({ date: d.date, value: d.score }))}
       />
       <MetricLineChart
+        annotations={marks}
         title="Time Asleep"
         description="Total time asleep per night."
         unit="h"
@@ -60,6 +66,7 @@ function EightSleepBody({ data }: { data: EightSleepDay[] }) {
         data={data.map((d): MetricPoint => ({ date: d.date, value: hours(d.sleepDurationMin) }))}
       />
       <MetricLineChart
+        annotations={marks}
         title="Overnight Heart Rate"
         description="Average heart rate during sleep. This is the more dynamic signal that drives ~65% of the fused resting-HR readiness input — Fitbit's wrist RHR is far more smoothed."
         unit="bpm"
@@ -68,6 +75,7 @@ function EightSleepBody({ data }: { data: EightSleepDay[] }) {
         data={data.map((d): MetricPoint => ({ date: d.date, value: d.avgHeartRate }))}
       />
       <MetricLineChart
+        annotations={marks}
         title="HRV (RMSSD)"
         description="Heart-rate variability during sleep. Higher = better recovered; agrees closely with Fitbit (r≈0.91)."
         unit="ms"
@@ -76,6 +84,7 @@ function EightSleepBody({ data }: { data: EightSleepDay[] }) {
         data={data.map((d): MetricPoint => ({ date: d.date, value: d.avgHrvRmssd }))}
       />
       <MetricLineChart
+        annotations={marks}
         title="Respiratory Rate"
         description="Breaths per minute during sleep."
         unit="/min"
@@ -84,6 +93,7 @@ function EightSleepBody({ data }: { data: EightSleepDay[] }) {
         data={data.map((d): MetricPoint => ({ date: d.date, value: d.avgRespiratoryRate }))}
       />
       <MetricLineChart
+        annotations={marks}
         title="Bed Temperature"
         description="Average Pod surface temperature. Environmental (Pod-heating dependent), so it's deliberately NOT part of the readiness score."
         unit="°C"
@@ -91,6 +101,7 @@ function EightSleepBody({ data }: { data: EightSleepDay[] }) {
         data={data.map((d): MetricPoint => ({ date: d.date, value: d.avgBedTempC }))}
       />
       <MetricLineChart
+        annotations={marks}
         title="Restlessness (toss & turns)"
         description="Movement events through the night — a small penalty signal in readiness."
         unit=""
