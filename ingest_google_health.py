@@ -239,18 +239,33 @@ def _sql_rollups(cur, since: str) -> None:
         ON CONFLICT (date) DO UPDATE SET avg_value=EXCLUDED.avg_value, min_value=EXCLUDED.min_value, max_value=EXCLUDED.max_value, raw_jsonb=EXCLUDED.raw_jsonb, fetched_at=NOW()
     """, (MARK, since))
 
-    # Steps — daily sum of intraday intervals, bucketed by the USER'S
-    # calendar day (point_date is the UTC date, which shifts evening
-    # steps into the next bucket and left settled days 0.7-1.9% short
-    # of legacy in validation).
+    # Steps — daily sum of intraday intervals, bucketed by the USER'S calendar
+    # day. Deliberately WINDOWLESS and monotone, unlike every other rollup here.
+    #
+    # The window is what broke it. `point_date` is the UTC date, but the sum is
+    # grouped by LOCAL date, and a local day D draws on point_date D *and* D+1
+    # (its 20:00-24:00 hours fall in the next UTC day). So `point_date >= since`
+    # left the local day at `since - 1` holding nothing but that 4-hour sliver,
+    # and wrote it anyway. Every run destroyed exactly one settled day as the
+    # window edge swept forward: 27 days between 2026-05-14 and 06-10 were cut
+    # to ~300 steps, ~20x understated, before this was caught on 2026-07-26.
+    #
+    # Scanning the whole type instead is cheap (~250 points/day) and removes the
+    # edge rather than moving it. GREATEST then makes the write monotone, which
+    # is sound because incomplete evidence can only UNDERcount a sum: today's
+    # partial day climbs as it fills, a raw backfill that lands after a day has
+    # aged out still corrects it, and no run can lower a day already summed
+    # whole. Verified 2026-07-26 — recomputing every day from raw lowered none.
     cur.execute(f"""
         INSERT INTO universe.fitbit_activity_daily (date, steps, raw_jsonb)
         SELECT (start_time AT TIME ZONE %s)::date, sum((value_jsonb->'steps'->>'count')::int), %s::jsonb
         FROM {GH} WHERE data_type='steps' AND source_platform='FITBIT'
-              AND start_time IS NOT NULL AND point_date >= %s
+              AND start_time IS NOT NULL
         GROUP BY 1
-        ON CONFLICT (date) DO UPDATE SET steps=EXCLUDED.steps, raw_jsonb=EXCLUDED.raw_jsonb, fetched_at=NOW()
-    """, (USER_TZ, MARK, since))
+        ON CONFLICT (date) DO UPDATE SET
+            steps=GREATEST(EXCLUDED.steps, fitbit_activity_daily.steps),
+            raw_jsonb=EXCLUDED.raw_jsonb, fetched_at=NOW()
+    """, (USER_TZ, MARK))
 
 
 def _rollup_sleep(cur, since: str) -> int:
