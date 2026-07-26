@@ -35,6 +35,10 @@ import { InterventionService } from "./services/interventions/interventionServic
 import { MedicationDoseDeriver } from "./services/interventions/deriver.js";
 import { InterventionController } from "./controllers/interventionController.js";
 import { createInterventionRoutes } from "./routes/interventions.js";
+import { ExperimentService } from "./services/experiments/experimentService.js";
+import { HealthSeriesSource } from "./services/experiments/healthSeriesSource.js";
+import { ExperimentController } from "./controllers/experimentController.js";
+import { createExperimentRoutes } from "./routes/experiments.js";
 import { SettingService } from "./services/settingService.js";
 import { SettingsController } from "./controllers/settingsController.js";
 import { createSettingsRoutes } from "./routes/settings.js";
@@ -230,6 +234,18 @@ export async function createApp(pool: Pool, config: Config): Promise<Express> {
     userTimezone: config.userTimezone,
   });
   app.use("/api/interventions", createInterventionRoutes(interventionController));
+
+  // "Did it work?" — before/after analysis anchored on an intervention.
+  // Reads metrics through a narrow series port, so the engine never
+  // touches a repository and can be driven from fixtures in tests.
+  const experimentService = new ExperimentService(
+    interventionRepo,
+    new HealthSeriesSource(healthDataService),
+  );
+  const experimentController = new ExperimentController(experimentService, {
+    userTimezone: config.userTimezone,
+  });
+  app.use("/api/experiments", createExperimentRoutes(experimentController));
 
   // Proactive health alerts (anomaly detection over recovery signals).
   // Reads thresholds/toggles from settings; the evaluate response carries

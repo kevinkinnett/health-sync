@@ -145,3 +145,15 @@ export type {
   UpdateInterventionBody,
 } from "./types/intervention.js";
 export { isActiveOn } from "./types/intervention.js";
+export type {
+  ExperimentReport,
+  ExperimentWindow,
+  ExperimentConfidence,
+  MetricEffect,
+  EffectDirection,
+  BetterDirection,
+  Confound,
+  ConfoundKind,
+  ConfoundSeverity,
+} from "./types/experiment.js";
+

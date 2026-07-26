@@ -107,6 +107,18 @@ describe("createApp — composition root boots", () => {
     expect(res.status).not.toBe(404);
   });
 
+  it("mounts the experiment report route", async () => {
+    // This one cannot use the not-404 check above: against a fake pool the
+    // intervention genuinely does not exist, so 404 is the CORRECT answer
+    // and would be indistinguishable from "never mounted". A mounted route
+    // answers through errorMapper with a JSON body; an unmounted path
+    // falls through to Express's default HTML handler.
+    const res = await request(app).get("/api/experiments/interventions/1");
+    expect(res.status).toBe(404);
+    expect(res.headers["content-type"]).toMatch(/json/);
+    expect(res.body.error).toMatch(/intervention 1 not found/i);
+  });
+
   it("routes unknown /api paths to a 404, not the SPA fallback", async () => {
     const res = await request(app).get("/api/definitely-not-a-route");
     expect(res.status).toBe(404);
