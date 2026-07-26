@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import type { HealthDataService } from "../services/healthDataService.js";
+import type { TrainingService } from "../services/training/trainingService.js";
 import { todayInTz } from "../services/userTz.js";
 import { parseDateRange } from "./_params.js";
 
@@ -23,6 +24,7 @@ export class HealthController {
 
   constructor(
     private service: HealthDataService,
+    private training: TrainingService,
     opts: { userTimezone: string } = { userTimezone: "UTC" },
   ) {
     this.tz = opts.userTimezone;
@@ -91,6 +93,16 @@ export class HealthController {
   async getFood(req: Request, res: Response): Promise<void> {
     const { start, end } = parseDateRange(req, this.tz);
     res.json(await this.service.getFood(start, end));
+  }
+
+  /**
+   * Step-independent effort. The rest of this controller reports what
+   * a pedometer sees; this reports what the heart did, so resistance
+   * work is not invisible.
+   */
+  async getTrainingLoad(req: Request, res: Response): Promise<void> {
+    const { start, end } = parseDateRange(req, this.tz);
+    res.json(await this.training.getSummary(start, end));
   }
 
   async getReadiness(req: Request, res: Response): Promise<void> {

@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import type {
+  TrainingSummary,
   HealthSummary,
   WeeklyInsights,
   CorrelationsData,
@@ -198,5 +199,17 @@ export function useReadiness(days?: number) {
     queryKey: ["health", "readiness", days ?? null],
     queryFn: () => apiFetch(`/health/readiness${days ? `?days=${days}` : ""}`),
     staleTime: 5 * 60 * 1000,
+  });
+}
+
+/**
+ * Step-independent effort. Separate from `useExerciseLogs` because that
+ * returns raw sessions; this returns them classified and scored.
+ */
+export function useTrainingLoad() {
+  const { start, end } = useDateRangeStore();
+  return useQuery<TrainingSummary>({
+    queryKey: ["health", "training-load", start, end],
+    queryFn: () => apiFetch(`/health/training-load?start=${start}&end=${end}`),
   });
 }

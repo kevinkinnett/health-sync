@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { HealthDataService } from "../services/healthDataService.js";
+import type { RecordsData } from "@health-dashboard/shared";
 
 // Build a small set of fake repos where only `findLatest` has interesting data
 // — that's the only call path `getRecords` exercises.
@@ -153,7 +154,7 @@ describe("HealthDataService.getRecords streak today-skip behavior", () => {
   // streak walker hits today's 0 and resets to 0 — wiping out a
   // legitimate 5-day streak. These tests pin that behavior down.
 
-  function streakBy(out: Awaited<ReturnType<typeof makeService>["getRecords"]>, label: string) {
+  function streakBy(out: RecordsData, label: string) {
     return out.streaks.find((s) => s.label === label);
   }
 

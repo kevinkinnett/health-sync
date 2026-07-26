@@ -43,6 +43,7 @@ import { SettingService } from "./services/settingService.js";
 import { SettingsController } from "./controllers/settingsController.js";
 import { createSettingsRoutes } from "./routes/settings.js";
 import { HealthDataService } from "./services/healthDataService.js";
+import { TrainingService } from "./services/training/trainingService.js";
 import { InsightService } from "./services/insightService.js";
 import { InsightChatService } from "./services/insightChatService.js";
 import { InsightJobManager } from "./services/insightJobs.js";
@@ -177,7 +178,8 @@ export async function createApp(pool: Pool, config: Config): Promise<Express> {
   );
 
   // Controllers
-  const healthController = new HealthController(healthDataService, {
+  const trainingService = new TrainingService(exerciseLogRepo, heartRateRepo);
+  const healthController = new HealthController(healthDataService, trainingService, {
     userTimezone: config.userTimezone,
   });
   const ingestController = new IngestController(ingestService);
@@ -263,6 +265,7 @@ export async function createApp(pool: Pool, config: Config): Promise<Express> {
     analyticsService,
     supplementService,
     medicationService,
+    trainingService,
   };
   const insightService = new InsightService(insightRepo, llmClient, v1Ctx, {
     model: () => settingService.getLlmModelSettings().then((m) => m.insights),

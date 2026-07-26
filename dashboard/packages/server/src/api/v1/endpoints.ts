@@ -2,6 +2,7 @@ import type { HealthDataService } from "../../services/healthDataService.js";
 import type { AnalyticsService } from "../../services/analyticsService.js";
 import type { SupplementService } from "../../services/supplementService.js";
 import type { MedicationService } from "../../services/medicationService.js";
+import type { TrainingService } from "../../services/training/trainingService.js";
 import { todayInTz, addDays } from "../../services/userTz.js";
 
 /**
@@ -48,6 +49,7 @@ export interface V1Context {
   analyticsService: AnalyticsService;
   supplementService: SupplementService;
   medicationService: MedicationService;
+  trainingService: TrainingService;
 }
 
 // ---------------------------------------------------------------------------
@@ -254,6 +256,18 @@ export function buildV1Endpoints(): V1EndpointDef[] {
       handler: async (args, ctx) => {
         const { start, end } = resolveDateRange(args, ctx.userTimezone);
         return ctx.healthDataService.getFood(start, end);
+      },
+    },
+
+    {
+      path: "/training-load",
+      summary: "Training load and exercise type",
+      description:
+        "Step-independent effort. Per-day training load (heart-rate-weighted duration, Banister TRIMP) plus every session classified as strength / cardio / walk / chore. USE THIS, not steps, to judge whether the user actually trained: resistance work produces no steps at all, so a step count of zero can still be a hard session. `load` is a self-relative index — compare the user's days to each other, never to an absolute standard, and note it assumes a maximum heart rate. Sessions flagged `estimated` had no heart rate and used a fallback intensity.",
+      parameters: dateRangeParams,
+      handler: async (args, ctx) => {
+        const { start, end } = resolveDateRange(args, ctx.userTimezone);
+        return ctx.trainingService.getSummary(start, end);
       },
     },
 

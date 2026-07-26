@@ -27,6 +27,11 @@ import type { ApiLogRepository } from "../repositories/apiLogRepo.js";
 function fakeServices(): V1Context {
   return {
     userTimezone: "America/New_York",
+    trainingService: {
+      getSummary: vi.fn().mockResolvedValue({
+        days: [], sessions: [], totalByType: {}, sessionsPerWeek: 0,
+      }),
+    } as unknown as V1Context["trainingService"],
     healthDataService: {
       getSummary: vi.fn().mockResolvedValue({ summary: true }),
       getActivity: vi.fn().mockResolvedValue([{ date: "2026-04-01", steps: 8500 }]),

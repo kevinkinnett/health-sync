@@ -3,6 +3,7 @@ import express from "express";
 import request from "supertest";
 import { HealthDataService } from "../services/healthDataService.js";
 import { HealthController } from "../controllers/healthController.js";
+import type { TrainingService } from "../services/training/trainingService.js";
 import { createHealthRoutes } from "../routes/health.js";
 import { errorMapper } from "../middleware/errorMapper.js";
 
@@ -130,7 +131,14 @@ beforeAll(() => {
     fakeVitalsRepo as any, // food
     fakeVitalsRepo as any, // teslaDrive
   );
-  const controller = new HealthController(service);
+  // Training load is a separate service; this suite exercises the
+  // metric endpoints, so a stub keeps the constructor honest.
+  const training = {
+    getSummary: async () => ({
+      days: [], sessions: [], totalByType: {}, sessionsPerWeek: 0,
+    }),
+  } as unknown as TrainingService;
+  const controller = new HealthController(service, training);
   app = express();
   app.use("/api/health", createHealthRoutes(controller));
   app.use(errorMapper);

@@ -156,4 +156,10 @@ export type {
   ConfoundKind,
   ConfoundSeverity,
 } from "./types/experiment.js";
+export type {
+  ExerciseType,
+  TrainingLoadDay,
+  TrainingSession,
+  TrainingSummary,
+} from "./types/training.js";
 
