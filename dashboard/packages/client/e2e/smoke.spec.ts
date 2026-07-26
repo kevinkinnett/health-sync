@@ -47,6 +47,7 @@ test("every primary route renders without a crash", async ({ page }) => {
   const routes = [
     "/",
     "/readiness",
+    "/timeline",
     "/analytics/overview",
     "/analytics/nutrition",
     "/analytics/correlations",
@@ -130,6 +131,26 @@ test("charts actually render marks, not just an empty frame", async ({ page }) =
     painted.filter((c) => VALIDATED_SLOTS.includes(c)).length,
     "no validated palette colour reached the DOM",
   ).toBeGreaterThan(0);
+
+  expect(significant(errors)).toEqual([]);
+});
+
+test("the timeline runs a before/after report and surfaces its caveat", async ({
+  page,
+}) => {
+  // The whole point of the feature: a result AND the reason to doubt it.
+  // If the caveat ever stops rendering, the number becomes misleading.
+  const errors = collectErrors(page);
+  await page.goto("/timeline");
+
+  await expect(page.getByText("Eight Sleep Pod")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("detected")).toBeVisible();
+
+  await page.getByText("Eight Sleep Pod").click();
+  await expect(page.getByText("Weak evidence")).toBeVisible();
+  await expect(page.getByText(/too close to separate the two/i)).toBeVisible();
+  // Role-scoped: "Time asleep" also appears in the summary sentence above.
+  await expect(page.getByRole("cell", { name: /Time asleep/ })).toBeVisible();
 
   expect(significant(errors)).toEqual([]);
 });

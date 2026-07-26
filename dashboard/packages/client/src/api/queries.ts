@@ -19,4 +19,5 @@ export * from "./queries/medications.js";
 export * from "./queries/dossier.js";
 export * from "./queries/analytics.js";
 export * from "./queries/insights.js";
+export * from "./queries/interventions.js";
 export * from "./queries/apiConsole.js";

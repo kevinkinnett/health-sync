@@ -8,7 +8,9 @@ import type {
   DrivingSummary,
   FoodLogDay,
   HealthSummary,
+  ExperimentReport,
   IngestOverview,
+  Intervention,
   LlmModelSettings,
   NotificationSettings,
   ReadinessScore,
@@ -226,6 +228,71 @@ const FOOD: FoodLogDay[] = [
   foodCount: 6,
 }));
 
+const INTERVENTIONS: Intervention[] = [
+  {
+    id: 1,
+    kind: "period",
+    category: "device",
+    name: "Eight Sleep Pod",
+    startedOn: "2026-05-02",
+    endedOn: null,
+    source: "manual",
+    sourceRef: null,
+    detail: null,
+    createdAt: "2026-05-02T00:00:00.000Z",
+    updatedAt: "2026-05-02T00:00:00.000Z",
+  },
+  {
+    id: 2,
+    kind: "period",
+    category: "medication",
+    name: "Escitalopram 10 mg",
+    startedOn: "2026-05-08",
+    endedOn: null,
+    source: "derived",
+    sourceRef: "medication.item:1:dose:10:2026-05-08",
+    detail: "80 logged doses, ongoing",
+    createdAt: "2026-05-08T00:00:00.000Z",
+    updatedAt: "2026-05-08T00:00:00.000Z",
+  },
+];
+
+const EXPERIMENT: ExperimentReport = {
+  interventionId: 1,
+  interventionName: "Eight Sleep Pod",
+  changepoint: "2026-05-02",
+  before: { start: "2026-02-11", end: "2026-05-01", days: 80, observedDays: 77 },
+  after: { start: "2026-05-02", end: "2026-07-20", days: 80, observedDays: 80 },
+  metrics: [
+    {
+      metric: "sleepMin",
+      label: "Time asleep",
+      unit: "min",
+      betterDirection: "up",
+      before: { n: 77, mean: 391.9, sd: 52 },
+      after: { n: 80, mean: 435.4, sd: 44 },
+      delta: 43.5,
+      deltaPct: 11.1,
+      direction: "up",
+      effectSize: 0.9,
+      improved: true,
+      meaningful: true,
+    },
+  ],
+  confounds: [
+    {
+      kind: "nearby_intervention",
+      severity: "high",
+      date: "2026-05-08",
+      detail:
+        '"Escitalopram 10 mg" started 6 days from this change — too close to separate the two.',
+    },
+  ],
+  confidence: "weak",
+  summary:
+    'After "Eight Sleep Pod", time asleep improved — but something else could explain it.',
+};
+
 const ALERTS: AlertsResponse = { alerts: [], unreadCount: 0 };
 const LLM_MODELS: LlmModelSettings = { dossier: "sonnet", insights: "sonnet", chat: "sonnet" };
 
@@ -319,6 +386,8 @@ const ROUTES: [RegExp, unknown][] = [
   [/\/api\/health\/driving$/, DRIVING],
   [/\/api\/health\/food/, FOOD],
   [/\/api\/health\/readiness/, READINESS],
+  [/\/api\/experiments\/interventions\//, EXPERIMENT],
+  [/\/api\/interventions$/, INTERVENTIONS],
   [/\/api\/alerts/, ALERTS],
   [/\/api\/settings\/llm-models$/, LLM_MODELS],
   [/\/api\/settings\/notifications$/, NOTIFICATIONS],

@@ -78,6 +78,7 @@ const navSections: NavSectionDef[] = [
     items: [
       { to: "/", label: "Dashboard", icon: "dashboard", end: true },
       { to: "/readiness", label: "Readiness", icon: "bolt" },
+      { to: "/timeline", label: "Timeline", icon: "timeline" },
     ],
   },
   {
