@@ -6,6 +6,7 @@ import type {
   ReadinessComponent,
   ReadinessScore,
 } from "@health-dashboard/shared";
+import { READINESS_BAND_COLOR } from "./charts/chartPalette";
 
 /**
  * The morning-glance instrument: one big "how recovered am I today"
@@ -22,9 +23,9 @@ const BAND_STYLES: Record<
   ReadinessBand,
   { ring: string; text: string; label: string }
 > = {
-  primed: { ring: "#4edea3", text: "text-secondary", label: "Primed" },
-  balanced: { ring: "#c0c1ff", text: "text-primary", label: "Balanced" },
-  compromised: { ring: "#ffb2b7", text: "text-error", label: "Compromised" },
+  primed: { ring: READINESS_BAND_COLOR.primed, text: "text-secondary", label: "Primed" },
+  balanced: { ring: READINESS_BAND_COLOR.balanced, text: "text-primary", label: "Balanced" },
+  compromised: { ring: READINESS_BAND_COLOR.compromised, text: "text-error", label: "Compromised" },
   insufficient: { ring: "#5a5b6a", text: "text-outline", label: "No score yet" },
 };
 

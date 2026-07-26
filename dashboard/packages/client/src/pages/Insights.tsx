@@ -14,6 +14,7 @@ import {
   useStartInsightGeneration,
 } from "../api/queries";
 import type { ChatTurn } from "@health-dashboard/shared";
+import { DEFAULT_SERIES, SERIES } from "../components/charts/chartPalette";
 
 // ---------------------------------------------------------------------------
 // Top-level page
@@ -354,12 +355,12 @@ function ProgressCard({
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
-  activity: "#c0c1ff",
-  sleep: "#4edea3",
-  cardiovascular: "#ffb2b7",
-  body_composition: "#c0c1ff",
-  lifestyle: "#4edea3",
-  trends: "#ffb2b7",
+  activity: SERIES[0],
+  sleep: SERIES[1],
+  cardiovascular: SERIES[2],
+  body_composition: SERIES[3],
+  lifestyle: SERIES[4],
+  trends: SERIES[5],
 };
 
 function CategoryAccordion({
@@ -375,7 +376,7 @@ function CategoryAccordion({
     <div className="space-y-2">
       {categories.map((cat) => {
         const isOpen = open.has(cat.key);
-        const color = CATEGORY_COLORS[cat.key] ?? "#c0c1ff";
+        const color = CATEGORY_COLORS[cat.key] ?? DEFAULT_SERIES;
         return (
           <div
             key={cat.key}

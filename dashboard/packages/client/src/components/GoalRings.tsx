@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { HealthSummary } from "@health-dashboard/shared";
 import { useGoalStore, type Goals } from "../stores/goalStore";
+import { METRIC_COLOR } from "./charts/chartPalette";
 
 function Ring({
   progress,
@@ -139,7 +140,7 @@ export function GoalRings({ summary }: { summary: HealthSummary }) {
 
       <div className="flex items-center justify-around py-4">
         {/* Main steps ring */}
-        <Ring progress={stepsPct} color="#c0c1ff" size={128} strokeWidth={8}>
+        <Ring progress={stepsPct} color={METRIC_COLOR.steps} size={128} strokeWidth={8}>
           <span
             className="material-symbols-outlined text-primary text-xl"
             style={{ fontVariationSettings: "'FILL' 1" }}

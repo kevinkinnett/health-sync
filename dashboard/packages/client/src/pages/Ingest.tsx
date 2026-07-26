@@ -11,6 +11,7 @@ import type {
   IngestRunTypeDetail,
   IngestState,
 } from "@health-dashboard/shared";
+import { STATUS } from "../components/charts/chartPalette";
 
 // ────────────────────────────────────────────
 // Helpers
@@ -413,7 +414,7 @@ export function Ingest() {
                     {job.isSkipped ? (
                       <span className="material-symbols-outlined text-outline">skip_next</span>
                     ) : dbRun ? (
-                      <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1", color: dbRun.status === "completed" ? "#4edea3" : "#ffb4ab" }}>
+                      <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1", color: dbRun.status === "completed" ? STATUS.good : STATUS.critical }}>
                         {dbRun.status === "completed" ? "check_circle" : "error"}
                       </span>
                     ) : job.success ? (

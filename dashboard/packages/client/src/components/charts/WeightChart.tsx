@@ -12,6 +12,7 @@ import { useChartTheme } from "../../stores/themeStore";
 import { useUnits } from "../../stores/unitsStore";
 import { convertWeight, weightUnitLabel } from "../../lib/units";
 import { formatNumber } from "./tooltipFormat";
+import { METRIC_COLOR } from "./chartPalette";
 
 interface Props {
   data: WeightEntry[];
@@ -61,9 +62,9 @@ export function WeightChart({ data }: Props) {
           <Line
             type="monotone"
             dataKey="weight"
-            stroke="#4edea3"
+            stroke={METRIC_COLOR.weight}
             strokeWidth={2}
-            dot={{ r: 3, fill: "#4edea3" }}
+            dot={{ r: 3, fill: METRIC_COLOR.weight }}
             connectNulls
             name={`Weight (${unitLabel})`}
           />

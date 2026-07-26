@@ -20,6 +20,7 @@ import {
 } from "../api/queries";
 import { useUnits } from "../stores/unitsStore";
 import { convertWeight, weightUnitLabel } from "../lib/units";
+import { METRIC_COLOR } from "../components/charts/chartPalette";
 
 export function Dashboard() {
   const summary = useHealthSummary();
@@ -68,7 +69,7 @@ export function Dashboard() {
           title="Total Steps"
           value={s?.activity.latest?.steps?.toLocaleString() ?? null}
           sparkline={s?.activity.sparkline ?? []}
-          color="#c0c1ff"
+          color={METRIC_COLOR.steps}
           icon="footprint"
         />
         <StatCard
@@ -80,7 +81,7 @@ export function Dashboard() {
           }
           unit="hrs"
           sparkline={s?.sleep.sparkline ?? []}
-          color="#4edea3"
+          color={METRIC_COLOR.sleepMin}
           icon="bedtime"
         />
         <StatCard
@@ -88,7 +89,7 @@ export function Dashboard() {
           value={s?.heartRate.latest?.restingHeartRate ?? null}
           unit="bpm"
           sparkline={s?.heartRate.sparkline ?? []}
-          color="#ffb2b7"
+          color={METRIC_COLOR.restingHr}
           icon="favorite"
         />
         <StatCard
@@ -100,7 +101,7 @@ export function Dashboard() {
           }
           unit={weightUnitLabel(units)}
           sparkline={s?.weight.sparkline ?? []}
-          color="#c0c1ff"
+          color={METRIC_COLOR.steps}
           icon="scale"
         />
       </div>

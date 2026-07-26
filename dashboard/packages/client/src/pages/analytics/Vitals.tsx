@@ -10,6 +10,7 @@ import {
   type MetricPoint,
 } from "../../components/charts/MetricLineChart";
 import { EmptyState, QueryBoundary } from "../../components/QueryBoundary";
+import { METRIC_COLOR } from "../../components/charts/chartPalette";
 
 /**
  * Overnight "vitals" / recovery screen. These four metrics were
@@ -48,7 +49,7 @@ export function AnalyticsVitals() {
             title="Blood Oxygen (SpO2)"
             description="Nightly average blood-oxygen saturation. Healthy overnight averages sit around 95–100%; repeated dips can signal disturbed breathing."
             unit="%"
-            color="#7fd1ff"
+            color={METRIC_COLOR.spo2}
             movingAverage
             domain={["dataMin - 1", 100]}
             data={data.map((d): MetricPoint => ({ date: d.date, value: d.avgValue }))}
@@ -66,7 +67,7 @@ export function AnalyticsVitals() {
             title="Breathing Rate"
             description="Average breaths per minute during sleep. A sustained rise above your baseline is an early under-recovery / illness signal."
             unit="br/min"
-            color="#4edea3"
+            color={METRIC_COLOR.breathingRate}
             movingAverage
             data={data.map((d): MetricPoint => ({ date: d.date, value: d.breathingRate }))}
           />
@@ -83,7 +84,7 @@ export function AnalyticsVitals() {
             title="Skin Temperature Deviation"
             description="Nightly skin temperature vs your personal baseline (0 = baseline). Multi-night positive deviation is part of the standard illness / over-training triad."
             unit="°"
-            color="#ffb2b7"
+            color={METRIC_COLOR.skinTemp}
             referenceZero
             domain={["dataMin - 0.3", "dataMax + 0.3"]}
             data={data.map((d): MetricPoint => ({ date: d.date, value: d.nightlyRelative }))}

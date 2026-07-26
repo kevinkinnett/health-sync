@@ -1,6 +1,18 @@
 import { test, expect } from "@playwright/test";
 import { collectErrors, significant, stubApi } from "./fixtures.js";
 
+/** The categorical slots validated against the chart surface #171f33. */
+const VALIDATED_SLOTS = [
+  "#3987e5",
+  "#d95926",
+  "#199e70",
+  "#c98500",
+  "#d55181",
+  "#9085e9",
+  "#008300",
+  "#e66767",
+];
+
 /**
  * Five smoke tests, deliberately thin.
  *
@@ -93,6 +105,32 @@ test("charts actually render marks, not just an empty frame", async ({ page }) =
       nodes.filter((n) => (n.getAttribute("d") ?? "").length > 10).length,
     );
   expect(drawn, "no chart paths with geometry were drawn").toBeGreaterThan(0);
+
+  // ...and paints them from the validated palette. Asserted on the real
+  // DOM because the palette unit test can only prove what the module
+  // exports, not what a component actually hands the chart library.
+  const painted = await page
+    .locator(".recharts-surface *")
+    .evaluateAll((nodes) => {
+      const seen = new Set<string>();
+      for (const n of nodes) {
+        for (const attr of ["stroke", "fill"]) {
+          const v = n.getAttribute(attr);
+          if (v?.startsWith("#")) seen.add(v.toLowerCase());
+        }
+      }
+      return [...seen];
+    });
+  const LEGACY = ["#4edea3", "#c0c1ff", "#ffb2b7", "#8083ff", "#ffd479", "#7fd1ff"];
+  expect(
+    painted.filter((c) => LEGACY.includes(c)),
+    "a chart still paints a colour from the retired palette",
+  ).toEqual([]);
+  expect(
+    painted.filter((c) => VALIDATED_SLOTS.includes(c)).length,
+    "no validated palette colour reached the DOM",
+  ).toBeGreaterThan(0);
+
   expect(significant(errors)).toEqual([]);
 });
 

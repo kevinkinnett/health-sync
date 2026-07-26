@@ -4,6 +4,7 @@ import {
   Line,
 } from "recharts";
 import type { SparklineData } from "@health-dashboard/shared";
+import { DEFAULT_SERIES } from "./charts/chartPalette";
 
 interface StatCardProps {
   title: string;
@@ -20,7 +21,7 @@ export function StatCard({
   value,
   unit,
   sparkline,
-  color = "#c0c1ff",
+  color = DEFAULT_SERIES,
   icon,
   badge,
 }: StatCardProps) {

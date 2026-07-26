@@ -10,6 +10,7 @@ import {
 import { useChartTheme } from "../../stores/themeStore";
 import { CorrelationBadge } from "./CorrelationBadge";
 import { formatNumber } from "./tooltipFormat";
+import { DEFAULT_SERIES } from "./chartPalette";
 
 export interface ScatterPanelPoint {
   x: number;
@@ -110,7 +111,7 @@ export function ScatterPanel({
               formatter={formatNumber((v) => v.toLocaleString())}
               labelFormatter={() => ""}
             />
-            <Scatter data={points} fill="#8083ff" fillOpacity={0.6} r={3} />
+            <Scatter data={points} fill={DEFAULT_SERIES} fillOpacity={0.6} r={3} />
           </ScatterChart>
         </ResponsiveContainer>
       </div>

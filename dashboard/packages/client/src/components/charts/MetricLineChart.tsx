@@ -11,6 +11,7 @@ import {
 } from "recharts";
 import { useChartTheme } from "../../stores/themeStore";
 import { formatWithUnit } from "./tooltipFormat";
+import { DEFAULT_SERIES } from "./chartPalette";
 
 export interface MetricPoint {
   date: string;
@@ -48,7 +49,7 @@ export function MetricLineChart({
   description,
   data,
   unit,
-  color = "#c0c1ff",
+  color = DEFAULT_SERIES,
   referenceZero = false,
   movingAverage = false,
   domain = ["dataMin - 1", "dataMax + 1"],

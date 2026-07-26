@@ -13,6 +13,7 @@ import type { SleepDay } from "@health-dashboard/shared";
 import { useChartTheme } from "../../stores/themeStore";
 import { useUserTimezone } from "../../api/queries";
 import { formatNumber, labelFromPayloadDate } from "./tooltipFormat";
+import { METRIC_COLOR, SLEEP_STAGE_COLOR } from "./chartPalette";
 
 // Internal Y-axis units: minutes since 6:00 PM in the user's timezone.
 // 0   = 6:00 PM
@@ -186,20 +187,20 @@ export function SleepTimingChart({ data }: Props) {
           <Legend />
           <ReferenceLine
             y={avgBedtime}
-            stroke="#c0c1ff"
+            stroke={METRIC_COLOR.sleepMin}
             strokeDasharray="5 5"
             strokeOpacity={0.5}
           />
           {avgWaketime != null && (
             <ReferenceLine
               y={avgWaketime}
-              stroke="#4edea3"
+              stroke={SLEEP_STAGE_COLOR.rem}
               strokeDasharray="5 5"
               strokeOpacity={0.5}
             />
           )}
-          <Scatter name="Bedtime" data={chartBedtimes} fill="#c0c1ff" r={3} />
-          <Scatter name="Wake" data={chartWaketimes} fill="#4edea3" r={3} />
+          <Scatter name="Bedtime" data={chartBedtimes} fill={METRIC_COLOR.sleepMin} r={3} />
+          <Scatter name="Wake" data={chartWaketimes} fill={SLEEP_STAGE_COLOR.rem} r={3} />
         </ScatterChart>
       </ResponsiveContainer>
     </div>

@@ -10,6 +10,7 @@ import {
 import type { HeartRateDay } from "@health-dashboard/shared";
 import { useChartTheme } from "../../stores/themeStore";
 import { movingAverage } from "../../utils/movingAverage";
+import { METRIC_COLOR, SERIES } from "./chartPalette";
 
 interface Props {
   data: HeartRateDay[];
@@ -37,7 +38,7 @@ export function HeartRateChart({ data }: Props) {
           <Line
             type="monotone"
             dataKey="rhr"
-            stroke="#ffb2b7"
+            stroke={METRIC_COLOR.restingHr}
             strokeWidth={1.5}
             dot={{ r: 2 }}
             connectNulls
@@ -46,7 +47,7 @@ export function HeartRateChart({ data }: Props) {
           <Line
             type="monotone"
             dataKey="ma7d"
-            stroke="#ff8a93"
+            stroke={SERIES[4]}
             strokeWidth={2}
             dot={false}
             strokeDasharray="5 3"

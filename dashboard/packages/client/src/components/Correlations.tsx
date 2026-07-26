@@ -15,8 +15,9 @@ import type {
 } from "@health-dashboard/shared";
 import { useChartTheme } from "../stores/themeStore";
 import { ScatterPanel } from "./charts/ScatterPanel";
+import { MAGNITUDE_RAMP_3 } from "./charts/chartPalette";
 
-const BUCKET_COLORS = ["#464554", "#c0c1ff", "#4edea3"];
+const BUCKET_COLORS = MAGNITUDE_RAMP_3;
 const BUCKET_BORDERS = [
   "border-outline-variant",
   "border-primary",

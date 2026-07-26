@@ -3,6 +3,7 @@ import * as Plot from "@observablehq/plot";
 import type { LagProfile } from "@health-dashboard/shared";
 import { PlotFigure } from "./PlotFigure";
 import { PLOT_STYLE, METRIC_COLOR } from "./plotTheme";
+import { DEFAULT_SERIES } from "./chartPalette";
 
 interface Row {
   lag: number;
@@ -32,7 +33,7 @@ export function LagCurve({ data }: { data: LagProfile }) {
     const labels = [...new Set(rows.map((r) => r.label))];
     const colorRange = labels.map((label) => {
       const metric = rows.find((r) => r.label === label)!.metric;
-      return METRIC_COLOR[metric] ?? "#8083ff";
+      return METRIC_COLOR[metric] ?? DEFAULT_SERIES;
     });
     return {
       height: 280,

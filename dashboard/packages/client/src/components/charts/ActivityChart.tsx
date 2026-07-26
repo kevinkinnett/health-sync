@@ -12,6 +12,7 @@ import {
 import type { ActivityDay } from "@health-dashboard/shared";
 import { useChartTheme } from "../../stores/themeStore";
 import { movingAverage } from "../../utils/movingAverage";
+import { METRIC_COLOR } from "./chartPalette";
 
 interface Props {
   data: ActivityDay[];
@@ -42,7 +43,7 @@ export function ActivityChart({ data }: Props) {
             yAxisId="steps"
             type="monotone"
             dataKey="steps"
-            stroke="#c0c1ff"
+            stroke={METRIC_COLOR.steps}
             strokeWidth={2}
             dot={false}
             name="Steps"
@@ -51,7 +52,7 @@ export function ActivityChart({ data }: Props) {
             yAxisId="steps"
             type="monotone"
             dataKey="stepsMA"
-            stroke="#9b9dff"
+            stroke={METRIC_COLOR.activeMinutes}
             strokeWidth={2}
             dot={false}
             strokeDasharray="5 3"
@@ -62,9 +63,9 @@ export function ActivityChart({ data }: Props) {
             yAxisId="minutes"
             type="monotone"
             dataKey="activeMinutes"
-            fill="#c0c1ff"
+            fill={METRIC_COLOR.steps}
             fillOpacity={0.2}
-            stroke="#c0c1ff"
+            stroke={METRIC_COLOR.steps}
             name="Active Min"
           />
         </ComposedChart>

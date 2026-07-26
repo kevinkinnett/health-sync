@@ -3,6 +3,7 @@ import * as Plot from "@observablehq/plot";
 import type { DoseResponseSummary } from "@health-dashboard/shared";
 import { PlotFigure } from "./PlotFigure";
 import { PLOT_STYLE, METRIC_COLOR } from "./plotTheme";
+import { DEFAULT_SERIES } from "./chartPalette";
 
 function levelLabel(dose: number, unit: string): string {
   if (dose === 0) return "Not taken";
@@ -91,7 +92,7 @@ export function DoseDistribution({ data }: { data: DoseResponseSummary }) {
             key={p.metric.metric}
             metric={p.metric}
             rows={p.rows}
-            color={METRIC_COLOR[p.metric.metric] ?? "#8083ff"}
+            color={METRIC_COLOR[p.metric.metric] ?? DEFAULT_SERIES}
           />
         ))}
       </div>

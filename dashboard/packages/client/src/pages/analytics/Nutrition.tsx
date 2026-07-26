@@ -5,6 +5,7 @@ import {
   type MetricPoint,
 } from "../../components/charts/MetricLineChart";
 import { EmptyState, QueryBoundary } from "../../components/QueryBoundary";
+import { METRIC_COLOR } from "../../components/charts/chartPalette";
 
 /**
  * Nutrition / food-intake screen. Calorie + nutrient data rolled up from
@@ -49,7 +50,7 @@ function NutritionBody({ data }: { data: FoodLogDay[] }) {
         title="Calories In"
         description="Total calories logged per day. Pair with your activity / calories-out for energy balance."
         unit="cal"
-        color="#ffd479"
+        color={METRIC_COLOR.caloriesIn}
         digits={0}
         data={data.map((d): MetricPoint => ({ date: d.date, value: d.caloriesIn }))}
       />
@@ -57,7 +58,7 @@ function NutritionBody({ data }: { data: FoodLogDay[] }) {
         title="Protein"
         description="Grams of protein logged per day."
         unit="g"
-        color="#4edea3"
+        color={METRIC_COLOR.protein}
         digits={0}
         data={data.map((d): MetricPoint => ({ date: d.date, value: d.protein }))}
       />
@@ -65,7 +66,7 @@ function NutritionBody({ data }: { data: FoodLogDay[] }) {
         title="Carbohydrates"
         description="Grams of carbohydrate logged per day."
         unit="g"
-        color="#7fd1ff"
+        color={METRIC_COLOR.carbs}
         digits={0}
         data={data.map((d): MetricPoint => ({ date: d.date, value: d.carbs }))}
       />
@@ -73,7 +74,7 @@ function NutritionBody({ data }: { data: FoodLogDay[] }) {
         title="Fat"
         description="Grams of fat logged per day."
         unit="g"
-        color="#ffb2b7"
+        color={METRIC_COLOR.fat}
         digits={0}
         data={data.map((d): MetricPoint => ({ date: d.date, value: d.fat }))}
       />
@@ -81,7 +82,7 @@ function NutritionBody({ data }: { data: FoodLogDay[] }) {
         title="Fiber"
         description="Grams of fiber logged per day."
         unit="g"
-        color="#c9b6ff"
+        color={METRIC_COLOR.fiber}
         digits={0}
         data={data.map((d): MetricPoint => ({ date: d.date, value: d.fiber }))}
       />
@@ -89,7 +90,7 @@ function NutritionBody({ data }: { data: FoodLogDay[] }) {
         title="Sugar"
         description="Grams of sugar logged per day (a subset of carbohydrates)."
         unit="g"
-        color="#ff9ecb"
+        color={METRIC_COLOR.sugar}
         digits={0}
         data={data.map((d): MetricPoint => ({ date: d.date, value: d.sugar }))}
       />
@@ -97,7 +98,7 @@ function NutritionBody({ data }: { data: FoodLogDay[] }) {
         title="Sodium"
         description="Milligrams of sodium logged per day."
         unit="mg"
-        color="#9fe0ff"
+        color={METRIC_COLOR.sodium}
         digits={0}
         data={data.map((d): MetricPoint => ({ date: d.date, value: d.sodium }))}
       />

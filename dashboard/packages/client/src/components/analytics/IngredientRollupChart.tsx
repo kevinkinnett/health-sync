@@ -11,17 +11,16 @@ import {
 } from "recharts";
 import type { IngredientByDay } from "@health-dashboard/shared";
 import { useChartTheme } from "../../stores/themeStore";
+import { SERIES } from "../charts/chartPalette";
 
-const STACK_COLORS = [
-  "#c0c1ff",
-  "#4edea3",
-  "#ffb2b7",
-  "#ffd166",
-  "#a78bfa",
-  "#34d399",
-  "#f472b6",
-  "#60a5fa",
-];
+/**
+ * Ingredients are an open set, so slots are taken in the validated order
+ * and wrap. Past eight distinct ingredients the wrap repeats a hue —
+ * acceptable here because each stack segment is directly labelled in the
+ * legend and tooltip, which is the secondary encoding that carries
+ * identity when colour alone cannot.
+ */
+const STACK_COLORS = SERIES;
 
 /**
  * Stacked area chart of per-ingredient daily totals. The server returns

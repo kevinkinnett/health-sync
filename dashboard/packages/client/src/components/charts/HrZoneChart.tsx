@@ -14,13 +14,9 @@ import {
 import type { HeartRateDay } from "@health-dashboard/shared";
 import { useChartTheme } from "../../stores/themeStore";
 import { formatWithUnit } from "./tooltipFormat";
+import { HR_ZONE_COLOR } from "./chartPalette";
 
-const ZONE_COLORS = {
-  outOfRange: "#938f99",
-  fatBurn: "#4edea3",
-  cardio: "#c0c1ff",
-  peak: "#ffb2b7",
-};
+const ZONE_COLORS = HR_ZONE_COLOR;
 
 interface Props {
   data: HeartRateDay[];

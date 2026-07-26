@@ -11,6 +11,7 @@ import {
   type MetricPoint,
 } from "../components/charts/MetricLineChart";
 import { ReadinessWaterfall } from "../components/charts/ReadinessWaterfall";
+import { READINESS_BAND_COLOR } from "../components/charts/chartPalette";
 
 /**
  * Readiness detail screen — the "more information" view behind the
@@ -22,9 +23,9 @@ import { ReadinessWaterfall } from "../components/charts/ReadinessWaterfall";
  */
 
 const BAND: Record<ReadinessBand, { ring: string; text: string; label: string; blurb: string }> = {
-  primed: { ring: "#4edea3", text: "text-secondary", label: "Primed", blurb: "Clearly above your baseline — a good day to push." },
-  balanced: { ring: "#c0c1ff", text: "text-primary", label: "Balanced", blurb: "Around your baseline — train as planned." },
-  compromised: { ring: "#ffb2b7", text: "text-error", label: "Compromised", blurb: "Below your baseline — favour recovery." },
+  primed: { ring: READINESS_BAND_COLOR.primed, text: "text-secondary", label: "Primed", blurb: "Clearly above your baseline — a good day to push." },
+  balanced: { ring: READINESS_BAND_COLOR.balanced, text: "text-primary", label: "Balanced", blurb: "Around your baseline — train as planned." },
+  compromised: { ring: READINESS_BAND_COLOR.compromised, text: "text-error", label: "Compromised", blurb: "Below your baseline — favour recovery." },
   insufficient: { ring: "#5a5b6a", text: "text-outline", label: "No score yet", blurb: "Not enough baseline history." },
 };
 

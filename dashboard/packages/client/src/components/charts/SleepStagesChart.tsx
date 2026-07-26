@@ -12,6 +12,7 @@ import {
 import type { SleepDay } from "@health-dashboard/shared";
 import { useChartTheme } from "../../stores/themeStore";
 import { movingAverage } from "../../utils/movingAverage";
+import { SLEEP_STAGE_COLOR } from "./chartPalette";
 
 interface Props {
   data: SleepDay[];
@@ -39,10 +40,10 @@ export function SleepStagesChart({ data }: Props) {
           <YAxis tick={ct.tick} label={{ value: "min", angle: -90, position: "insideLeft", style: { fontSize: 11, fill: ct.tick.fill } }} />
           <Tooltip contentStyle={ct.tooltip.contentStyle} labelStyle={ct.tooltip.labelStyle} itemStyle={ct.tooltip.itemStyle} />
           <Legend />
-          <Bar dataKey="deep" stackId="sleep" fill="#0d7a5f" name="Deep" />
-          <Bar dataKey="light" stackId="sleep" fill="#4edea3" name="Light" />
-          <Bar dataKey="rem" stackId="sleep" fill="#80ebc2" name="REM" />
-          <Bar dataKey="wake" stackId="sleep" fill="#ffb2b7" name="Wake" />
+          <Bar dataKey="deep" stackId="sleep" fill={SLEEP_STAGE_COLOR.deep} name="Deep" />
+          <Bar dataKey="light" stackId="sleep" fill={SLEEP_STAGE_COLOR.light} name="Light" />
+          <Bar dataKey="rem" stackId="sleep" fill={SLEEP_STAGE_COLOR.rem} name="REM" />
+          <Bar dataKey="wake" stackId="sleep" fill={SLEEP_STAGE_COLOR.wake} name="Wake" />
           <Line
             type="monotone"
             dataKey="sleepMA"

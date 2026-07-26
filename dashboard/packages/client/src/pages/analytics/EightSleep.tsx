@@ -5,6 +5,7 @@ import {
   type MetricPoint,
 } from "../../components/charts/MetricLineChart";
 import { EmptyState, QueryBoundary } from "../../components/QueryBoundary";
+import { METRIC_COLOR, SERIES } from "../../components/charts/chartPalette";
 
 /**
  * Eight Sleep nightly screen (roadmap Phase 2). The mattress is a
@@ -45,7 +46,7 @@ function EightSleepBody({ data }: { data: EightSleepDay[] }) {
         title="Sleep Score"
         description="Eight Sleep's nightly sleep score (0–100)."
         unit=""
-        color="#c0c1ff"
+        color={METRIC_COLOR.sleepMin}
         domain={[0, 100]}
         digits={0}
         data={data.map((d): MetricPoint => ({ date: d.date, value: d.score }))}
@@ -54,7 +55,7 @@ function EightSleepBody({ data }: { data: EightSleepDay[] }) {
         title="Time Asleep"
         description="Total time asleep per night."
         unit="h"
-        color="#7fd1ff"
+        color={SERIES[0]}
         movingAverage
         data={data.map((d): MetricPoint => ({ date: d.date, value: hours(d.sleepDurationMin) }))}
       />
@@ -62,7 +63,7 @@ function EightSleepBody({ data }: { data: EightSleepDay[] }) {
         title="Overnight Heart Rate"
         description="Average heart rate during sleep. This is the more dynamic signal that drives ~65% of the fused resting-HR readiness input — Fitbit's wrist RHR is far more smoothed."
         unit="bpm"
-        color="#ffb2b7"
+        color={METRIC_COLOR.restingHr}
         movingAverage
         data={data.map((d): MetricPoint => ({ date: d.date, value: d.avgHeartRate }))}
       />
@@ -70,7 +71,7 @@ function EightSleepBody({ data }: { data: EightSleepDay[] }) {
         title="HRV (RMSSD)"
         description="Heart-rate variability during sleep. Higher = better recovered; agrees closely with Fitbit (r≈0.91)."
         unit="ms"
-        color="#4edea3"
+        color={METRIC_COLOR.deepMin}
         movingAverage
         data={data.map((d): MetricPoint => ({ date: d.date, value: d.avgHrvRmssd }))}
       />
@@ -78,7 +79,7 @@ function EightSleepBody({ data }: { data: EightSleepDay[] }) {
         title="Respiratory Rate"
         description="Breaths per minute during sleep."
         unit="/min"
-        color="#ffd479"
+        color={METRIC_COLOR.dailyRmssd}
         movingAverage
         data={data.map((d): MetricPoint => ({ date: d.date, value: d.avgRespiratoryRate }))}
       />
@@ -86,14 +87,14 @@ function EightSleepBody({ data }: { data: EightSleepDay[] }) {
         title="Bed Temperature"
         description="Average Pod surface temperature. Environmental (Pod-heating dependent), so it's deliberately NOT part of the readiness score."
         unit="°C"
-        color="#e0a3ff"
+        color={SERIES[5]}
         data={data.map((d): MetricPoint => ({ date: d.date, value: d.avgBedTempC }))}
       />
       <MetricLineChart
         title="Restlessness (toss & turns)"
         description="Movement events through the night — a small penalty signal in readiness."
         unit=""
-        color="#ffa39e"
+        color={METRIC_COLOR.tnt}
         movingAverage
         digits={0}
         data={data.map((d): MetricPoint => ({ date: d.date, value: d.tnt }))}

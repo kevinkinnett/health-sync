@@ -11,6 +11,7 @@ import {
 import type { HrvDay } from "@health-dashboard/shared";
 import { useChartTheme } from "../../stores/themeStore";
 import { formatWithUnit } from "./tooltipFormat";
+import { METRIC_COLOR, SERIES } from "./chartPalette";
 
 interface Props {
   data: HrvDay[];
@@ -73,7 +74,7 @@ export function HrvChart({ data }: Props) {
           <Line
             type="monotone"
             dataKey="dailyRmssd"
-            stroke="#c0c1ff"
+            stroke={METRIC_COLOR.dailyRmssd}
             strokeWidth={1.5}
             dot={{ r: 1.5 }}
             connectNulls
@@ -82,7 +83,7 @@ export function HrvChart({ data }: Props) {
           <Line
             type="monotone"
             dataKey="deepRmssd"
-            stroke="#4edea3"
+            stroke={METRIC_COLOR.deepMin}
             strokeWidth={1.5}
             dot={{ r: 1.5 }}
             connectNulls
@@ -91,7 +92,7 @@ export function HrvChart({ data }: Props) {
           <Line
             type="monotone"
             dataKey="ma7d"
-            stroke="#9b9dff"
+            stroke={SERIES[5]}
             strokeWidth={2.5}
             dot={false}
             strokeDasharray="5 3"

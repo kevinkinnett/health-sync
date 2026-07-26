@@ -1,5 +1,6 @@
 import { ResponsiveContainer, BarChart, Bar, Cell } from "recharts";
 import type { DrivingSummary } from "@health-dashboard/shared";
+import { CHART_CHROME, METRIC_COLOR } from "./charts/chartPalette";
 
 /** Minutes → "1h 45m" / "45m". */
 function fmtHm(min: number): string {
@@ -70,7 +71,7 @@ export function DrivingCard({ data }: { data: DrivingSummary }) {
                   {data.trend.map((d, i) => (
                     <Cell
                       key={i}
-                      fill={d.minutes >= max * 0.8 ? "#c0c1ff" : "#3a3b52"}
+                      fill={d.minutes >= max * 0.8 ? METRIC_COLOR.minutesInCar : CHART_CHROME.inactive}
                     />
                   ))}
                 </Bar>
