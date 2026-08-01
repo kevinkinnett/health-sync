@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 import type {
+  ActivityDay,
   AlertsResponse,
   ApiLogStats,
   AppConfig,
@@ -348,6 +349,25 @@ const HRV: HrvDay[] = [
   fetchedAt: FETCHED,
 }));
 
+/**
+ * Enough days for the 7-day average to have a value, and varied active
+ * minutes so both panels have real geometry to draw.
+ */
+const ACTIVITY: ActivityDay[] = Array.from({ length: 10 }, (_, i) => ({
+  date: `2026-07-${String(i + 20).padStart(2, "0")}`,
+  steps: 4000 + i * 420,
+  caloriesOut: 2180 + i * 15,
+  caloriesBmr: null,
+  activeCalories: null,
+  distanceKm: 3.1 + i * 0.3,
+  floors: 4 + (i % 3),
+  minutesSedentary: null,
+  minutesLightlyActive: 110 + i,
+  minutesFairlyActive: 8 + (i % 5) * 3,
+  minutesVeryActive: 2 + (i % 4) * 4,
+  fetchedAt: FETCHED,
+}));
+
 const ALERTS: AlertsResponse = { alerts: [], unreadCount: 0 };
 const LLM_MODELS: LlmModelSettings = { dossier: "sonnet", insights: "sonnet", chat: "sonnet" };
 
@@ -446,6 +466,7 @@ const ROUTES: [RegExp, unknown][] = [
   [/\/api\/health\/spo2/, SPO2],
   [/\/api\/health\/heart-rate/, HEART_RATE],
   [/\/api\/health\/hrv/, HRV],
+  [/\/api\/health\/activity/, ACTIVITY],
   [/\/api\/alerts/, ALERTS],
   [/\/api\/settings\/llm-models$/, LLM_MODELS],
   [/\/api\/settings\/notifications$/, NOTIFICATIONS],

@@ -28,11 +28,11 @@ describe("AnalyticsHrv — deep sleep RMSSD", () => {
   beforeEach(() => apiFetchMock.mockReset());
 
   // NOTE: whether the deep-sleep LINE actually draws is asserted in the e2e
-  // suite, not here. Recharts renders nothing inside a ResponsiveContainer
-  // under jsdom (width and height are both 0), so a geometry assertion would
-  // fail even on correct code, and the legend entry renders whether or not
-  // the series has a single non-null point. Only a real browser can tell the
-  // difference — see "the HRV chart draws the deep sleep series".
+  // suite, not here. Even with setup.ts giving jsdom an element box, Recharts
+  // emits no curve geometry under jsdom — only chrome — and the legend entry
+  // renders whether or not the series has a single non-null point. A missing
+  // series is invisible to this file by construction. See the e2e case "the
+  // HRV chart draws the deep sleep series".
 
   it("flags the source change when the window spans it", async () => {
     apiFetchMock.mockResolvedValue([

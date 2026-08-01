@@ -4,10 +4,14 @@ import { DataTable, tdClass, tdRightClass, trClass } from "../../components/Data
 import { useUnits } from "../../stores/unitsStore";
 import { formatDistance } from "../../lib/units";
 import { EmptyState, QueryBoundary } from "../../components/QueryBoundary";
+import { useChartAnnotations } from "../../components/charts/annotations";
 
 export function AnalyticsActivity() {
   const activity = useActivity();
   const units = useUnits();
+  // Dated changes drawn onto the series, so a shift in activity can be read
+  // against what was happening at the time.
+  const marks = useChartAnnotations((activity.data ?? []).map((d) => d.date));
   return (
     <QueryBoundary
       query={activity}
@@ -16,7 +20,7 @@ export function AnalyticsActivity() {
     >
       {(data) => (
         <div className="space-y-4">
-          <ActivityChart data={data} />
+          <ActivityChart data={data} annotations={marks} />
           <DataTable
             title="Daily Activity"
             headers={["Date", "Steps", "Calories", "Active Min", "Distance"]}

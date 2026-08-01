@@ -49,6 +49,7 @@ test("every primary route renders without a crash", async ({ page }) => {
     "/readiness",
     "/timeline",
     "/analytics/overview",
+    "/analytics/activity",
     "/analytics/heart-rate",
     "/analytics/hrv",
     "/analytics/nutrition",
@@ -172,6 +173,34 @@ test("the heart rate screen reports weighted zone minutes", async ({ page }) => 
   });
   await expect(page.getByText("43 min/day in zone")).toBeVisible();
   await expect(page.getByTestId("hr-zone-empty")).toHaveCount(0);
+
+  expect(significant(errors)).toEqual([]);
+});
+
+test("the activity chart draws both measures on separate scales", async ({ page }) => {
+  // It shipped as a single plot with two y-scales (steps 0-18k on the left,
+  // minutes 0-160 on the right), both series in the same blue. Where those
+  // lines crossed was an artefact of the scale ratio, not the data.
+  const errors = collectErrors(page);
+  await page.goto("/analytics/activity");
+
+  await expect(page.getByTestId("panel-Steps")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId("panel-Active minutes")).toBeVisible();
+
+  // Two plots, not one.
+  await expect(page.locator(".recharts-wrapper")).toHaveCount(2);
+
+  // Both actually drew, and in DIFFERENT colours — the specific defect was
+  // two measures sharing one hue.
+  const painted = await page
+    .locator(".recharts-area-area, .recharts-line-curve")
+    .evaluateAll((nodes) =>
+      nodes
+        .filter((n) => (n.getAttribute("d") ?? "").length > 10)
+        .map((n) => (n.getAttribute("stroke") ?? n.getAttribute("fill") ?? "").toLowerCase()),
+    );
+  expect(painted.length, "the panels drew no geometry").toBeGreaterThanOrEqual(2);
+  expect(new Set(painted).size, "both measures painted the same colour").toBeGreaterThan(1);
 
   expect(significant(errors)).toEqual([]);
 });
