@@ -7,6 +7,7 @@ import type {
 import { useExperimentReport } from "../../api/queries";
 import { QueryBoundary } from "../QueryBoundary";
 import { SERIES, STATUS } from "../charts/chartPalette";
+import { EffectSizePlot } from "./EffectSizePlot";
 
 /**
  * The "did it work?" report.
@@ -84,6 +85,11 @@ function Report({ report }: { report: ExperimentReport }) {
         </h3>
         <p className="text-xs text-on-surface-variant mt-1">{conf.blurb}</p>
       </div>
+
+      {/* The plot before the table: "which of these moved" should be a
+          glance, and the table is there for the reader who then wants the
+          actual numbers behind it. */}
+      {report.metrics.length > 0 && <EffectSizePlot metrics={report.metrics} />}
 
       {report.metrics.length > 0 && (
         <div className="overflow-x-auto">

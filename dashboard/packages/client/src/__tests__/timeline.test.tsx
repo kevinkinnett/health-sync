@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { Timeline } from "../pages/Timeline";
@@ -108,6 +108,14 @@ function route(path?: string) {
   return Promise.resolve([]);
 }
 
+/**
+ * The list row, not the overlap bar. Both render the intervention's name
+ * now that the Gantt sits above the list, so an unscoped text query is
+ * ambiguous.
+ */
+const listRow = () =>
+  within(screen.getByTestId("intervention-list")).getByText("Eight Sleep Pod");
+
 describe("Timeline", () => {
   beforeEach(() => {
     apiFetchMock.mockReset();
@@ -117,8 +125,12 @@ describe("Timeline", () => {
   it("lists interventions with their dates", async () => {
     renderScreen();
     await waitFor(() => {
-      expect(screen.getByText("Eight Sleep Pod")).toBeInTheDocument();
-      expect(screen.getByText("Escitalopram 10 mg")).toBeInTheDocument();
+      expect(listRow()).toBeInTheDocument();
+      expect(
+        within(screen.getByTestId("intervention-list")).getByText(
+          "Escitalopram 10 mg",
+        ),
+      ).toBeInTheDocument();
     });
     expect(screen.getByText(/2026-05-02 → now/)).toBeInTheDocument();
   });
@@ -130,19 +142,19 @@ describe("Timeline", () => {
 
   it("offers delete only on manual rows — derived ones own their source", async () => {
     renderScreen();
-    await waitFor(() => screen.getByText("Eight Sleep Pod"));
+    await waitFor(listRow);
     expect(screen.getByLabelText("Delete Eight Sleep Pod")).toBeInTheDocument();
     expect(screen.queryByLabelText("Delete Escitalopram 10 mg")).toBeNull();
   });
 
   it("runs the report only after a change is selected", async () => {
     renderScreen();
-    await waitFor(() => screen.getByText("Eight Sleep Pod"));
+    await waitFor(listRow);
     expect(
       apiFetchMock.mock.calls.some(([p]) => String(p).startsWith("/experiments")),
     ).toBe(false);
 
-    fireEvent.click(screen.getByText("Eight Sleep Pod"));
+    fireEvent.click(listRow());
     await waitFor(() =>
       expect(screen.getByText(/time asleep improved/i)).toBeInTheDocument(),
     );
@@ -150,8 +162,8 @@ describe("Timeline", () => {
 
   it("shows the confidence grade and the competing explanation", async () => {
     renderScreen();
-    await waitFor(() => screen.getByText("Eight Sleep Pod"));
-    fireEvent.click(screen.getByText("Eight Sleep Pod"));
+    await waitFor(listRow);
+    fireEvent.click(listRow());
 
     await waitFor(() => {
       expect(screen.getByText("Weak evidence")).toBeInTheDocument();
@@ -163,8 +175,8 @@ describe("Timeline", () => {
 
   it("explains why no p-value is shown", async () => {
     renderScreen();
-    await waitFor(() => screen.getByText("Eight Sleep Pod"));
-    fireEvent.click(screen.getByText("Eight Sleep Pod"));
+    await waitFor(listRow);
+    fireEvent.click(listRow());
     await waitFor(() =>
       expect(screen.getByText(/autocorrelated/i)).toBeInTheDocument(),
     );
@@ -172,11 +184,15 @@ describe("Timeline", () => {
 
   it("renders both metric rows, including the one that didn't move", async () => {
     renderScreen();
-    await waitFor(() => screen.getByText("Eight Sleep Pod"));
-    fireEvent.click(screen.getByText("Eight Sleep Pod"));
+    await waitFor(listRow);
+    fireEvent.click(listRow());
+    // Role-scoped to the table: the effect-size plot above it labels the
+    // same two metrics, so a bare text query now matches twice.
     await waitFor(() => {
-      expect(screen.getByText("Time asleep")).toBeInTheDocument();
-      expect(screen.getByText("Resting heart rate")).toBeInTheDocument();
+      expect(screen.getByRole("cell", { name: /Time asleep/ })).toBeInTheDocument();
+      expect(
+        screen.getByRole("cell", { name: /Resting heart rate/ }),
+      ).toBeInTheDocument();
     });
   });
 
@@ -190,7 +206,7 @@ describe("Timeline", () => {
 
   it("can add a change, and hides the end-date field for a one-off moment", async () => {
     renderScreen();
-    await waitFor(() => screen.getByText("Eight Sleep Pod"));
+    await waitFor(listRow);
 
     fireEvent.click(screen.getByText("Add change"));
     expect(screen.getByLabelText(/Ended on/i)).toBeInTheDocument();

@@ -7,6 +7,9 @@ import {
   useRefreshInterventions,
 } from "../api/queries";
 import { EmptyState, QueryBoundary } from "../components/QueryBoundary";
+import { InterventionGantt } from "../components/interventions/InterventionGantt";
+import { useUserTimezone } from "../api/queries";
+import { todayInTz } from "../lib/userTz";
 import { InterventionForm } from "../components/interventions/InterventionForm";
 import { ExperimentReportCard } from "../components/interventions/ExperimentReportCard";
 import { SERIES } from "../components/charts/chartPalette";
@@ -53,6 +56,9 @@ export function Timeline() {
   );
   const [showForm, setShowForm] = useState(false);
   const refresh = useRefreshInterventions();
+  // An ongoing period has no end date, so the overlap view needs to know
+  // where "now" is to draw it as still running.
+  const today = todayInTz(useUserTimezone());
 
   return (
     <div className="space-y-4">
@@ -93,17 +99,27 @@ export function Timeline() {
         isEmpty={(d) => d.length === 0}
       >
         {(items) => (
-          <div className="space-y-3">
-            {items.map((item) => (
-              <InterventionRow
-                key={item.id}
-                item={item}
-                selected={item.id === selectedId}
-                onSelect={() =>
-                  setSelectedId((cur) => (cur === item.id ? null : item.id))
-                }
-              />
-            ))}
+          <div className="space-y-4">
+            <InterventionGantt
+              interventions={items}
+              today={today}
+              selectedId={selectedId}
+              onSelect={(id) => setSelectedId((cur) => (cur === id ? null : id))}
+            />
+            {/* Named, because the overlap bars above render the same
+                intervention names — a bare text query now matches both. */}
+            <div className="space-y-3" data-testid="intervention-list">
+              {items.map((item) => (
+                <InterventionRow
+                  key={item.id}
+                  item={item}
+                  selected={item.id === selectedId}
+                  onSelect={() =>
+                    setSelectedId((cur) => (cur === item.id ? null : item.id))
+                  }
+                />
+              ))}
+            </div>
           </div>
         )}
       </QueryBoundary>

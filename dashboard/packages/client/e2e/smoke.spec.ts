@@ -146,11 +146,20 @@ test("the timeline runs a before/after report and surfaces its caveat", async ({
   const errors = collectErrors(page);
   await page.goto("/timeline");
 
-  await expect(page.getByText("Eight Sleep Pod")).toBeVisible({ timeout: 15_000 });
+  const list = page.getByTestId("intervention-list");
+  await expect(list.getByText("Eight Sleep Pod")).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText("detected")).toBeVisible();
 
-  await page.getByText("Eight Sleep Pod").click();
+  await list.getByText("Eight Sleep Pod").click();
   await expect(page.getByText("Weak evidence")).toBeVisible();
+
+  // The report leads with the effect-size plot, so "which of these moved"
+  // is a glance rather than a scan of the table below it.
+  await expect(page.getByTestId("effect-size-plot")).toBeVisible();
+
+  // And the overlap view is what makes the caveat legible: two bars that
+  // visibly abut, rather than a sentence you have to hold in your head.
+  await expect(page.getByTestId("intervention-gantt")).toBeVisible();
   await expect(page.getByText(/too close to separate the two/i)).toBeVisible();
   // Role-scoped: "Time asleep" also appears in the summary sentence above.
   await expect(page.getByRole("cell", { name: /Time asleep/ })).toBeVisible();
