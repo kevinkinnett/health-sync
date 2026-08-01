@@ -22,6 +22,26 @@ interface Props {
   data: HeartRateDay[];
 }
 
+interface ZoneTotals {
+  fatBurn: number;
+  cardio: number;
+  peak: number;
+}
+
+/**
+ * Fitbit's Active Zone Minutes: a minute in the fat-burn zone earns 1, a
+ * minute in cardio or peak earns 2. (Confirmed against the raw per-minute
+ * points, which carry the credit alongside the zone.)
+ *
+ * This card used to add the raw minute counts together and label the result
+ * "active zone minutes", which is a different, smaller number — it undercounts
+ * exactly the hard sessions AZM exists to reward, and it never matched what
+ * the watch reported.
+ */
+export function activeZoneMinutes(z: ZoneTotals): number {
+  return z.fatBurn + 2 * z.cardio + 2 * z.peak;
+}
+
 export function HrZoneChart({ data }: Props) {
   const ct = useChartTheme();
 
@@ -51,9 +71,30 @@ export function HrZoneChart({ data }: Props) {
     { name: "Peak", value: totals.peak, color: ZONE_COLORS.peak },
   ].filter((d) => d.value > 0);
 
-  const avgPerDay = data.length > 0
+  const avgMinPerDay = data.length > 0
     ? Math.round(activeTotal / data.length)
     : 0;
+  const avgAzmPerDay = data.length > 0
+    ? Math.round(activeZoneMinutes(totals) / data.length)
+    : 0;
+
+  // Days can carry a resting HR but no zone minutes at all — that is what the
+  // whole screen looked like for the seven weeks the rollup was missing. An
+  // empty donut and three zeroes read as "you did nothing", so say which it is.
+  if (activeTotal === 0) {
+    return (
+      <div className="bg-surface-container rounded-xl p-5">
+        <h3 className="text-sm font-headline font-semibold text-on-surface mb-2">
+          Heart Rate Zones
+        </h3>
+        <p className="text-sm text-on-surface-variant" data-testid="hr-zone-empty">
+          No zone minutes recorded in this window. Zone time comes from the
+          watch&apos;s active-zone-minutes stream — if you were wearing it and
+          training, this is a data gap rather than a rest week.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-surface-container rounded-xl p-5">
@@ -90,11 +131,14 @@ export function HrZoneChart({ data }: Props) {
             </ResponsiveContainer>
           </div>
           <div className="text-center mt-1">
-            <div className="text-lg font-bold text-on-surface">
-              {avgPerDay} min/day
+            <div className="text-lg font-bold text-on-surface" data-testid="hr-azm-per-day">
+              {avgAzmPerDay} AZM/day
             </div>
             <div className="text-[10px] text-outline">
-              Avg active zone minutes
+              Active Zone Minutes — cardio &amp; peak count double
+            </div>
+            <div className="text-xs text-on-surface-variant mt-1 tabular-nums">
+              {avgMinPerDay} min/day in zone
             </div>
           </div>
         </div>

@@ -8,6 +8,7 @@ import type {
   DrivingSummary,
   FoodLogDay,
   HealthSummary,
+  HeartRateDay,
   ExperimentReport,
   IngestOverview,
   Intervention,
@@ -306,6 +307,29 @@ const SPO2 = Array.from({ length: 10 }, (_, i) => ({
   fetchedAt: FETCHED,
 }));
 
+/**
+ * Zone minutes off the watch. The per-zone CALORIE columns are null on
+ * purpose: Google has no equivalent, so every day after the 2026-06-12
+ * cutover carries nulls there. A fixture that filled them in would hide a
+ * screen that crashed on real data.
+ */
+const HEART_RATE: HeartRateDay[] = [
+  ["2026-07-30", 66, 33, 11],
+  ["2026-07-31", 66, 26, 15],
+].map(([date, restingHeartRate, zoneFatBurnMin, zoneCardioMin]) => ({
+  date: date as string,
+  restingHeartRate: restingHeartRate as number,
+  zoneFatBurnMin: zoneFatBurnMin as number,
+  zoneCardioMin: zoneCardioMin as number,
+  zonePeakMin: 0,
+  zoneOutOfRangeMin: null,
+  zoneOutOfRangeCal: null,
+  zoneFatBurnCal: null,
+  zoneCardioCal: null,
+  zonePeakCal: null,
+  fetchedAt: FETCHED,
+}));
+
 const ALERTS: AlertsResponse = { alerts: [], unreadCount: 0 };
 const LLM_MODELS: LlmModelSettings = { dossier: "sonnet", insights: "sonnet", chat: "sonnet" };
 
@@ -402,6 +426,7 @@ const ROUTES: [RegExp, unknown][] = [
   [/\/api\/experiments\/interventions\//, EXPERIMENT],
   [/\/api\/interventions$/, INTERVENTIONS],
   [/\/api\/health\/spo2/, SPO2],
+  [/\/api\/health\/heart-rate/, HEART_RATE],
   [/\/api\/alerts/, ALERTS],
   [/\/api\/settings\/llm-models$/, LLM_MODELS],
   [/\/api\/settings\/notifications$/, NOTIFICATIONS],

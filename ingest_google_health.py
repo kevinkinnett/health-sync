@@ -197,6 +197,48 @@ def _sql_rollups(cur, since: str) -> None:
         ON CONFLICT (date) DO UPDATE SET resting_heart_rate=EXCLUDED.resting_heart_rate, raw_jsonb=EXCLUDED.raw_jsonb, fetched_at=NOW()
     """, (MARK, since))
 
+    # HR zones — minutes per zone, from the per-minute active-zone-minutes
+    # points. Each point IS one wall-clock minute carrying its zone, so
+    # time-in-zone is a COUNT (the point's own activeZoneMinutes value is the
+    # AZM *credit*: 1 for FAT_BURN, 2 for CARDIO/PEAK — that weighting is the
+    # dashboard's job, not the store's).
+    #
+    # Left unmapped at cutover as "not a legacy replacement", which turned out
+    # to be wrong: validated 2026-08-01 over 40 overlap days, CARDIO matches
+    # legacy 40/40 EXACT and FAT_BURN runs +0-2 min (the per-minute points are
+    # the finer source; legacy's daily summary was itself a rollup). Same
+    # metric, so it continues the same columns rather than starting new ones.
+    #
+    # Bucketed by Google's own civilStartTime — Fitbit's local date — not by
+    # converting start_time, which is what let the steps rollup truncate its
+    # edge day. Windowless + GREATEST for the same reason as steps: a COUNT of
+    # minutes can only be UNDERcounted by incomplete evidence, so this
+    # self-heals and can never lower a day. GREATEST also protects the older
+    # legacy days that raw capture no longer reaches back to.
+    #
+    # zone_*_cal and zone_out_of_range_min have no Google equivalent (AZM only
+    # records minutes that EARNED a zone) and stay NULL after the cutover.
+    cur.execute(f"""
+        INSERT INTO universe.fitbit_heart_rate_daily
+            (date, zone_fat_burn_min, zone_cardio_min, zone_peak_min, raw_jsonb)
+        SELECT make_date(
+                 (value_jsonb->'activeZoneMinutes'->'interval'->'civilStartTime'->'date'->>'year')::int,
+                 (value_jsonb->'activeZoneMinutes'->'interval'->'civilStartTime'->'date'->>'month')::int,
+                 (value_jsonb->'activeZoneMinutes'->'interval'->'civilStartTime'->'date'->>'day')::int),
+               count(*) FILTER (WHERE value_jsonb->'activeZoneMinutes'->>'heartRateZone'='FAT_BURN'),
+               count(*) FILTER (WHERE value_jsonb->'activeZoneMinutes'->>'heartRateZone'='CARDIO'),
+               count(*) FILTER (WHERE value_jsonb->'activeZoneMinutes'->>'heartRateZone'='PEAK'),
+               %s::jsonb
+        FROM {GH} WHERE data_type='active-zone-minutes' AND source_platform='FITBIT'
+              AND value_jsonb->'activeZoneMinutes'->'interval'->'civilStartTime'->'date'->>'year' IS NOT NULL
+        GROUP BY 1
+        ON CONFLICT (date) DO UPDATE SET
+            zone_fat_burn_min=GREATEST(EXCLUDED.zone_fat_burn_min, fitbit_heart_rate_daily.zone_fat_burn_min),
+            zone_cardio_min=GREATEST(EXCLUDED.zone_cardio_min, fitbit_heart_rate_daily.zone_cardio_min),
+            zone_peak_min=GREATEST(EXCLUDED.zone_peak_min, fitbit_heart_rate_daily.zone_peak_min),
+            fetched_at=NOW()
+    """, (MARK,))
+
     # Respiratory rate (daily) → exact.
     cur.execute(f"""
         INSERT INTO universe.fitbit_breathing_rate_daily (date, breathing_rate, raw_jsonb)

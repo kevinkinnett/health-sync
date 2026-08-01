@@ -49,6 +49,7 @@ test("every primary route renders without a crash", async ({ page }) => {
     "/readiness",
     "/timeline",
     "/analytics/overview",
+    "/analytics/heart-rate",
     "/analytics/nutrition",
     "/analytics/correlations",
     "/supplements",
@@ -151,6 +152,25 @@ test("the timeline runs a before/after report and surfaces its caveat", async ({
   await expect(page.getByText(/too close to separate the two/i)).toBeVisible();
   // Role-scoped: "Time asleep" also appears in the summary sentence above.
   await expect(page.getByRole("cell", { name: /Time asleep/ })).toBeVisible();
+
+  expect(significant(errors)).toEqual([]);
+});
+
+test("the heart rate screen reports weighted zone minutes", async ({ page }) => {
+  // This screen rendered an empty donut and three zeroes for seven weeks:
+  // active-zone-minutes was captured raw but nothing rolled it into the
+  // columns the page reads, and nothing anywhere asserted otherwise.
+  const errors = collectErrors(page);
+  await page.goto("/analytics/heart-rate");
+
+  // 59 fat-burn + 26 cardio over 2 days -> (59 + 2*26) / 2 = 56 AZM/day.
+  // Asserting the WEIGHTED figure, because the plain minute sum (43) is what
+  // the card used to show under the same label.
+  await expect(page.getByTestId("hr-azm-per-day")).toHaveText(/56 AZM\/day/, {
+    timeout: 15_000,
+  });
+  await expect(page.getByText("43 min/day in zone")).toBeVisible();
+  await expect(page.getByTestId("hr-zone-empty")).toHaveCount(0);
 
   expect(significant(errors)).toEqual([]);
 });
