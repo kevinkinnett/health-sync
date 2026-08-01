@@ -9,6 +9,7 @@ import type {
   FoodLogDay,
   HealthSummary,
   HeartRateDay,
+  HrvDay,
   ExperimentReport,
   IngestOverview,
   Intervention,
@@ -330,6 +331,23 @@ const HEART_RATE: HeartRateDay[] = [
   fetchedAt: FETCHED,
 }));
 
+/**
+ * Spans the 2026-06-12 source change so the chart's caveat and marker are
+ * exercised, and carries deepRmssd on every day — the series that silently
+ * stopped drawing when the cutover left that column NULL.
+ */
+const HRV: HrvDay[] = [
+  ["2026-06-11", 37.2, 33.0],
+  ["2026-06-12", 43.9, 36.4],
+  ["2026-06-13", 44.5, 37.1],
+  ["2026-06-14", 41.8, 35.2],
+].map(([date, dailyRmssd, deepRmssd]) => ({
+  date: date as string,
+  dailyRmssd: dailyRmssd as number,
+  deepRmssd: deepRmssd as number,
+  fetchedAt: FETCHED,
+}));
+
 const ALERTS: AlertsResponse = { alerts: [], unreadCount: 0 };
 const LLM_MODELS: LlmModelSettings = { dossier: "sonnet", insights: "sonnet", chat: "sonnet" };
 
@@ -427,6 +445,7 @@ const ROUTES: [RegExp, unknown][] = [
   [/\/api\/interventions$/, INTERVENTIONS],
   [/\/api\/health\/spo2/, SPO2],
   [/\/api\/health\/heart-rate/, HEART_RATE],
+  [/\/api\/health\/hrv/, HRV],
   [/\/api\/alerts/, ALERTS],
   [/\/api\/settings\/llm-models$/, LLM_MODELS],
   [/\/api\/settings\/notifications$/, NOTIFICATIONS],

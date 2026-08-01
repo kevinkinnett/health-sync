@@ -50,6 +50,7 @@ test("every primary route renders without a crash", async ({ page }) => {
     "/timeline",
     "/analytics/overview",
     "/analytics/heart-rate",
+    "/analytics/hrv",
     "/analytics/nutrition",
     "/analytics/correlations",
     "/supplements",
@@ -171,6 +172,37 @@ test("the heart rate screen reports weighted zone minutes", async ({ page }) => 
   });
   await expect(page.getByText("43 min/day in zone")).toBeVisible();
   await expect(page.getByTestId("hr-zone-empty")).toHaveCount(0);
+
+  expect(significant(errors)).toEqual([]);
+});
+
+test("the HRV chart draws the deep sleep series", async ({ page }) => {
+  // Google publishes no equivalent of Fitbit's deepRmssd, so the column went
+  // NULL at the cutover and this line quietly stopped drawing while Daily
+  // RMSSD carried on — the chart looked fine. jsdom cannot catch that
+  // (ResponsiveContainer is zero-sized there, so nothing renders and the
+  // legend entry appears with or without data); only a real browser can.
+  const errors = collectErrors(page);
+  await page.goto("/analytics/hrv");
+
+  const surface = page.locator(".recharts-surface").first();
+  await expect(surface).toBeVisible({ timeout: 15_000 });
+
+  // Each <Line> gets its own .recharts-line group. Count the ones that drew
+  // a curve with real geometry: daily, deep, and the 7-day average.
+  const drawnSeries = await page
+    .locator(".recharts-line .recharts-line-curve")
+    .evaluateAll((nodes) =>
+      nodes.filter((n) => (n.getAttribute("d") ?? "").length > 10).length,
+    );
+  expect(drawnSeries, "the deep sleep line drew no geometry").toBeGreaterThanOrEqual(3);
+
+  // ...and the honesty note, since the fixture window spans the change.
+  await expect(page.getByTestId("hrv-source-caveat")).toBeVisible();
+  const marker = await page
+    .locator(".recharts-reference-line text")
+    .allTextContents();
+  expect(marker.join(" ")).toContain("source change");
 
   expect(significant(errors)).toEqual([]);
 });

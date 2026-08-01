@@ -270,6 +270,53 @@ def _sql_rollups(cur, since: str) -> None:
         ON CONFLICT (date) DO UPDATE SET daily_rmssd=EXCLUDED.daily_rmssd, raw_jsonb=EXCLUDED.raw_jsonb, fetched_at=NOW()
     """, (MARK, since))
 
+    # Deep-sleep RMSSD — the second line on the HRV chart, dead since the
+    # cutover because Google publishes no equivalent of Fitbit's deepRmssd.
+    # It does publish both ingredients, so this reconstructs it: average the
+    # per-5-min HRV samples whose timestamp falls inside a DEEP stage interval
+    # from that night's sleep record.
+    #
+    # NOT a like-for-like restoration, and deliberately not pretended to be.
+    # Validated over 45 overlap days: tracks legacy closely but runs ~7% high
+    # (ratio 0.85-1.38, mean 1.069, worst gap 8.8 ms) because Fitbit computed
+    # deepRmssd from beat-to-beat data while this averages the published
+    # 5-minute samples. The daily_rmssd line above already steps ~17% at the
+    # same date for the same reason, so the chart labels both as a source
+    # change rather than a physiological one. Nothing but the chart reads this
+    # column — readiness and the experiment engine use daily_rmssd — so the
+    # level shift has no analytical blast radius.
+    #
+    # Fill-only: DO UPDATE is guarded on the existing value being NULL, so
+    # Fitbit's own numbers are never restated. Windowless, which here is about
+    # avoiding an edge artifact rather than self-healing — note this one does
+    # NOT use GREATEST, because an average is not monotone under incomplete
+    # evidence the way a sum or a count is; more samples can move a mean either
+    # way. The >= 5 sample floor keeps a barely-captured night from landing.
+    cur.execute(f"""
+        INSERT INTO universe.fitbit_hrv_daily (date, deep_rmssd, raw_jsonb)
+        SELECT d.point_date, round(avg(h.rmssd), 3), %s::jsonb
+        FROM (
+            SELECT p.point_date,
+                   (st->>'startTime')::timestamptz AS s,
+                   (st->>'endTime')::timestamptz   AS e
+            FROM {GH} p,
+                 LATERAL jsonb_array_elements(p.value_jsonb->'sleep'->'stages') st
+            WHERE p.data_type='sleep' AND p.source_platform='FITBIT'
+                  AND st->>'type'='DEEP'
+        ) d
+        JOIN (
+            SELECT start_time AS t,
+                   (value_jsonb->'heartRateVariability'->>'rootMeanSquareOfSuccessiveDifferencesMilliseconds')::numeric AS rmssd
+            FROM {GH}
+            WHERE data_type='heart-rate-variability' AND source_platform='FITBIT'
+                  AND start_time IS NOT NULL
+        ) h ON h.t >= d.s AND h.t < d.e
+        GROUP BY d.point_date
+        HAVING count(*) >= 5
+        ON CONFLICT (date) DO UPDATE SET deep_rmssd=EXCLUDED.deep_rmssd
+            WHERE fitbit_hrv_daily.deep_rmssd IS NULL
+    """, (MARK,))
+
     # SpO2 — overnight avg/min/max, artifacts (<80%) filtered out.
     cur.execute(f"""
         INSERT INTO universe.fitbit_spo2_daily (date, avg_value, min_value, max_value, raw_jsonb)
