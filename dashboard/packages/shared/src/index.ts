@@ -147,6 +147,7 @@ export type {
 export { isActiveOn } from "./types/intervention.js";
 export type {
   ExperimentReport,
+  ExperimentSummary,
   ExperimentWindow,
   ExperimentConfidence,
   MetricEffect,

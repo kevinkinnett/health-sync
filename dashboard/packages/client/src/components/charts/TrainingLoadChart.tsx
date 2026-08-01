@@ -12,6 +12,8 @@ import type { ExerciseType, TrainingSummary } from "@health-dashboard/shared";
 import { useChartTheme } from "../../stores/themeStore";
 import { SERIES } from "./chartPalette";
 import { formatNumber } from "./tooltipFormat";
+import type { ChartAnnotation } from "./annotations";
+import { annotationMarkers } from "./annotationMarkers";
 
 /**
  * Daily training load, stacked by exercise type.
@@ -43,7 +45,14 @@ const TYPE_COLOR: Record<ExerciseType, string> = {
   other: SERIES[4],
 };
 
-export function TrainingLoadChart({ data }: { data: TrainingSummary }) {
+export function TrainingLoadChart({
+  data,
+  annotations = [],
+}: {
+  data: TrainingSummary;
+  /** Vertical markers for dated changes (see `annotations.ts`). */
+  annotations?: ChartAnnotation[];
+}) {
   const ct = useChartTheme();
 
   const rows = data.days.map((day) => ({
@@ -81,6 +90,7 @@ export function TrainingLoadChart({ data }: { data: TrainingSummary }) {
               formatter={formatNumber((v) => String(Math.round(v)))}
             />
             <Legend />
+            {annotationMarkers(annotations)}
             {present.map((type) => (
               <Bar
                 key={type}

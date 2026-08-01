@@ -2,9 +2,13 @@ import { useHrv } from "../../api/queries";
 import { HrvChart } from "../../components/charts/HrvChart";
 import { DataTable, tdClass, tdRightClass, trClass } from "../../components/DataTable";
 import { EmptyState, QueryBoundary } from "../../components/QueryBoundary";
+import { useChartAnnotations } from "../../components/charts/annotations";
 
 export function AnalyticsHrv() {
   const hrv = useHrv();
+  // Dated changes drawn onto the series, so a shift can be read against
+  // what was happening at the time.
+  const marks = useChartAnnotations((hrv.data ?? []).map((d) => d.date));
   return (
     <QueryBoundary
       query={hrv}
@@ -13,7 +17,7 @@ export function AnalyticsHrv() {
     >
       {(data) => (
         <div className="space-y-4">
-          <HrvChart data={data} />
+          <HrvChart data={data} annotations={marks} />
           <DataTable
             title="Daily HRV"
             headers={["Date", "Daily RMSSD", "Deep Sleep RMSSD"]}

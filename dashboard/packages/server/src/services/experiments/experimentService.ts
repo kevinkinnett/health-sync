@@ -1,9 +1,11 @@
 import type {
   ExperimentReport,
+  ExperimentSummary,
   Intervention,
   MetricEffect,
 } from "@health-dashboard/shared";
 import { gradeConfidence, scanConfounds } from "./confounds.js";
+import { rankSummaries, toSummary } from "./headline.js";
 import { METRIC_SPECS, type DailySeriesSource, type MetricSpec } from "./metricRegistry.js";
 import { cohensD, mean, round, stdDev } from "./statistics.js";
 import { selectWindows, type WindowPair } from "./windows.js";
@@ -77,6 +79,39 @@ export class ExperimentService {
       confidence,
       summary: summarize(intervention, metrics, confidence, confounds.length),
     };
+  }
+
+  /**
+   * Headline verdicts, for the home screen.
+   *
+   * Bounded by `limit` on purpose. A full report walks every metric across
+   * two windows, so this is one of the most expensive things the app can
+   * do; running it for an unbounded intervention list on every dashboard
+   * load would make the cost grow silently with the user's own history.
+   * The most recent few are also the ones still worth asking about — an
+   * intervention from eight months ago is settled.
+   *
+   * A single failing report must not take the card down with it: one
+   * intervention with an unparseable date should cost its own row, not
+   * the whole answer. Failures are skipped, not thrown.
+   */
+  async summaries(today: string, limit = 3): Promise<ExperimentSummary[]> {
+    const all = await this.interventions.findAll();
+    const recent = [...all]
+      .sort((a, b) => b.startedOn.localeCompare(a.startedOn))
+      .slice(0, limit);
+
+    const reports = await Promise.all(
+      recent.map(async (i) => {
+        try {
+          return toSummary(await this.report(i.id, today));
+        } catch {
+          return null;
+        }
+      }),
+    );
+
+    return rankSummaries(reports.filter((r): r is ExperimentSummary => r != null));
   }
 }
 

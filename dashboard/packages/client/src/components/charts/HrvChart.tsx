@@ -11,11 +11,15 @@ import {
 } from "recharts";
 import type { HrvDay } from "@health-dashboard/shared";
 import { useChartTheme } from "../../stores/themeStore";
+import type { ChartAnnotation } from "./annotations";
+import { annotationMarkers } from "./annotationMarkers";
 import { formatWithUnit } from "./tooltipFormat";
 import { METRIC_COLOR, SERIES } from "./chartPalette";
 
 interface Props {
   data: HrvDay[];
+  /** Vertical markers for dated changes (see `annotations.ts`). */
+  annotations?: ChartAnnotation[];
 }
 
 /**
@@ -31,7 +35,7 @@ interface Props {
  */
 const SOURCE_CHANGE_ON = "2026-06-12";
 
-export function HrvChart({ data }: Props) {
+export function HrvChart({ data, annotations = [] }: Props) {
   const ct = useChartTheme();
 
   const chartData = data.map((d, i) => {
@@ -80,6 +84,7 @@ export function HrvChart({ data }: Props) {
       </p>
       <ResponsiveContainer width="100%" height={280}>
         <LineChart data={chartData}>
+          {annotationMarkers(annotations)}
           <CartesianGrid strokeDasharray="3 3" stroke={ct.grid} />
           <XAxis dataKey="date" tick={ct.tick} />
           <YAxis

@@ -32,7 +32,10 @@ import { createAlertRoutes } from "./routes/alerts.js";
 import { SettingRepository } from "./repositories/settingRepo.js";
 import { InterventionRepository } from "./repositories/interventionRepo.js";
 import { InterventionService } from "./services/interventions/interventionService.js";
-import { MedicationDoseDeriver } from "./services/interventions/deriver.js";
+import {
+  MedicationDoseDeriver,
+  SupplementDeriver,
+} from "./services/interventions/deriver.js";
 import { InterventionController } from "./controllers/interventionController.js";
 import { createInterventionRoutes } from "./routes/interventions.js";
 import { ExperimentService } from "./services/experiments/experimentService.js";
@@ -230,6 +233,10 @@ export async function createApp(pool: Pool, config: Config): Promise<Express> {
   const interventionService = new InterventionService(interventionRepo, [
     new MedicationDoseDeriver({
       listDoseHistory: () => medicationRepo.listDoseHistory(config.userTimezone),
+    }),
+    new SupplementDeriver({
+      listIntakeHistory: () =>
+        supplementRepo.listIntakeHistory(config.userTimezone),
     }),
   ]);
   const interventionController = new InterventionController(interventionService, {

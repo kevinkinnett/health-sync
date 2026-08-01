@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import type { Intervention, InterventionCategory } from "@health-dashboard/shared";
 import {
   useInterventions,
@@ -42,7 +43,14 @@ const CATEGORY_COLOR: Record<InterventionCategory, string> = {
 
 export function Timeline() {
   const q = useInterventions();
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  // `?intervention=<id>` opens straight onto a verdict. The home card links
+  // here that way, so "did the Eight Sleep help" lands on the answer rather
+  // than on a list the reader then has to search.
+  const [searchParams] = useSearchParams();
+  const linkedId = Number(searchParams.get("intervention"));
+  const [selectedId, setSelectedId] = useState<number | null>(
+    Number.isInteger(linkedId) && linkedId > 0 ? linkedId : null,
+  );
   const [showForm, setShowForm] = useState(false);
   const refresh = useRefreshInterventions();
 

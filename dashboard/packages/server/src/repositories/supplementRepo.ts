@@ -10,7 +10,7 @@ import type {
   CreateSupplementIngredientBody,
   UpdateSupplementIngredientBody,
 } from "@health-dashboard/shared";
-import { toTimestampStr } from "./mappers.js";
+import { toDateStr, toTimestampStr } from "./mappers.js";
 
 /**
  * Repository for the user-input supplement catalog and intake log.
@@ -254,6 +254,33 @@ export class SupplementRepository {
       values,
     );
     return rows.map(mapIntake);
+  }
+
+  /**
+   * Every logged intake day per item, in the user's calendar.
+   *
+   * Feeds `SupplementDeriver`, which turns contiguous stretches into
+   * interventions. Amount is not selected: supplement runs are split on
+   * gaps rather than dose changes, so carrying it would only invite the
+   * deriver to invent changepoints out of day-to-day wobble.
+   */
+  async listIntakeHistory(
+    userTimezone: string,
+  ): Promise<{ itemId: number; itemName: string; date: string }[]> {
+    const { rows } = await this.pool.query(
+      `SELECT DISTINCT i.item_id,
+              it.name AS item_name,
+              (i.taken_at AT TIME ZONE $1)::date AS local_date
+         FROM supplement.intake i
+         JOIN supplement.item it ON it.id = i.item_id
+        ORDER BY i.item_id, local_date`,
+      [userTimezone],
+    );
+    return rows.map((r) => ({
+      itemId: Number(r.item_id),
+      itemName: String(r.item_name),
+      date: toDateStr(r.local_date),
+    }));
   }
 
   /**

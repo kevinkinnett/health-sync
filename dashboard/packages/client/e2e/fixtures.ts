@@ -4,6 +4,7 @@ import type {
   AlertsResponse,
   ApiLogStats,
   AppConfig,
+  ExperimentSummary,
   CorrelationsData,
   DayOfWeekHeatmapData,
   DrivingSummary,
@@ -368,6 +369,42 @@ const ACTIVITY: ActivityDay[] = Array.from({ length: 10 }, (_, i) => ({
   fetchedAt: FETCHED,
 }));
 
+/**
+ * One verdict WITH a headline and one without, so the home card's two
+ * states are both exercised by the smoke run.
+ */
+const EXPERIMENT_SUMMARIES: ExperimentSummary[] = [
+  {
+    interventionId: 1,
+    interventionName: "Eight Sleep Pod",
+    changepoint: "2026-05-02",
+    confidence: "weak",
+    summary: "After the Eight Sleep Pod, sleep efficiency improved.",
+    headline: {
+      metric: "sleepEfficiency",
+      label: "Sleep efficiency",
+      unit: "%",
+      betterDirection: "up",
+      before: { n: 30, mean: 79.8, sd: 6.1 },
+      after: { n: 30, mean: 91, sd: 3.2 },
+      delta: 11.2,
+      deltaPct: 14,
+      direction: "up",
+      effectSize: 1.9,
+      improved: true,
+      meaningful: true,
+    },
+  },
+  {
+    interventionId: 4,
+    interventionName: "Strength training 3x/week",
+    changepoint: "2026-07-06",
+    confidence: "moderate",
+    summary: "Nothing moved meaningfully after strength training.",
+    headline: null,
+  },
+];
+
 const ALERTS: AlertsResponse = { alerts: [], unreadCount: 0 };
 const LLM_MODELS: LlmModelSettings = { dossier: "sonnet", insights: "sonnet", chat: "sonnet" };
 
@@ -461,6 +498,9 @@ const ROUTES: [RegExp, unknown][] = [
   [/\/api\/health\/driving$/, DRIVING],
   [/\/api\/health\/food/, FOOD],
   [/\/api\/health\/readiness/, READINESS],
+  // Before the /interventions/ pattern — order in this table is matched
+  // first-wins, same as the server's route registration.
+  [/\/api\/experiments\/summary$/, EXPERIMENT_SUMMARIES],
   [/\/api\/experiments\/interventions\//, EXPERIMENT],
   [/\/api\/interventions$/, INTERVENTIONS],
   [/\/api\/health\/spo2/, SPO2],

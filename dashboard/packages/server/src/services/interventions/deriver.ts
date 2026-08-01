@@ -95,6 +95,106 @@ export class MedicationDoseDeriver implements InterventionDeriver {
   }
 }
 
+/** One logged supplement day. Amount is deliberately absent — see below. */
+export interface IntakeRecord {
+  itemId: number;
+  itemName: string;
+  /** YYYY-MM-DD in the user's calendar. */
+  date: string;
+}
+
+/** Just the slice of the supplement store this deriver depends on. */
+export interface IntakeHistorySource {
+  listIntakeHistory(): Promise<IntakeRecord[]>;
+}
+
+/**
+ * A gap longer than this ends a supplement run. Generous on purpose:
+ * supplements get skipped for a weekend away or a lapsed bottle without
+ * that being a decision to stop, and splitting on every short gap would
+ * shatter one regimen into a dozen "interventions" that each have too
+ * little data on either side to analyse.
+ */
+const SUPPLEMENT_GAP_DAYS = 14;
+
+/**
+ * A run shorter than this is not a regimen worth asking about — trying a
+ * thing twice cannot produce a before/after with any weight, and the
+ * timeline is more useful without the noise.
+ */
+const MIN_SUPPLEMENT_DAYS = 5;
+
+/**
+ * Turns supplement intake history into one `period` intervention per
+ * contiguous stretch of taking it.
+ *
+ * Splits on GAPS, not on dose changes — the opposite of the medication
+ * deriver, and deliberately so. A prescription's dose is the intervention
+ * ("20 mg down to 10 mg" is the changepoint), but supplement amounts wobble
+ * day to day (one capsule, then two, then one) without any of it being a
+ * decision. Splitting those into runs would invent changepoints that never
+ * happened. What matters for a supplement is when you started and when you
+ * stopped, so amount is not even carried on the record.
+ */
+export class SupplementDeriver implements InterventionDeriver {
+  readonly id = "supplement-period";
+
+  constructor(private readonly source: IntakeHistorySource) {}
+
+  async derive(today: string): Promise<DerivedIntervention[]> {
+    const history = await this.source.listIntakeHistory();
+
+    const byItem = new Map<number, IntakeRecord[]>();
+    for (const rec of history) {
+      const list = byItem.get(rec.itemId);
+      if (list) list.push(rec);
+      else byItem.set(rec.itemId, [rec]);
+    }
+
+    const out: DerivedIntervention[] = [];
+    for (const records of byItem.values()) {
+      // Several intakes in one day are one day of taking it, not several.
+      const seen = new Map<string, IntakeRecord>();
+      for (const rec of records) if (!seen.has(rec.date)) seen.set(rec.date, rec);
+      const days = [...seen.values()].sort((a, b) => a.date.localeCompare(b.date));
+
+      for (const run of splitIntoIntakeRuns(days)) {
+        if (run.length < MIN_SUPPLEMENT_DAYS) continue;
+        const first = run[0];
+        const last = run[run.length - 1];
+        const ongoing = daysBetween(last.date, today) <= ONGOING_GRACE_DAYS;
+        out.push({
+          kind: "period",
+          category: "supplement",
+          name: first.itemName,
+          startedOn: first.date,
+          endedOn: ongoing ? null : last.date,
+          sourceRef: `supplement.item:${first.itemId}:from:${first.date}`,
+          detail: `${run.length} days logged${ongoing ? ", ongoing" : ""}`,
+        });
+      }
+    }
+    return out;
+  }
+}
+
+/** Splits date-ordered days wherever the gap between them is too long. */
+function splitIntoIntakeRuns(sorted: IntakeRecord[]): IntakeRecord[][] {
+  const runs: IntakeRecord[][] = [];
+  let current: IntakeRecord[] = [];
+  for (const rec of sorted) {
+    const prev = current[current.length - 1];
+    if (!prev || daysBetween(prev.date, rec.date) <= SUPPLEMENT_GAP_DAYS) {
+      current.push(rec);
+    } else {
+      runs.push(current);
+      current = [rec];
+    }
+  }
+  if (current.length > 0) runs.push(current);
+  return runs;
+}
+
 /** Splits date-ordered records wherever the dose changes. */
 function splitIntoDoseRuns(sorted: DoseRecord[]): DoseRecord[][] {
   const runs: DoseRecord[][] = [];

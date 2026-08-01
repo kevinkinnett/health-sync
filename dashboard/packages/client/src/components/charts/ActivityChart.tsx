@@ -8,7 +8,6 @@ import {
   CartesianGrid,
   Tooltip,
   Legend,
-  ReferenceLine,
 } from "recharts";
 import type { ActivityDay } from "@health-dashboard/shared";
 import { useChartTheme } from "../../stores/themeStore";
@@ -16,6 +15,7 @@ import { movingAverage } from "../../utils/movingAverage";
 import { METRIC_COLOR } from "./chartPalette";
 import { formatWithUnit } from "./tooltipFormat";
 import type { ChartAnnotation } from "./annotations";
+import { annotationMarkers } from "./annotationMarkers";
 
 interface Props {
   data: ActivityDay[];
@@ -58,15 +58,10 @@ export function ActivityChart({ data, annotations = [] }: Props) {
   const MARGIN = { top: 4, right: 12, left: 4, bottom: 0 };
   const Y_WIDTH = 52;
 
-  const markers = annotations.map((a) => (
-    <ReferenceLine
-      key={`${a.date}-${a.label}`}
-      x={a.date}
-      stroke={a.color}
-      strokeDasharray="3 3"
-      strokeWidth={1}
-    />
-  ));
+  // Labels off, uniquely among the charts: the markers are drawn on BOTH
+  // panels, so a caption would appear twice for the same change. The key
+  // line under the chart names them once instead.
+  const markers = annotationMarkers(annotations, { labels: false });
 
   const grid = <CartesianGrid stroke={ct.grid} vertical={false} />;
 

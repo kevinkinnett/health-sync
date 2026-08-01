@@ -177,6 +177,39 @@ test("the heart rate screen reports weighted zone minutes", async ({ page }) => 
   expect(significant(errors)).toEqual([]);
 });
 
+test("the home screen asks whether anything you changed worked", async ({ page }) => {
+  // The engine behind this shipped and went unseen for weeks, because the
+  // only route in was a sidebar noun ("Timeline") with the verdict two
+  // clicks further down. The fix is that the question now gets asked where
+  // the day starts — so it is the HOME screen this asserts on.
+  const errors = collectErrors(page);
+  await page.goto("/");
+
+  const card = page.getByTestId("did-it-work");
+  await expect(card).toBeVisible({ timeout: 15_000 });
+  await expect(card).toContainText("Eight Sleep Pod");
+  await expect(card).toContainText("Sleep efficiency");
+  await expect(card).toContainText("+11.2");
+
+  // A number without its caveat is worse than no number here.
+  await expect(card).toContainText("Weak evidence");
+
+  // The verdict with nothing to report must say so rather than vanish.
+  await expect(card).toContainText("Nothing moved meaningfully");
+
+  // And it must land on the ANSWER, not on a list to search. Asserting the
+  // report itself, not the intervention's name — the name is on the
+  // timeline list whether or not the deep link selected anything, so it
+  // would pass with the ?intervention= handling ripped out.
+  await card.getByRole("link", { name: /Eight Sleep Pod/ }).click();
+  await expect(page).toHaveURL(/\/timeline\?intervention=1$/);
+  await expect(page.getByRole("cell", { name: /Time asleep/ })).toBeVisible({
+    timeout: 15_000,
+  });
+
+  expect(significant(errors)).toEqual([]);
+});
+
 test("the activity chart draws both measures on separate scales", async ({ page }) => {
   // It shipped as a single plot with two y-scales (steps 0-18k on the left,
   // minutes 0-160 on the right), both series in the same blue. Where those

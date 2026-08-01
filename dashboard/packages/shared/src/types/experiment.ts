@@ -84,6 +84,27 @@ export type ExperimentConfidence =
   | "weak"
   | "insufficient";
 
+/**
+ * A one-line verdict per intervention, for surfaces that must ASK the
+ * question rather than wait to be asked it.
+ *
+ * The full report lives two clicks deep behind a nav item named after a
+ * noun ("Timeline"), which meant the answer to "did the Eight Sleep help?"
+ * existed for weeks without ever being seen. This is the shape that lets
+ * the home screen lead with the answer and link to the working.
+ *
+ * `headline` is the single most notable move — the one a person would
+ * quote — or null when nothing moved meaningfully.
+ */
+export interface ExperimentSummary {
+  interventionId: number;
+  interventionName: string;
+  changepoint: string;
+  confidence: ExperimentConfidence;
+  summary: string;
+  headline: MetricEffect | null;
+}
+
 export interface ExperimentReport {
   interventionId: number;
   interventionName: string;

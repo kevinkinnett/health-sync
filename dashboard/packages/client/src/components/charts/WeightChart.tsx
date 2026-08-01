@@ -9,6 +9,8 @@ import {
 } from "recharts";
 import type { WeightEntry } from "@health-dashboard/shared";
 import { useChartTheme } from "../../stores/themeStore";
+import type { ChartAnnotation } from "./annotations";
+import { annotationMarkers } from "./annotationMarkers";
 import { useUnits } from "../../stores/unitsStore";
 import { convertWeight, weightUnitLabel } from "../../lib/units";
 import { formatNumber } from "./tooltipFormat";
@@ -16,9 +18,11 @@ import { METRIC_COLOR } from "./chartPalette";
 
 interface Props {
   data: WeightEntry[];
+  /** Vertical markers for dated changes (see `annotations.ts`). */
+  annotations?: ChartAnnotation[];
 }
 
-export function WeightChart({ data }: Props) {
+export function WeightChart({ data, annotations = [] }: Props) {
   const ct = useChartTheme();
   const units = useUnits();
 
@@ -46,6 +50,7 @@ export function WeightChart({ data }: Props) {
       <h3 className="text-sm font-headline font-semibold text-on-surface mb-4">Weight</h3>
       <ResponsiveContainer width="100%" height={280}>
         <LineChart data={chartData}>
+          {annotationMarkers(annotations)}
           <CartesianGrid strokeDasharray="3 3" stroke={ct.grid} />
           <XAxis dataKey="date" tick={ct.tick} type="category" />
           <YAxis

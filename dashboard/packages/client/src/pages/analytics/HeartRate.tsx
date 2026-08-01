@@ -3,9 +3,13 @@ import { HeartRateChart } from "../../components/charts/HeartRateChart";
 import { HrZoneChart } from "../../components/charts/HrZoneChart";
 import { DataTable, tdClass, tdRightClass, trClass } from "../../components/DataTable";
 import { EmptyState, QueryBoundary } from "../../components/QueryBoundary";
+import { useChartAnnotations } from "../../components/charts/annotations";
 
 export function AnalyticsHeartRate() {
   const heartRate = useHeartRate();
+  // Dated changes drawn onto the series, so a shift can be read against
+  // what was happening at the time.
+  const marks = useChartAnnotations((heartRate.data ?? []).map((d) => d.date));
   return (
     <QueryBoundary
       query={heartRate}
@@ -14,7 +18,7 @@ export function AnalyticsHeartRate() {
     >
       {(data) => (
         <div className="space-y-4">
-          <HeartRateChart data={data} />
+          <HeartRateChart data={data} annotations={marks} />
           <HrZoneChart data={data} />
           <DataTable
             title="Daily Heart Rate"

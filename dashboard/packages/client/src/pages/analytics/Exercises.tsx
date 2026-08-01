@@ -2,6 +2,7 @@ import { useExerciseLogs, useTrainingLoad } from "../../api/queries";
 import { ExerciseLogTable } from "../../components/charts/ExerciseLogTable";
 import { TrainingLoadChart } from "../../components/charts/TrainingLoadChart";
 import { EmptyState, QueryBoundary } from "../../components/QueryBoundary";
+import { useChartAnnotations } from "../../components/charts/annotations";
 
 /**
  * Exercise screen. The load chart leads, because the raw session table
@@ -11,6 +12,9 @@ import { EmptyState, QueryBoundary } from "../../components/QueryBoundary";
 export function AnalyticsExercises() {
   const exerciseLogs = useExerciseLogs();
   const training = useTrainingLoad();
+  // Dated changes drawn onto the series, so a shift can be read against
+  // what was happening at the time.
+  const marks = useChartAnnotations((training.data?.days ?? []).map((d) => d.date));
 
   return (
     <div className="space-y-4">
@@ -24,7 +28,7 @@ export function AnalyticsExercises() {
         }
         isEmpty={(d) => d.days.length === 0}
       >
-        {(data) => <TrainingLoadChart data={data} />}
+        {(data) => <TrainingLoadChart data={data} annotations={marks} />}
       </QueryBoundary>
 
       <QueryBoundary

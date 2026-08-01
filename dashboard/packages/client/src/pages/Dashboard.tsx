@@ -3,6 +3,7 @@ import { WeeklyInsights } from "../components/WeeklyInsights";
 import { GoalRings } from "../components/GoalRings";
 import { ReadinessCard } from "../components/ReadinessCard";
 import { DrivingCard } from "../components/DrivingCard";
+import { DidItWorkCard } from "../components/DidItWorkCard";
 import { QueryBoundary } from "../components/QueryBoundary";
 import { ActivityChart } from "../components/charts/ActivityChart";
 import { SleepStagesChart } from "../components/charts/SleepStagesChart";
@@ -17,6 +18,7 @@ import {
   useHeartRate,
   useWeight,
   useDriving,
+  useExperimentSummaries,
 } from "../api/queries";
 import { useUnits } from "../stores/unitsStore";
 import { convertWeight, weightUnitLabel } from "../lib/units";
@@ -31,6 +33,7 @@ export function Dashboard() {
   const heartRate = useHeartRate();
   const weight = useWeight();
   const driving = useDriving();
+  const experiments = useExperimentSummaries();
   const units = useUnits();
 
   if (summary.isLoading) {
@@ -56,6 +59,11 @@ export function Dashboard() {
           {insights.data && <WeeklyInsights data={insights.data} />}
         </div>
         <div className="space-y-6">
+          {/* The one question the dashboard never asked. Above the rings
+              because "did the thing I changed work" outranks "did I hit a
+              step goal" — and because unasked, it went unanswered for
+              weeks while the engine behind it sat finished. */}
+          {experiments.data && <DidItWorkCard data={experiments.data} />}
           {s && <GoalRings summary={s} />}
           <QueryBoundary query={driving} skeleton={null}>
             {(data) => <DrivingCard data={data} />}

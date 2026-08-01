@@ -12,6 +12,7 @@ import {
 import { useChartTheme } from "../../stores/themeStore";
 import { formatWithUnit } from "./tooltipFormat";
 import type { ChartAnnotation } from "./annotations";
+import { annotationMarkers } from "./annotationMarkers";
 import { DEFAULT_SERIES } from "./chartPalette";
 
 export interface MetricPoint {
@@ -117,36 +118,7 @@ export function MetricLineChart({
           {referenceZero && (
             <ReferenceLine y={0} stroke={ct.grid} strokeDasharray="4 4" />
           )}
-          {annotations.map((a) => (
-            <ReferenceLine
-              key={`${a.date}-${a.label}`}
-              x={a.date}
-              stroke={a.color}
-              strokeDasharray="3 3"
-              strokeWidth={1}
-              /*
-               * A render function, not `label="text"` or a <Label> child.
-               * Both of those typecheck and silently draw nothing here: a
-               * VERTICAL reference line's viewBox has zero width, and
-               * Recharts' position keywords ("insideTopLeft", …) resolve
-               * against that box, so the caption lands nowhere. Placing
-               * the <text> ourselves from the box's x/y is the only form
-               * that reliably renders — and the caption is the whole
-               * point of the marker, since a bare dashed line says
-               * something happened but not what.
-               */
-              label={({ viewBox }: { viewBox: { x: number; y: number } }) => (
-                <text
-                  x={viewBox.x + 4}
-                  y={viewBox.y + 11}
-                  fill={a.color}
-                  fontSize={10}
-                >
-                  {a.label}
-                </text>
-              )}
-            />
-          ))}
+          {annotationMarkers(annotations)}
           <Line
             type="monotone"
             dataKey="value"

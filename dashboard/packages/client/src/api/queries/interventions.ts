@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type {
   CreateInterventionBody,
   ExperimentReport,
+  ExperimentSummary,
   Intervention,
   UpdateInterventionBody,
 } from "@health-dashboard/shared";
@@ -69,6 +70,18 @@ export function useRefreshInterventions() {
   return useMutation<{ derived: number }, Error, void>({
     mutationFn: () => apiFetch("/interventions/refresh", { method: "POST" }),
     onSuccess: () => invalidateInterventions(qc),
+  });
+}
+
+/**
+ * Headline verdicts across the most recent interventions, for the home
+ * screen. Shares the `["experiments"]` key prefix so editing an
+ * intervention invalidates this alongside any open report.
+ */
+export function useExperimentSummaries() {
+  return useQuery<ExperimentSummary[]>({
+    queryKey: ["experiments", "summary"],
+    queryFn: () => apiFetch("/experiments/summary"),
   });
 }
 

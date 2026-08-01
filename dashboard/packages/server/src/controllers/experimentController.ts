@@ -21,6 +21,11 @@ export class ExperimentController {
     this.tz = opts.userTimezone;
   }
 
+  /** Headline verdicts across the most recent interventions. */
+  async summaries(_req: Request, res: Response): Promise<void> {
+    res.json(await this.service.summaries(todayInTz(this.tz)));
+  }
+
   async report(req: Request, res: Response): Promise<void> {
     const id = parseId(req.params.interventionId, "interventionId");
     try {
