@@ -53,10 +53,61 @@ export function Dashboard() {
         {(data) => <ReadinessCard data={data} to="/readiness" />}
       </QueryBoundary>
 
-      {/* Top Bento: Weekly Insights + Goal Rings */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        <div className="xl:col-span-2">
+      {/*
+        Two columns, and the stat tiles live INSIDE the left one.
+        `items-start` so neither column stretches to the row height.
+
+        They used to be a full-width row below this grid, which left the
+        left column ~300px shorter than the right rail and so a large empty
+        rectangle beside it. Filling the column with content the reader
+        wants anyway beats trying to balance the rail by removing things
+        from it.
+      */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start">
+        <div className="xl:col-span-2 space-y-6">
           {insights.data && <WeeklyInsights data={insights.data} />}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <StatCard
+              title="Total Steps"
+              value={s?.activity.latest?.steps?.toLocaleString() ?? null}
+              sparkline={s?.activity.sparkline ?? []}
+              color={METRIC_COLOR.steps}
+              icon="footprint"
+            />
+            <StatCard
+              title="Rest Duration"
+              value={
+                s?.sleep.latest?.totalMinutesAsleep != null
+                  ? `${Math.floor(s.sleep.latest.totalMinutesAsleep / 60)}:${String(s.sleep.latest.totalMinutesAsleep % 60).padStart(2, "0")}`
+                  : null
+              }
+              unit="hrs"
+              sparkline={s?.sleep.sparkline ?? []}
+              color={METRIC_COLOR.sleepMin}
+              icon="bedtime"
+            />
+            <StatCard
+              title="Resting HR"
+              value={s?.heartRate.latest?.restingHeartRate ?? null}
+              unit="bpm"
+              sparkline={s?.heartRate.sparkline ?? []}
+              color={METRIC_COLOR.restingHr}
+              icon="favorite"
+            />
+            <StatCard
+              title="Body Mass"
+              value={
+                s?.weight.latest?.weightKg != null
+                  ? Number(convertWeight(s.weight.latest.weightKg, units)?.toFixed(1))
+                  : null
+              }
+              unit={weightUnitLabel(units)}
+              sparkline={s?.weight.sparkline ?? []}
+              color={METRIC_COLOR.weight}
+              icon="scale"
+            />
+          </div>
         </div>
         <div className="space-y-6">
           {/* The one question the dashboard never asked. Above the rings
@@ -71,48 +122,6 @@ export function Dashboard() {
         </div>
       </div>
 
-      {/* Stat Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          title="Total Steps"
-          value={s?.activity.latest?.steps?.toLocaleString() ?? null}
-          sparkline={s?.activity.sparkline ?? []}
-          color={METRIC_COLOR.steps}
-          icon="footprint"
-        />
-        <StatCard
-          title="Rest Duration"
-          value={
-            s?.sleep.latest?.totalMinutesAsleep != null
-              ? `${Math.floor(s.sleep.latest.totalMinutesAsleep / 60)}:${String(s.sleep.latest.totalMinutesAsleep % 60).padStart(2, "0")}`
-              : null
-          }
-          unit="hrs"
-          sparkline={s?.sleep.sparkline ?? []}
-          color={METRIC_COLOR.sleepMin}
-          icon="bedtime"
-        />
-        <StatCard
-          title="Resting HR"
-          value={s?.heartRate.latest?.restingHeartRate ?? null}
-          unit="bpm"
-          sparkline={s?.heartRate.sparkline ?? []}
-          color={METRIC_COLOR.restingHr}
-          icon="favorite"
-        />
-        <StatCard
-          title="Body Mass"
-          value={
-            s?.weight.latest?.weightKg != null
-              ? Number(convertWeight(s.weight.latest.weightKg, units)?.toFixed(1))
-              : null
-          }
-          unit={weightUnitLabel(units)}
-          sparkline={s?.weight.sparkline ?? []}
-          color={METRIC_COLOR.steps}
-          icon="scale"
-        />
-      </div>
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

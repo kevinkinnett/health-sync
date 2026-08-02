@@ -26,31 +26,37 @@ export function StatCard({
   badge,
 }: StatCardProps) {
   return (
+    /*
+     * The icon sits on the title row rather than on a line of its own.
+     * Stacked, this card spent ~190px on a number and a 32px sparkline and
+     * read as half-empty — most of its height was two mb-4 gaps and a
+     * 40px icon block with nothing beside it.
+     */
     <div className="bg-surface-container rounded-xl p-5 border border-outline-variant/5">
-      <div className="flex justify-between items-start mb-4">
-        {icon && (
-          <div
-            className="p-2 rounded-lg"
-            style={{ backgroundColor: `${color}15` }}
-          >
-            <span className="material-symbols-outlined" style={{ color }}>
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <div className="flex items-center gap-2 min-w-0">
+          {icon && (
+            <span
+              className="material-symbols-outlined text-base shrink-0"
+              style={{ color }}
+            >
               {icon}
             </span>
-          </div>
-        )}
+          )}
+          <p className="text-[10px] text-outline uppercase tracking-widest font-bold truncate">
+            {title}
+          </p>
+        </div>
         {badge && (
           <span
-            className="text-xs font-bold flex items-center px-2 py-0.5 rounded"
+            className="text-xs font-bold flex items-center px-2 py-0.5 rounded shrink-0"
             style={{ backgroundColor: `${color}15`, color }}
           >
             {badge}
           </span>
         )}
       </div>
-      <p className="text-[10px] text-outline uppercase tracking-widest font-bold mb-1">
-        {title}
-      </p>
-      <div className="flex items-baseline gap-1 mb-4">
+      <div className="flex items-baseline gap-1 mb-3">
         <span className="text-2xl font-headline font-bold tabular-nums text-on-surface">
           {value ?? "---"}
         </span>
@@ -61,7 +67,8 @@ export function StatCard({
         )}
       </div>
       {sparkline.length > 0 && (
-        <div className="h-8 w-full opacity-60">
+        /* Was opacity-60, which on a 32px line read as "nothing here". */
+        <div className="h-10 w-full opacity-80">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={sparkline}>
               <Line

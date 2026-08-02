@@ -123,6 +123,27 @@ test.describe("chart appearance", () => {
     await expect(card).toHaveScreenshot("did-it-work.png");
   });
 
+  test("home — the goal rings card keeps its own bounds", async ({ page }) => {
+    // The regression this locks: `h-full` on a card stacked with siblings
+    // inside a grid cell resolved to the whole ROW height, so the card grew
+    // to several hundred empty pixels and pushed its ring out of the bottom
+    // over the stat tiles below. Nothing in the DOM was wrong — only the
+    // rendered box — so a pixel diff is the only thing that can see it.
+    await ready(page, "/");
+    const card = page.getByText("Daily Goals").locator("../..");
+    await expect(card).toBeVisible({ timeout: 15_000 });
+    await settle(page);
+    await expect(card).toHaveScreenshot("daily-goals.png");
+  });
+
+  test("home — the stat tiles", async ({ page }) => {
+    await ready(page, "/");
+    const tile = page.getByText("TOTAL STEPS").locator("../..");
+    await expect(tile).toBeVisible({ timeout: 15_000 });
+    await settle(page);
+    await expect(tile).toHaveScreenshot("stat-tile.png");
+  });
+
   test("timeline — the overlap bars", async ({ page }) => {
     await ready(page, "/timeline");
     const gantt = page.getByTestId("intervention-gantt");

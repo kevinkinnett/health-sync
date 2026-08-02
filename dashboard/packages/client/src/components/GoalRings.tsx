@@ -119,7 +119,17 @@ export function GoalRings({ summary }: { summary: HealthSummary }) {
   const stepsPct = goals.steps > 0 ? latestSteps / goals.steps : 0;
 
   return (
-    <div className="bg-surface-container-high rounded-xl p-6 flex flex-col justify-between h-full">
+    /*
+     * No `h-full` / `justify-between`.
+     *
+     * This card sits in a stack with siblings inside a grid cell. A grid
+     * item stretches to the row height, so `h-full` here resolved to the
+     * height of the WHOLE row rather than this card's share of it — the
+     * card grew to several hundred empty pixels and pushed its own ring
+     * out of the bottom, over the stat cards below. It only looked right
+     * back when it was the sole occupant of that column.
+     */
+    <div className="bg-surface-container-high rounded-xl p-6">
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-lg font-headline font-semibold text-on-surface">
           Daily Goals
