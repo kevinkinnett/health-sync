@@ -17,31 +17,64 @@
   --color-outline: #908fa0;
   --color-outline-variant: #464554;
 
-  /* ── Primary (Indigo / Activity) ── */
-  --color-primary: #c0c1ff;
-  --color-primary-container: #8083ff;
-  --color-on-primary: #1000a9;
-  --color-on-primary-fixed: #07006c;
+  /*
+   * ── Accents ──
+   *
+   * Retuned 2026-08-02. The previous set (#c0c1ff lavender, #4edea3 mint,
+   * #ffb2b7 pink, #ffb4ab) was a generated Material tone-80 ramp, and two
+   * measurements explain why the app never read as a considered dark
+   * theme:
+   *
+   *   1. All four sat at 9.61-9.66 contrast against the card — the SAME
+   *      weight as --color-on-surface-variant (9.61). An accent that is
+   *      exactly as bright as secondary body text cannot signal anything;
+   *      it differed from the prose only by hue.
+   *   2. Three of the four fell BELOW the chroma floor, i.e. measurably
+   *      "reads gray". Hue was the only differentiator and it was too weak
+   *      to do the job. That is the washed-out feeling, quantified.
+   *
+   * The new set is pulled from the same hues as the validated chart
+   * palette, so the chrome and the data finally speak one language, and
+   * tones were chosen BY MEASUREMENT to land at 5.3-6.1 — comfortably past
+   * the 4.5:1 text floor, and clearly below the ink ramp (body 12.71,
+   * variant 9.61) so they read as coloured rather than merely bright.
+   *
+   * Sitting in one band is deliberate: primary/secondary/tertiary are
+   * different ROLES, not different emphasis levels. All four now clear the
+   * chroma floor.
+   *
+   * NB: the dataviz validator flags these as outside its lightness band.
+   * That band governs CATEGORICAL CHART MARKS; a UI accent that must also
+   * serve as text on a dark surface legitimately sits higher. The right
+   * check for these is WCAG contrast, which is what was used.
+   */
 
-  /* ── Secondary (Emerald / Recovery) ── */
-  --color-secondary: #4edea3;
-  --color-secondary-container: #00a572;
-  --color-on-secondary: #003824;
+  /* ── Primary (Blue / interactive) — chart SERIES[0] hue, 6.02 on card ── */
+  --color-primary: #5ba0ee;
+  --color-primary-container: #4489d2; /* gradient end: 5.11 with on-primary-fixed */
+  --color-on-primary: #0b1326; /* 6.79 on primary; white would be 2.72 */
+  --color-on-primary-fixed: #04122b;
 
-  /* ── Tertiary (Rose / Vitals) ── */
-  --color-tertiary: #ffb2b7;
-  --color-tertiary-container: #ff516a;
-  --color-on-tertiary: #67001b;
+  /* ── Secondary (Green / recovery) — chart SERIES[2] hue, 6.11 ── */
+  --color-secondary: #22b380;
+  --color-secondary-container: #1e9e72; /* 4.91 with on-secondary */
+  --color-on-secondary: #04231a;
 
-  /* ── Error ── */
-  --color-error: #ffb4ab;
-  --color-error-container: #93000a;
-  --color-on-error: #690005;
+  /* ── Tertiary (Orange / vitals) — chart SERIES[1] hue, 5.84 ── */
+  --color-tertiary: #ea7c4a;
+  --color-tertiary-container: #cf6a38; /* 4.90 with on-tertiary */
+  --color-on-tertiary: #2b1004;
+
+  /* ── Error — STATUS.critical hue, lightened to 5.31 because the raw
+       #d03b3b is 3.41 and there are 40+ `text-error` call sites ── */
+  --color-error: #eb6a6a;
+  --color-error-container: #d85f5f; /* 5.06 with on-error */
+  --color-on-error: #2b0606;
 
   /* ── Inverse ── */
   --color-inverse-surface: #dae2fd;
   --color-inverse-on-surface: #283044;
-  --color-inverse-primary: #494bd6;
+  --color-inverse-primary: #2b6cae;
 
   /* ── Fonts ── */
   --font-headline: "Manrope", system-ui, sans-serif;

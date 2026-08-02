@@ -148,6 +148,13 @@ export function GoalRings({ summary }: { summary: HealthSummary }) {
         </div>
       )}
 
+      {/*
+        Legend dots take METRIC_COLOR, not the theme accents. Steps, active
+        minutes and sleep are each plotted in a specific colour elsewhere in
+        the app; colouring them primary/secondary/tertiary here meant the
+        same metric had two different colours depending on which card you
+        were looking at.
+      */}
       <div className="flex items-center justify-around py-4">
         {/* Main steps ring */}
         <Ring progress={stepsPct} color={METRIC_COLOR.steps} size={128} strokeWidth={8}>
@@ -165,7 +172,7 @@ export function GoalRings({ summary }: { summary: HealthSummary }) {
         {/* Legend */}
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-2 h-2 rounded-full bg-primary" />
+            <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: METRIC_COLOR.steps }} />
             <div>
               <p className="text-[10px] text-outline uppercase font-bold tracking-widest">Steps</p>
               <p className="text-xs font-bold tabular-nums text-on-surface">
@@ -174,7 +181,7 @@ export function GoalRings({ summary }: { summary: HealthSummary }) {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <div className="w-2 h-2 rounded-full bg-secondary" />
+            <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: METRIC_COLOR.activeMinutes }} />
             <div>
               <p className="text-[10px] text-outline uppercase font-bold tracking-widest">Active</p>
               <p className="text-xs font-bold tabular-nums text-on-surface">
@@ -183,7 +190,7 @@ export function GoalRings({ summary }: { summary: HealthSummary }) {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <div className="w-2 h-2 rounded-full bg-tertiary" />
+            <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: METRIC_COLOR.sleepMin }} />
             <div>
               <p className="text-[10px] text-outline uppercase font-bold tracking-widest">Sleep</p>
               <p className="text-xs font-bold tabular-nums text-on-surface">
