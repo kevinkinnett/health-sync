@@ -3,7 +3,8 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**"]
+      "outputs": ["dist/**"],
+      "env": ["GIT_COMMIT", "BUILD_TIME", "BUILD_NUMBER"]
     },
     "dev": {
       "cache": false,
