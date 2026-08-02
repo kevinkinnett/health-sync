@@ -19,6 +19,10 @@ dist/
 # Playwright MCP screenshot artefacts
 .playwright-mcp/
 *.png
+# ...but visual-regression baselines are SOURCE, not artefacts. Without
+# them committed the suite has nothing to compare against and silently
+# re-records on every machine, which is the same as not having it.
+!dashboard/packages/client/e2e/**/*-snapshots/*.png
 
 
 # Playwright
