@@ -145,6 +145,7 @@ export type {
   UpdateInterventionBody,
 } from "./types/intervention.js";
 export { isActiveOn } from "./types/intervention.js";
+export type { BuildInfo } from "./types/build.js";
 export type {
   ExperimentReport,
   ExperimentSummary,

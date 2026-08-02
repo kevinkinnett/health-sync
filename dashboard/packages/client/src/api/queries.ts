@@ -21,3 +21,4 @@ export * from "./queries/analytics.js";
 export * from "./queries/insights.js";
 export * from "./queries/interventions.js";
 export * from "./queries/apiConsole.js";
+export * from "./queries/version.js";

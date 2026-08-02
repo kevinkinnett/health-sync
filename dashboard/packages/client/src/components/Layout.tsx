@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { BuildStamp } from "./BuildStamp";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useDateRangeStore, type PresetRange } from "../stores/dateRangeStore";
 import { useUserTimezone } from "../api/queries";
@@ -259,6 +260,7 @@ function SideNav() {
           <span className="material-symbols-outlined text-[18px]">help</span>
           Support
         </a>
+        <BuildStamp />
       </div>
     </aside>
   );

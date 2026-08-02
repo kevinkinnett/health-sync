@@ -1,9 +1,49 @@
+import { execSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 
+/**
+ * Stamp the bundle with the commit it was built from.
+ *
+ * The service worker precaches this bundle, so a browser can keep running
+ * a previous build against a freshly deployed API with nothing on screen
+ * saying so. Baking the SHA in at build time is the only way the running
+ * client can report its own identity — it cannot ask the server, because
+ * the server is deployed separately and may not match.
+ *
+ * Falls back to "unknown" rather than failing the build: a container that
+ * builds from a tarball has no .git, and that must not be fatal.
+ */
+function buildInfo() {
+  const run = (cmd: string): string => {
+    try {
+      return execSync(cmd, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    } catch {
+      return "";
+    }
+  };
+  const commit = process.env.GIT_COMMIT || run("git rev-parse HEAD") || "unknown";
+  let version = "0.0.0";
+  try {
+    version = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")).version;
+  } catch {
+    /* keep the default */
+  }
+  return {
+    commit,
+    shortCommit: commit.slice(0, 7),
+    builtAt: process.env.BUILD_TIME || new Date().toISOString(),
+    version,
+  };
+}
+
 export default defineConfig({
+  define: {
+    __BUILD_INFO__: JSON.stringify(buildInfo()),
+  },
   plugins: [
     react(),
     tailwindcss(),

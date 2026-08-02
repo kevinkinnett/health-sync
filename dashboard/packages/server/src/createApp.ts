@@ -72,6 +72,7 @@ import { createMedicationRoutes } from "./routes/medication.js";
 import { createDossierRoutes } from "./routes/dossier.js";
 import { createAnalyticsRoutes } from "./routes/analytics.js";
 import { createConfigRoutes } from "./routes/config.js";
+import { createVersionRoutes } from "./routes/version.js";
 import { createApiLogRoutes } from "./routes/apiLogs.js";
 import { createV1Router } from "./api/v1/router.js";
 import { generateOpenApiSpec } from "./api/v1/openapi.js";
@@ -255,6 +256,9 @@ export async function createApp(pool: Pool, config: Config): Promise<Express> {
     userTimezone: config.userTimezone,
   });
   app.use("/api/experiments", createExperimentRoutes(experimentController));
+  // Fixed URL, outside /api/v1: "which build is this?" must stay
+  // answerable across every future API version.
+  app.use("/api/version", createVersionRoutes());
 
   // Proactive health alerts (anomaly detection over recovery signals).
   // Reads thresholds/toggles from settings; the evaluate response carries
