@@ -44,6 +44,17 @@ export function BuildStamp({
         }
       >
         {formatBuild(client)}
+        {client.source === "local" && client.shortCommit !== "unknown" && (
+          /*
+           * A production deployment reporting "local" means the artefact
+           * was built on someone's machine: never tested by CI, and not
+           * reproducible from a pipeline run. Quiet, but worth being able
+           * to notice.
+           */
+          <span className="ml-1 text-outline/70" data-testid="build-local">
+            (local)
+          </span>
+        )}
       </div>
 
       {mismatch && (

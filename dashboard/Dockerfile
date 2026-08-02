@@ -2,6 +2,23 @@ FROM node:20-alpine AS build
 RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
 WORKDIR /app
 
+# Build identity, supplied by CI (see .github/workflows/docker.yml).
+#
+# This image contains no .git — only packages/ and the lockfiles are
+# copied — so `git rev-parse` cannot work here and these args are the ONLY
+# way the build can know what it is. Without them the client bundle and
+# the API both report commit "unknown" in production, which makes the
+# whole version stamp inert exactly where it is needed.
+#
+# ARGs are per-stage in a multi-stage build and have to be redeclared in
+# the runtime stage below.
+ARG GIT_COMMIT=""
+ARG BUILD_TIME=""
+ARG BUILD_NUMBER=""
+ENV GIT_COMMIT=$GIT_COMMIT \
+    BUILD_TIME=$BUILD_TIME \
+    BUILD_NUMBER=$BUILD_NUMBER
+
 # Install dependencies
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY packages/shared/package.json packages/shared/
@@ -18,6 +35,16 @@ RUN pnpm turbo run build
 FROM node:20-alpine
 RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
 WORKDIR /app
+
+# Redeclared: ARGs do not cross stages. The client's identity is already
+# compiled into its bundle, but the SERVER reads these at process start,
+# so they have to survive into the runtime image as ENV.
+ARG GIT_COMMIT=""
+ARG BUILD_TIME=""
+ARG BUILD_NUMBER=""
+ENV GIT_COMMIT=$GIT_COMMIT \
+    BUILD_TIME=$BUILD_TIME \
+    BUILD_NUMBER=$BUILD_NUMBER
 
 COPY --from=build /app/pnpm-lock.yaml /app/pnpm-workspace.yaml /app/package.json ./
 COPY --from=build /app/packages/shared/package.json packages/shared/

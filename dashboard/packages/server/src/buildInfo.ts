@@ -28,11 +28,20 @@ function resolve(): BuildInfo {
     /* keep the default */
   }
 
+  // In the production image there is no .git, so these env vars — baked in
+  // by the Dockerfile from CI build args — are the only source of truth.
+  const buildNumber = process.env.BUILD_NUMBER?.trim() ?? "";
+
   return {
     commit,
     shortCommit: commit.slice(0, 7),
+    // Falling back to "now" is right for a dev process but WRONG for an
+    // image: a container restart would report a fresh build time for
+    // months-old code. BUILD_TIME is baked at image build for that reason.
     builtAt: process.env.BUILD_TIME?.trim() || new Date().toISOString(),
     version,
+    buildNumber,
+    source: buildNumber ? "ci" : "local",
   };
 }
 

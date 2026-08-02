@@ -23,4 +23,21 @@ export interface BuildInfo {
   builtAt: string;
   /** Package version, e.g. "0.1.0". */
   version: string;
+  /**
+   * CI run number, e.g. "42". Empty when the build did not come from CI.
+   *
+   * Distinct from the commit on purpose: a re-run of the same commit
+   * produces a new build number, which is what tells you whether the
+   * image you are looking at is the one CI just pushed or an earlier
+   * attempt at the same code.
+   */
+  buildNumber: string;
+  /**
+   * Where the build came from.
+   *
+   * `local` on a production deployment means someone shipped from a
+   * laptop — the artefact was never tested by CI and cannot be rebuilt
+   * from a known pipeline run. Worth being able to see at a glance.
+   */
+  source: "ci" | "local";
 }

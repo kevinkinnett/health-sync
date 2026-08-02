@@ -63,6 +63,15 @@ jobs:
             type=sha
             type=raw,value=latest,enable={{is_default_branch}}
 
+      # The image has no .git, so the build cannot discover its own commit.
+      # Capture it here, where the workflow context knows, and hand it to
+      # the build as args. A single UTC timestamp is generated once so the
+      # client bundle and the server agree on when the build happened.
+      - name: Resolve build identity
+        id: build
+        run: |
+          echo "time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
@@ -71,3 +80,7 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            GIT_COMMIT=${{ github.sha }}
+            BUILD_TIME=${{ steps.build.outputs.time }}
+            BUILD_NUMBER=${{ github.run_number }}

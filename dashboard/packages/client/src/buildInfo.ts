@@ -19,7 +19,14 @@ declare const __BUILD_INFO__: BuildInfo | undefined;
 export const CLIENT_BUILD: BuildInfo =
   typeof __BUILD_INFO__ !== "undefined"
     ? __BUILD_INFO__
-    : { commit: "unknown", shortCommit: "unknown", builtAt: "", version: "0.0.0" };
+    : {
+        commit: "unknown",
+        shortCommit: "unknown",
+        builtAt: "",
+        version: "0.0.0",
+        buildNumber: "",
+        source: "local",
+      };
 
 /**
  * `v0.1.0 · a1b2c3d`, degrading to whichever half is meaningful.
@@ -32,7 +39,10 @@ export const CLIENT_BUILD: BuildInfo =
 export function formatBuild(info: BuildInfo): string {
   const version = info.version && info.version !== "0.0.0" ? `v${info.version}` : "";
   const commit = info.shortCommit && info.shortCommit !== "unknown" ? info.shortCommit : "";
-  return [version, commit].filter(Boolean).join(" · ") || "build unknown";
+  // The CI run number distinguishes a re-run from the original build of
+  // the same commit, which the SHA alone cannot.
+  const run = info.buildNumber ? `#${info.buildNumber}` : "";
+  return [version, commit, run].filter(Boolean).join(" · ") || "build unknown";
 }
 
 /**

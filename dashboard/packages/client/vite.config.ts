@@ -32,11 +32,18 @@ function buildInfo() {
   } catch {
     /* keep the default */
   }
+  // The Docker build stage has no .git — the image copies only packages/
+  // and the lockfiles — so inside a container these env vars are the ONLY
+  // source of truth. Without them a production build reports "unknown"
+  // and the whole stamp is inert exactly where it matters.
+  const buildNumber = process.env.BUILD_NUMBER?.trim() ?? "";
   return {
     commit,
     shortCommit: commit.slice(0, 7),
     builtAt: process.env.BUILD_TIME || new Date().toISOString(),
     version,
+    buildNumber,
+    source: buildNumber ? ("ci" as const) : ("local" as const),
   };
 }
 

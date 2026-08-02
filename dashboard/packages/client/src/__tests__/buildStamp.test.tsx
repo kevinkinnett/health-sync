@@ -16,6 +16,8 @@ function build(over: Partial<BuildInfo> = {}): BuildInfo {
     shortCommit: "a1b2c3d",
     builtAt: "2026-08-01T12:00:00.000Z",
     version: "0.1.0",
+    buildNumber: "42",
+    source: "ci",
     ...over,
   };
 }
@@ -32,28 +34,43 @@ function renderStamp(client = build()) {
 }
 
 describe("formatBuild", () => {
-  it("shows the version and the short commit", () => {
-    expect(formatBuild(build())).toBe("v0.1.0 · a1b2c3d");
+  it("shows the version, the commit and the CI run", () => {
+    expect(formatBuild(build())).toBe("v0.1.0 · a1b2c3d · #42");
+  });
+
+  it("omits the run number on a local build", () => {
+    expect(formatBuild(build({ buildNumber: "", source: "local" }))).toBe(
+      "v0.1.0 · a1b2c3d",
+    );
+  });
+
+  it("keeps the run number, which a re-run changes but the SHA does not", () => {
+    // Same commit, second CI run: the only thing distinguishing the two
+    // images is this number.
+    expect(formatBuild(build({ buildNumber: "43" }))).toContain("#43");
   });
 
   it("drops the meaningless 0.0.0 version and shows the commit alone", () => {
     // The client package is private and versioned 0.0.0, so "v0.0.0" is
     // noise beside the only identifier that distinguishes builds. Found by
     // probing the real bundle, which printed exactly that.
-    expect(formatBuild(build({ version: "0.0.0" }))).toBe("a1b2c3d");
+    expect(formatBuild(build({ version: "0.0.0" }))).toBe("a1b2c3d · #42");
   });
 
   it("never renders an empty stamp", () => {
-    expect(formatBuild(build({ version: "0.0.0", shortCommit: "unknown", commit: "unknown" })))
-      .toBe("build unknown");
+    expect(
+      formatBuild(
+        build({ version: "0.0.0", shortCommit: "unknown", commit: "unknown", buildNumber: "" }),
+      ),
+    ).toBe("build unknown");
   });
 
   it("drops the commit when git wasn't available at build time", () => {
     // A container built from a tarball has no .git. "v0.1.0 · unknown"
     // reads like a bug; "v0.1.0" reads like a fact.
-    expect(formatBuild(build({ shortCommit: "unknown", commit: "unknown" }))).toBe(
-      "v0.1.0",
-    );
+    expect(
+      formatBuild(build({ shortCommit: "unknown", commit: "unknown", buildNumber: "" })),
+    ).toBe("v0.1.0");
   });
 });
 
@@ -102,6 +119,18 @@ describe("BuildStamp", () => {
     apiFetchMock.mockResolvedValue(build());
     renderStamp();
     expect(screen.getByTestId("build-stamp")).toHaveTextContent("v0.1.0 · a1b2c3d");
+  });
+
+  it("flags a build that did not come from CI", () => {
+    // "local" on a production deployment means the artefact was built on
+    // someone's machine — never tested by CI, not reproducible.
+    renderStamp(build({ source: "local", buildNumber: "" }));
+    expect(screen.getByTestId("build-local")).toBeInTheDocument();
+  });
+
+  it("does not flag a CI build", () => {
+    renderStamp(build());
+    expect(screen.queryByTestId("build-local")).not.toBeInTheDocument();
   });
 
   it("warns when the API is on a different commit", async () => {
