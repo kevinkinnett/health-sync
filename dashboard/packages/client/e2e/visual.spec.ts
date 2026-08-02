@@ -137,8 +137,14 @@ test.describe("chart appearance", () => {
   });
 
   test("home — the stat tiles", async ({ page }) => {
+    // Targets the CARD by its own testid. The first version of this test
+    // used getByText("TOTAL STEPS").locator("../..") which resolves to the
+    // header ROW, not the tile — so it silently excluded the number and
+    // the sparkline, and sailed through a change that replaced the whole
+    // sparkline. A baseline scoped to the wrong element is worse than none:
+    // it reports green over the very thing it was added to watch.
     await ready(page, "/");
-    const tile = page.getByText("TOTAL STEPS").locator("../..");
+    const tile = page.getByTestId("stat-card").first();
     await expect(tile).toBeVisible({ timeout: 15_000 });
     await settle(page);
     await expect(tile).toHaveScreenshot("stat-tile.png");

@@ -41,7 +41,15 @@ import type {
 
 const TODAY = "2026-07-26";
 
+/**
+ * Six points, not three: the stat tiles derive an "above usual / steady"
+ * verdict from this series and refuse to judge fewer than four readings,
+ * so a three-point fixture silently skipped that whole code path.
+ */
 const spark = (v: number) => [
+  { date: "2026-07-21", value: v * 0.88 },
+  { date: "2026-07-22", value: v * 0.94 },
+  { date: "2026-07-23", value: v * 0.91 },
   { date: "2026-07-24", value: v * 0.9 },
   { date: "2026-07-25", value: v * 0.95 },
   { date: TODAY, value: v },

@@ -74,6 +74,7 @@ export function Dashboard() {
               sparkline={s?.activity.sparkline ?? []}
               color={METRIC_COLOR.steps}
               icon="footprint"
+              betterDirection="up"
             />
             <StatCard
               title="Rest Duration"
@@ -86,6 +87,7 @@ export function Dashboard() {
               sparkline={s?.sleep.sparkline ?? []}
               color={METRIC_COLOR.sleepMin}
               icon="bedtime"
+              betterDirection="up"
             />
             <StatCard
               title="Resting HR"
@@ -94,6 +96,7 @@ export function Dashboard() {
               sparkline={s?.heartRate.sparkline ?? []}
               color={METRIC_COLOR.restingHr}
               icon="favorite"
+              betterDirection="down"
             />
             <StatCard
               title="Body Mass"
