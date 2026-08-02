@@ -3,6 +3,7 @@ import type {
   ExperimentSummary,
   Intervention,
   MetricEffect,
+  MetricSeries,
 } from "@health-dashboard/shared";
 import { gradeConfidence, scanConfounds } from "./confounds.js";
 import { rankSummaries, toSummary } from "./headline.js";
@@ -40,6 +41,7 @@ export class ExperimentService {
 
     const windows = selectWindows(intervention, today);
     const metrics: MetricEffect[] = [];
+    const series: MetricSeries[] = [];
     let beforeObserved = 0;
     let afterObserved = 0;
 
@@ -56,7 +58,28 @@ export class ExperimentService {
       // rather than render a row of dashes.
       if (beforePoints.length === 0 || afterPoints.length === 0) continue;
 
-      metrics.push(effectFor(spec, beforePoints.map((p) => p.value), afterPoints.map((p) => p.value)));
+      const beforeValues = beforePoints.map((p) => p.value);
+      const afterValues = afterPoints.map((p) => p.value);
+      const effect = effectFor(spec, beforeValues, afterValues);
+      metrics.push(effect);
+
+      // The points were fetched to compute the means and then discarded.
+      // Keeping them is what lets the report show whether a shift was a
+      // step at the changepoint or a drift that predates it — the same
+      // mean is consistent with both, and they mean different things.
+      series.push({
+        metric: spec.key,
+        label: spec.label,
+        unit: spec.unit,
+        betterDirection: spec.betterDirection,
+        points: [...beforePoints, ...afterPoints].map((p) => ({
+          date: p.date,
+          value: round(p.value, 2),
+        })),
+        beforeMean: effect.before.mean,
+        afterMean: effect.after.mean,
+        meaningful: effect.meaningful,
+      });
     }
 
     const coverage = {
@@ -75,6 +98,7 @@ export class ExperimentService {
       before: withObserved(windows.before, beforeObserved),
       after: withObserved(windows.after, afterObserved),
       metrics,
+      series,
       confounds,
       confidence,
       summary: summarize(intervention, metrics, confidence, confounds.length),

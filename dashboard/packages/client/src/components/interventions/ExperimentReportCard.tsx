@@ -8,6 +8,7 @@ import { useExperimentReport } from "../../api/queries";
 import { QueryBoundary } from "../QueryBoundary";
 import { SERIES, STATUS } from "../charts/chartPalette";
 import { EffectSizePlot } from "./EffectSizePlot";
+import { MetricSeriesPanels } from "./MetricSeriesPanels";
 
 /**
  * The "did it work?" report.
@@ -117,6 +118,16 @@ function Report({ report }: { report: ExperimentReport }) {
             supports. Effect size and sample counts are shown instead.
           </p>
         </div>
+      )}
+
+      {/* After the numbers, before the caveats: the shape of the change is
+          the thing most likely to make a reader doubt the summary, which
+          is exactly where the caveats then pick up. */}
+      {report.series?.length > 0 && (
+        <MetricSeriesPanels
+          series={report.series}
+          changepoint={report.changepoint}
+        />
       )}
 
       {report.confounds.length > 0 && (

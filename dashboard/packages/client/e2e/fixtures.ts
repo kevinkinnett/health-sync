@@ -283,6 +283,48 @@ const EXPERIMENT: ExperimentReport = {
       meaningful: true,
     },
   ],
+  // A visible STEP at the changepoint for sleep, and a flat line for
+  // resting HR — the two shapes the panels exist to tell apart.
+  series: [
+    {
+      metric: "sleepMin",
+      label: "Time asleep",
+      unit: "min",
+      betterDirection: "up",
+      points: [
+        { date: "2026-04-28", value: 388 },
+        { date: "2026-04-29", value: 402 },
+        { date: "2026-04-30", value: 379 },
+        { date: "2026-05-01", value: 395 },
+        { date: "2026-05-02", value: 441 },
+        { date: "2026-05-03", value: 428 },
+        { date: "2026-05-04", value: 447 },
+        { date: "2026-05-05", value: 433 },
+      ],
+      beforeMean: 391.9,
+      afterMean: 435.4,
+      meaningful: true,
+    },
+    {
+      metric: "restingHr",
+      label: "Resting heart rate",
+      unit: "bpm",
+      betterDirection: "down",
+      points: [
+        { date: "2026-04-28", value: 67 },
+        { date: "2026-04-29", value: 66 },
+        { date: "2026-04-30", value: 68 },
+        { date: "2026-05-01", value: 67 },
+        { date: "2026-05-02", value: 67 },
+        { date: "2026-05-03", value: 66 },
+        { date: "2026-05-04", value: 67 },
+        { date: "2026-05-05", value: 67 },
+      ],
+      beforeMean: 67,
+      afterMean: 66.8,
+      meaningful: false,
+    },
+  ],
   confounds: [
     {
       kind: "nearby_intervention",

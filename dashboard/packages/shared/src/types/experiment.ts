@@ -84,6 +84,42 @@ export type ExperimentConfidence =
   | "weak"
   | "insufficient";
 
+/** One observed day for a charted metric. */
+export interface MetricSeriesPoint {
+  date: string;
+  value: number;
+}
+
+/**
+ * The daily readings behind one metric's verdict, for plotting.
+ *
+ * The table says a mean moved by 11.2. It cannot say whether that was a
+ * step on the day of the change, a drift that started weeks earlier, or
+ * two outliers dragging an average — and those are different conclusions
+ * from the same summary statistic. Only the series distinguishes them.
+ *
+ * `beforeMean` / `afterMean` are carried rather than recomputed on the
+ * client, so the level lines drawn on the chart cannot disagree with the
+ * numbers printed in the table beside it.
+ */
+export interface MetricSeries {
+  metric: string;
+  label: string;
+  unit: string;
+  betterDirection: BetterDirection;
+  /** Observed days across BOTH windows, in date order. Gaps are omitted. */
+  points: MetricSeriesPoint[];
+  beforeMean: number;
+  afterMean: number;
+  /**
+   * Mirrors the matching `MetricEffect`. Carried so the chart can decline
+   * to colour a level line that the report itself refuses to call a
+   * result — a green "after" line on a change graded as noise reads as a
+   * claim the rest of the report is careful not to make.
+   */
+  meaningful: boolean;
+}
+
 /**
  * A one-line verdict per intervention, for surfaces that must ASK the
  * question rather than wait to be asked it.
@@ -113,6 +149,12 @@ export interface ExperimentReport {
   before: ExperimentWindow;
   after: ExperimentWindow;
   metrics: MetricEffect[];
+  /**
+   * The daily readings behind `metrics`, one entry per comparable metric.
+   * Free to produce — the engine already fetched these points to compute
+   * the means; it previously threw them away.
+   */
+  series: MetricSeries[];
   confounds: Confound[];
   confidence: ExperimentConfidence;
   /** One-line plain-language summary, safe to show on its own. */

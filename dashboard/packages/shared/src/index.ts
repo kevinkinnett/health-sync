@@ -151,6 +151,8 @@ export type {
   ExperimentWindow,
   ExperimentConfidence,
   MetricEffect,
+  MetricSeries,
+  MetricSeriesPoint,
   EffectDirection,
   BetterDirection,
   Confound,

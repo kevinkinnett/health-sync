@@ -191,3 +191,76 @@ describe("ExperimentService", () => {
     expect(report.after.observedDays).toBe(30);
   });
 });
+
+describe("ExperimentService — daily series for plotting", () => {
+  it("returns the readings behind each comparable metric", async () => {
+    // These points were already fetched to compute the means and then
+    // thrown away. Keeping them is what lets the report show whether a
+    // shift was a step at the changepoint or a drift that predates it.
+    const svc = new ExperimentService(
+      lookup([intervention()]),
+      steppedSource("sleepMin", 392, 435),
+    );
+    const report = await svc.report(1, TODAY);
+
+    const sleep = report.series.find((s) => s.metric === "sleepMin");
+    expect(sleep).toBeDefined();
+    expect(sleep!.points.length).toBeGreaterThan(20);
+    expect(sleep!.label).toBe("Time asleep");
+    expect(sleep!.unit).toBe("min");
+  });
+
+  it("carries the window means rather than leaving them to the client", async () => {
+    // The level lines drawn on the chart must not be able to disagree with
+    // the numbers printed in the table beside them.
+    const svc = new ExperimentService(
+      lookup([intervention()]),
+      steppedSource("sleepMin", 392, 435),
+    );
+    const report = await svc.report(1, TODAY);
+
+    const sleep = report.series.find((s) => s.metric === "sleepMin")!;
+    const effect = report.metrics.find((m) => m.metric === "sleepMin")!;
+    expect(sleep.beforeMean).toBe(effect.before.mean);
+    expect(sleep.afterMean).toBe(effect.after.mean);
+  });
+
+  it("orders points by date across the window boundary", async () => {
+    // Before and after are fetched separately and concatenated; a chart
+    // drawing them out of order would render a line that doubles back.
+    const svc = new ExperimentService(
+      lookup([intervention()]),
+      steppedSource("sleepMin", 392, 435),
+    );
+    const report = await svc.report(1, TODAY);
+
+    const dates = report.series.find((s) => s.metric === "sleepMin")!.points.map((p) => p.date);
+    expect([...dates].sort()).toEqual(dates);
+  });
+
+  it("omits a metric that has no series, matching the metrics list", async () => {
+    // A metric with nothing on one side is dropped from `metrics`; it must
+    // not appear as an empty panel either.
+    const svc = new ExperimentService(
+      lookup([intervention()]),
+      steppedSource("sleepMin", 392, 435),
+    );
+    const report = await svc.report(1, TODAY);
+
+    expect(report.series.map((s) => s.metric).sort()).toEqual(
+      report.metrics.map((m) => m.metric).sort(),
+    );
+  });
+
+  it("keeps the series off the home-screen summaries", async () => {
+    // summaries() runs full reports; shipping every point to the dashboard
+    // card would make the payload grow with history for no benefit.
+    const svc = new ExperimentService(
+      lookup([intervention()]),
+      steppedSource("sleepMin", 392, 435),
+    );
+    const [summary] = await svc.summaries(TODAY);
+    expect(summary).toBeDefined();
+    expect(JSON.stringify(summary)).not.toContain("points");
+  });
+});

@@ -131,6 +131,22 @@ test.describe("chart appearance", () => {
     await expect(gantt).toHaveScreenshot("intervention-gantt.png");
   });
 
+  test("report — the day-by-day panels", async ({ page }) => {
+    // Observable Plot, so unlike the Recharts cards these also have real
+    // jsdom coverage. The pixel diff still earns its place: it is the only
+    // check on layout, on the changepoint rule landing in the right place,
+    // and on the two level lines being distinguishable.
+    await ready(page, "/timeline");
+    await page
+      .getByTestId("intervention-list")
+      .getByText("Eight Sleep Pod")
+      .click();
+    const panels = page.getByTestId("metric-series-panels");
+    await expect(panels).toBeVisible({ timeout: 15_000 });
+    await settle(page);
+    await expect(panels).toHaveScreenshot("metric-series-panels.png");
+  });
+
   test("report — the effect size plot", async ({ page }) => {
     await ready(page, "/timeline");
     await page
