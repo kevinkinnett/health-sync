@@ -1,6 +1,6 @@
 import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
@@ -47,7 +47,10 @@ function buildInfo() {
   };
 }
 
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  const viteEnv = loadEnv(mode, import.meta.dirname, "VITE_");
+
+  return {
   define: {
     __BUILD_INFO__: JSON.stringify(buildInfo()),
   },
@@ -116,9 +119,10 @@ export default defineConfig({
   server: {
     proxy: {
       "/api": {
-        target: "http://localhost:3001",
+        target: viteEnv.VITE_API_PROXY_TARGET ?? "http://localhost:3001",
         changeOrigin: true,
       },
     },
   },
+  };
 });

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { DoseResponseSummary } from "@health-dashboard/shared";
 import {
   useMedicationAdherence,
@@ -161,14 +161,9 @@ export function AnalyticsMedications() {
     return bestId;
   }, [intakeByDay.data]);
 
-  const [selectedItemId, setSelectedItemId] = useState<number | null>(null);
+  const [chosenItemId, setChosenItemId] = useState<number | null>(null);
+  const selectedItemId = chosenItemId ?? mostLoggedItemId;
   const [lagDays, setLagDays] = useState(0);
-
-  useEffect(() => {
-    if (selectedItemId == null && mostLoggedItemId != null) {
-      setSelectedItemId(mostLoggedItemId);
-    }
-  }, [mostLoggedItemId, selectedItemId]);
 
   const adherence = useMedicationAdherence(selectedItemId);
   const correlations = useMedicationCorrelations(selectedItemId, lagDays);
@@ -202,7 +197,7 @@ export function AnalyticsMedications() {
           <select
             value={selectedItemId ?? ""}
             onChange={(e) =>
-              setSelectedItemId(
+              setChosenItemId(
                 e.target.value === "" ? null : Number(e.target.value),
               )
             }

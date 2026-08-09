@@ -65,6 +65,8 @@ export interface WindmillSchedule {
 export interface IngestOverview {
   state: IngestState[];
   runs: IngestRun[];
+  /** True only when the API reached Windmill during this overview request. */
+  windmillConnected: boolean;
   activeJobs: WindmillJob[];
   completedJobs: WindmillCompletedJob[];
   schedules: WindmillSchedule[];

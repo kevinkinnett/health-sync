@@ -37,12 +37,13 @@ export function ReadinessWaterfall({ data }: { data: ReadinessScore }) {
     .sort((a, b) => Math.abs(b.points) - Math.abs(a.points));
 
   // Cumulative path: 50 → … → score.
-  let run = 50;
-  const steps = drivers.map((d) => {
-    const from = run;
-    run += d.points;
-    return { ...d, from, to: run };
-  });
+  const steps = drivers.reduce<
+    Array<(typeof drivers)[number] & { from: number; to: number }>
+  >((result, driver) => {
+    const from = result.at(-1)?.to ?? 50;
+    result.push({ ...driver, from, to: from + driver.points });
+    return result;
+  }, []);
 
   // Shared horizontal scale across baseline, score and every step edge.
   const xsAll = [50, score, ...steps.flatMap((s) => [s.from, s.to])];

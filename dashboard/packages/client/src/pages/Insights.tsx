@@ -138,6 +138,8 @@ function ReportsTab() {
     if (job.data.status === "completed" || job.data.status === "failed") {
       // Job finished — clear persistence and jump to newest generation.
       const deadId = persistedJob?.jobId ?? null;
+      // Poll completion is an external event; clear its persisted UI state.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPersistedJob(null);
       localStorage.removeItem(JOB_STORAGE_KEY);
       setActiveGenerationId(null); // null → defaults to newest in list
@@ -160,6 +162,8 @@ function ReportsTab() {
     if (!persistedJob) return;
     if (job.error) {
       const deadId = persistedJob.jobId;
+      // A failed poll means the server-side job no longer exists.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPersistedJob(null);
       localStorage.removeItem(JOB_STORAGE_KEY);
       queryClient.removeQueries({ queryKey: ["insights", "job", deadId] });
@@ -385,7 +389,8 @@ function CategoryAccordion({
             <button
               onClick={() => {
                 const next = new Set(open);
-                isOpen ? next.delete(cat.key) : next.add(cat.key);
+                if (isOpen) next.delete(cat.key);
+                else next.add(cat.key);
                 setOpen(next);
               }}
               aria-expanded={isOpen}
@@ -454,7 +459,7 @@ function ChatTab() {
     setDraft(q);
   };
 
-  const messages = conv.data?.messages ?? [];
+  const messages = useMemo(() => conv.data?.messages ?? [], [conv.data?.messages]);
   // Optimistic + pending message rendering.
   const optimistic: ChatTurn[] = useMemo(() => {
     if (!send.isPending) return [];

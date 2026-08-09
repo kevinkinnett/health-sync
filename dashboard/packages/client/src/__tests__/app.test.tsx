@@ -21,7 +21,14 @@ import { AnalyticsHeartRate } from "../pages/analytics/HeartRate";
 // crash the render.
 vi.mock("../api/client", () => ({
   apiFetch: vi.fn((path?: string) =>
-    path?.includes("/health/readiness")
+    path?.includes("/health/summary")
+      ? Promise.resolve({
+          activity: { latest: null, sparkline: [] },
+          sleep: { latest: null, sparkline: [] },
+          heartRate: { latest: null, sparkline: [] },
+          weight: { latest: null, sparkline: [] },
+        })
+      : path?.includes("/health/readiness")
       ? Promise.resolve({
           date: null,
           score: null,
@@ -76,8 +83,8 @@ describe("App routing and layout", () => {
   it("renders the nav bar with all navigation links", () => {
     renderWithProviders();
     expect(screen.getByText("VITALIS")).toBeInTheDocument();
-    expect(screen.getAllByText("Dashboard").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("Analytics").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Today").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Trends").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Data Pipeline").length).toBeGreaterThanOrEqual(1);
   });
 
@@ -90,40 +97,28 @@ describe("App routing and layout", () => {
   });
 
   it("mounts the Dashboard route at /", async () => {
-    // We can't easily assert Dashboard-specific content here because
-    // the global mock returns `[]` for every endpoint — `useHealthSummary`
-    // hangs on `isLoading` forever (it never receives a HealthSummary
-    // shape it can render against). What we CAN verify is that the
-    // route mounts the Dashboard component (vs e.g. routing to a 404).
-    // The Dashboard's own render contract is exercised by
-    // `unitsToggle.test.tsx`, which mocks /health/summary properly.
     renderWithProviders("/");
-    await waitFor(() =>
-      expect(screen.getByText("Loading...")).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByText("Your daily briefing")).toBeInTheDocument());
   });
 
   it("renders Analytics layout with sub-nav at /analytics/overview", () => {
     renderWithProviders("/analytics/overview");
-    // The AnalyticsLayout sub-nav exposes pills for every metric — these
-    // overlap with the page-level labels but the count should be ≥1.
-    expect(screen.getAllByText("Overview").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("Activity").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("Sleep").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("Heart Rate").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("Supplements").length).toBeGreaterThanOrEqual(1);
+    const picker = screen.getByLabelText("Explore health view");
+    expect(picker).toHaveValue("/analytics/overview");
+    expect(screen.getByRole("option", { name: "Activity" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Sleep" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Heart Rate" })).toBeInTheDocument();
   });
 
   it("redirects /explore to the analytics overview", () => {
     renderWithProviders("/explore");
-    // After the redirect the analytics sub-nav should be visible.
-    expect(screen.getAllByText("Overview").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("Correlations").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByLabelText("Explore health view")).toHaveValue("/analytics/overview");
+    expect(screen.getByRole("option", { name: "Correlations" })).toBeInTheDocument();
   });
 
-  it("renders Ingest page at /ingest", () => {
+  it("renders Ingest page at /ingest", async () => {
     renderWithProviders("/ingest");
-    expect(screen.getByText("Pipeline Status")).toBeInTheDocument();
+    expect(await screen.findByText("Pipeline Status")).toBeInTheDocument();
     expect(screen.getByText("Backfill Progress by Data Type")).toBeInTheDocument();
   });
 });

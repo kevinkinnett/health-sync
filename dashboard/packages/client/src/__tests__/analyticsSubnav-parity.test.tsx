@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { analyzeNavItems } from "../components/Layout";
+import { analyzeNavItems } from "../components/navigation";
 
 /**
  * The desktop sidebar's "Analyze" section and the in-page pill strip

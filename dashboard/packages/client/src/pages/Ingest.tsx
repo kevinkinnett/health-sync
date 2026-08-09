@@ -12,6 +12,14 @@ import type {
   IngestState,
 } from "@health-dashboard/shared";
 import { STATUS } from "../components/charts/chartPalette";
+import {
+  BACKFILL_TARGET_DAYS,
+  computeBackfillEstimate,
+  fetchedHistoryDays,
+  isBackfillTargetMet,
+  isTrackedBackfillState,
+} from "../lib/ingestBackfill";
+import { PageError, PageSkeleton } from "../components/ui/PageState";
 
 // ────────────────────────────────────────────
 // Helpers
@@ -61,52 +69,6 @@ function findMatchingRun(
   });
 }
 
-function computeBackfillEstimate(
-  state: IngestState[],
-  runs: IngestRun[],
-  completedJobs: WindmillCompletedJob[],
-): {
-  worstType: string;
-  daysRemaining: number;
-  daysPerDay: number;
-  estimatedDays: number | null;
-} | null {
-  if (state.length === 0) return null;
-  let worstType = "";
-  let maxRemaining = 0;
-  for (const s of state) {
-    if (s.backfillComplete) continue;
-    const earliest = s.earliestFetchedDate ? new Date(s.earliestFetchedDate) : null;
-    const latest = s.latestFetchedDate ? new Date(s.latestFetchedDate) : null;
-    const daysFetched = earliest && latest ? Math.round((latest.getTime() - earliest.getTime()) / 86_400_000) : 0;
-    const remaining = Math.max(0, 365 - daysFetched);
-    if (remaining > maxRemaining) { maxRemaining = remaining; worstType = s.dataType; }
-  }
-  if (maxRemaining === 0) return null;
-  const successfulRuns = runs.filter((r) => (r.rowsWritten ?? 0) > 5 && r.finishedAtUtc);
-  if (successfulRuns.length < 2) return { worstType, daysRemaining: maxRemaining, daysPerDay: 0, estimatedDays: null };
-  let totalDaysFetched = 0;
-  for (const r of successfulRuns) {
-    if (!r.details) continue;
-    const typeDetail = r.details[worstType];
-    if (typeDetail && typeDetail.rows > 0) {
-      const parts = typeDetail.range.split(" to ");
-      if (parts.length === 2) {
-        const days = Math.round((new Date(parts[1]).getTime() - new Date(parts[0]).getTime()) / 86_400_000);
-        if (days > 0) totalDaysFetched += days;
-      }
-    }
-  }
-  const oldest = new Date(successfulRuns[successfulRuns.length - 1].startedAtUtc);
-  const newest = new Date(successfulRuns[0].startedAtUtc);
-  const calendarDaysSpanned = Math.max(1, (newest.getTime() - oldest.getTime()) / 86_400_000);
-  const backfillJobs = completedJobs.filter((j) => j.success && !j.isSkipped && j.schedulePath?.includes("backfill"));
-  const successfulBackfillsPerDay = calendarDaysSpanned > 0.1 ? backfillJobs.length / calendarDaysSpanned : 12;
-  const daysPerDay = totalDaysFetched > 0 ? totalDaysFetched / calendarDaysSpanned : successfulBackfillsPerDay * 20;
-  const estimatedDays = daysPerDay > 0 ? maxRemaining / daysPerDay : null;
-  return { worstType, daysRemaining: maxRemaining, daysPerDay, estimatedDays };
-}
-
 // ────────────────────────────────────────────
 // Sub-components
 // ────────────────────────────────────────────
@@ -130,7 +92,7 @@ function DetailBreakdown({ details }: { details: Record<string, IngestRunTypeDet
   );
 }
 
-function DbStatusIndicator() {
+function DbStatusIndicator({ windmillConnected }: { windmillConnected: boolean }) {
   const health = useHealthCheck();
   const connected = health.data?.dbConnected === true;
   const loading = health.isLoading;
@@ -142,7 +104,11 @@ function DbStatusIndicator() {
       status: loading ? "Checking..." : connected ? "Online" : error ? "Unreachable" : "Disconnected",
       ok: !loading && connected,
     },
-    { label: "Sync Service", status: "Active", ok: true },
+    {
+      label: "Windmill",
+      status: windmillConnected ? "Connected" : "Unavailable",
+      ok: windmillConnected,
+    },
   ];
 
   return (
@@ -165,20 +131,21 @@ function BackfillEstimateCard({
 }: {
   state: IngestState[]; runs: IngestRun[]; completedJobs: WindmillCompletedJob[];
 }) {
-  const estimate = computeBackfillEstimate(state, runs, completedJobs);
-  if (!estimate) return null;
-  const allComplete = state.every((s) => s.backfillComplete);
-  if (allComplete) {
+  const trackedState = state.filter(isTrackedBackfillState);
+  if (trackedState.length === 0) return null;
+  if (trackedState.every(isBackfillTargetMet)) {
     return (
       <div className="p-4 bg-secondary/10 border-l-4 border-secondary rounded-r-xl flex items-center gap-3">
         <span className="material-symbols-outlined text-secondary" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
         <div>
           <span className="text-sm font-bold text-secondary">Backfill complete!</span>
-          <span className="text-xs text-on-surface-variant ml-2">All data types have 365 days of history.</span>
+          <span className="text-xs text-on-surface-variant ml-2">All data types have {BACKFILL_TARGET_DAYS} days of history.</span>
         </div>
       </div>
     );
   }
+  const estimate = computeBackfillEstimate(trackedState, runs, completedJobs);
+  if (!estimate) return null;
   const { worstType, daysRemaining, daysPerDay, estimatedDays } = estimate;
   let timeStr: string;
   if (estimatedDays == null || daysPerDay === 0) timeStr = "Insufficient data";
@@ -205,11 +172,11 @@ function BackfillEstimateCard({
 }
 
 const SCHEDULE_DESCRIPTIONS: Record<string, { title: string; description: string }> = {
-  ingest_fitbit_daily: {
+  ingest_google_health_daily: {
     title: "Daily Sync",
     description: "Incremental updates for all connected telemetry endpoints. Runs once daily at noon UTC.",
   },
-  ingest_fitbit_backfill: {
+  ingest_google_health_backfill: {
     title: "Historical Backfill",
     description: "Importing deep-history data for trend analysis modeling. Runs every 2 hours with a 120-request budget.",
   },
@@ -268,8 +235,26 @@ export function Ingest() {
   const overview = useIngestOverview();
   const [expandedJobs, setExpandedJobs] = useState<Set<string>>(new Set());
 
-  const { state, runs, activeJobs, completedJobs, schedules } =
-    overview.data ?? { state: [], runs: [], activeJobs: [], completedJobs: [], schedules: [] };
+  if (overview.isLoading) return <PageSkeleton />;
+  if (overview.isError && !overview.data) {
+    return (
+      <PageError
+        title="Vitalis couldn’t load pipeline status"
+        message="The dashboard could not reach the ingestion overview. No jobs were started and your stored data has not been changed."
+        onRetry={() => void overview.refetch()}
+      />
+    );
+  }
+
+  // Normalize at the UI boundary so a client can safely overlap an older API
+  // deployment, or render a partial response without taking down the page.
+  const data = overview.data;
+  const state = Array.isArray(data?.state) ? data.state : [];
+  const runs = Array.isArray(data?.runs) ? data.runs : [];
+  const windmillConnected = data?.windmillConnected === true;
+  const activeJobs = Array.isArray(data?.activeJobs) ? data.activeJobs : [];
+  const completedJobs = Array.isArray(data?.completedJobs) ? data.completedJobs : [];
+  const schedules = Array.isArray(data?.schedules) ? data.schedules : [];
 
   const toggleExpanded = (jobId: string) => {
     setExpandedJobs((prev) => {
@@ -286,12 +271,17 @@ export function Ingest() {
       <section className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold font-headline text-on-surface mb-2">Pipeline Status</h1>
-          <DbStatusIndicator />
+          <DbStatusIndicator windmillConnected={windmillConnected} />
         </div>
         <div className="flex gap-3">
-          <button className="bg-surface-container-high px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 border border-outline-variant/15 hover:bg-surface-bright transition-colors">
+          <button
+            type="button"
+            onClick={() => void overview.refetch()}
+            disabled={overview.isFetching}
+            className="bg-surface-container-high px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 border border-outline-variant/15 hover:bg-surface-bright transition-colors disabled:cursor-wait disabled:opacity-60"
+          >
             <span className="material-symbols-outlined text-[20px]">refresh</span>
-            Refresh
+            {overview.isFetching ? "Refreshing…" : "Refresh"}
           </button>
         </div>
       </section>
@@ -365,22 +355,25 @@ export function Ingest() {
             return all.map((t, i) => {
               const s = stateByType[t];
               if (!s) return null;
-              const earliest = s.earliestFetchedDate ? new Date(s.earliestFetchedDate) : null;
-              const latest = s.latestFetchedDate ? new Date(s.latestFetchedDate) : null;
-              const daysFetched = earliest && latest ? Math.round((latest.getTime() - earliest.getTime()) / 86_400_000) : 0;
-              const pct = Math.min(100, Math.round((daysFetched / 365) * 100));
-              const barColor = s.backfillComplete ? "bg-secondary" : colors[i % colors.length];
+              const daysFetched = fetchedHistoryDays(s);
+              const pct = Math.min(100, Math.round((daysFetched / BACKFILL_TARGET_DAYS) * 100));
+              const targetMet = isBackfillTargetMet(s);
+              const barColor = targetMet ? "bg-secondary" : colors[i % colors.length];
               return (
                 <div key={t} className="space-y-2">
                   <div className="flex justify-between text-xs font-bold uppercase tracking-wider">
                     <span className="text-on-surface-variant capitalize">{t.replace(/_/g, " ")}</span>
-                    <span className="text-on-surface tabular-nums">{s.backfillComplete ? "100%" : `${pct}%`}</span>
+                    <span className="text-on-surface tabular-nums">{targetMet ? "100%" : `${pct}%`}</span>
                   </div>
                   <div className="h-2 w-full bg-surface-container-high rounded-full overflow-hidden">
-                    <div className={`h-full rounded-full ${barColor}`} style={{ width: `${s.backfillComplete ? 100 : pct}%` }} />
+                    <div className={`h-full rounded-full ${barColor}`} style={{ width: `${targetMet ? 100 : pct}%` }} />
                   </div>
                   <p className="text-[10px] text-outline tabular-nums">
-                    {s.backfillComplete ? "Completed" : `${s.earliestFetchedDate ?? "—"} to ${s.latestFetchedDate ?? "—"}`}
+                    {s.backfillComplete
+                      ? "Completed"
+                      : targetMet
+                        ? `${BACKFILL_TARGET_DAYS}-day history target met`
+                        : `${s.earliestFetchedDate ?? "—"} to ${s.latestFetchedDate ?? "—"}`}
                   </p>
                 </div>
               );

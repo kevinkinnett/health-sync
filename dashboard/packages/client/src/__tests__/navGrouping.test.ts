@@ -1,36 +1,21 @@
 import { describe, it, expect } from "vitest";
-import { analyzeNavItems, navSections } from "../components/Layout";
+import { analyzeNavItems, navSections } from "../components/navigation";
 
-/**
- * The audit's complaint was that 22 screens mirrored the database rather
- * than the questions people ask, so the sidebar was regrouped into
- * Trends / Experiments / Log.
- *
- * The regroup is only safe if it is a pure REARRANGEMENT. A screen that
- * quietly stops appearing in the sidebar is unreachable — its route still
- * resolves, so nothing errors and no other test notices. These assertions
- * are the guard against exactly that.
- */
-
-const sidebarPaths = navSections.flatMap((s) => s.items.map((i) => i.to));
+const primaryPaths = navSections.flatMap((section) => section.items.map((item) => item.to));
 
 describe("navigation grouping", () => {
-  it("every analytics screen appears in the sidebar exactly once", () => {
-    for (const item of analyzeNavItems) {
-      const hits = sidebarPaths.filter((p) => p === item.to);
-      expect(hits, `${item.label} (${item.to}) should appear once`).toHaveLength(1);
-    }
+  it("keeps primary navigation short and free of duplicate routes", () => {
+    expect(new Set(primaryPaths).size).toBe(primaryPaths.length);
+    expect(primaryPaths.length).toBeLessThanOrEqual(11);
   });
 
-  it("no route is listed twice anywhere in the sidebar", () => {
-    expect(new Set(sidebarPaths).size).toBe(sidebarPaths.length);
-  });
-
-  it("keeps the top-level screens reachable", () => {
+  it("keeps every top-level workflow reachable", () => {
     for (const path of [
       "/",
       "/readiness",
       "/timeline",
+      "/analytics/overview",
+      "/analytics/correlations",
       "/supplements",
       "/medications",
       "/ingest",
@@ -38,41 +23,32 @@ describe("navigation grouping", () => {
       "/settings",
       "/insights",
     ]) {
-      expect(sidebarPaths, `${path} missing from the sidebar`).toContain(path);
+      expect(primaryPaths, `${path} missing from primary navigation`).toContain(path);
     }
   });
 
-  it("groups by question, not by data source", () => {
-    const headers = navSections.map((s) => s.header).filter(Boolean);
-    expect(headers).toEqual(["Trends", "Experiments", "Log"].concat("System"));
+  it("moves deep metric destinations into the Explore picker", () => {
+    const deepViews = analyzeNavItems.filter((item) => item.to.startsWith("/analytics/"));
+    expect(deepViews.length).toBeGreaterThan(10);
+    expect(primaryPaths).not.toContain("/analytics/activity");
+    expect(primaryPaths).not.toContain("/analytics/sleep");
   });
 
-  it("puts the relationship-finding surfaces together", () => {
-    // Correlations, AI Insights and the Timeline report were three
-    // separate answers to "what affects what". Splitting them across the
-    // nav is what made them feel like overlapping features.
-    const experiments = navSections.find((s) => s.header === "Experiments");
-    expect(experiments?.items.map((i) => i.to)).toEqual([
+  it("groups the product around user intentions", () => {
+    expect(navSections.map((section) => section.header).filter(Boolean)).toEqual([
+      "Explore",
+      "Changes",
+      "Log",
+      "System",
+    ]);
+  });
+
+  it("keeps relationship-finding surfaces together", () => {
+    const changes = navSections.find((section) => section.header === "Changes");
+    expect(changes?.items.map((item) => item.to)).toEqual([
       "/timeline",
       "/analytics/correlations",
       "/insights",
     ]);
-  });
-
-  it("keeps each logged domain with its own trend view", () => {
-    const log = navSections.find((s) => s.header === "Log");
-    const paths = log?.items.map((i) => i.to) ?? [];
-    expect(paths).toContain("/supplements");
-    expect(paths).toContain("/analytics/supplements");
-    expect(paths).toContain("/medications");
-    expect(paths).toContain("/analytics/medications");
-  });
-
-  it("distinguishes a logging screen from its trend view by label", () => {
-    const labels = navSections
-      .find((s) => s.header === "Log")
-      ?.items.map((i) => i.label);
-    expect(labels).toContain("Supplement Log");
-    expect(labels).toContain("Supplement Trends");
   });
 });

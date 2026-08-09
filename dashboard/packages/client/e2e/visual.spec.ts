@@ -37,23 +37,6 @@ import { stubApi } from "./fixtures.js";
  */
 
 /**
- * Deterministic rendering: block the Google Fonts requests the app makes
- * from index.html.
- *
- * Without this the suite depends on the network, and a font that arrives
- * late (or not at all) reflows every label — which reads as a chart
- * regression. The rest of the e2e suite is deliberately hermetic (the API
- * is stubbed, no server, no DB) and this keeps that property.
- *
- * Safe for these targets specifically: the cards below contain no icon
- * glyphs, only geometry and short labels. The Material Symbols ligatures
- * live in the nav and stat tiles, which are never in frame.
- */
-async function freezeFonts(page: Page): Promise<void> {
-  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
-}
-
-/**
  * Recharts animates its series in on mount, driven by requestAnimationFrame
  * rather than CSS, so Playwright cannot fast-forward it. Its default
  * duration is 1500 ms; this waits past that.
@@ -66,10 +49,9 @@ const ANIMATION_MS = 1800;
 
 async function ready(page: Page, path: string): Promise<void> {
   await stubApi(page);
-  await freezeFonts(page);
   await page.goto(path);
-  // Web fonts are blocked, so this resolves immediately — it still waits
-  // out any late layout pass before the first frame is captured.
+  // Fonts are bundled with the app, so this stays network-independent while
+  // still waiting out the layout pass before the first frame is captured.
   await page.evaluate(() => document.fonts.ready);
 }
 
@@ -92,7 +74,9 @@ test.describe("chart appearance", () => {
   test("hrv — deep sleep series and the source-change marker", async ({ page }) => {
     // The regression this locks: a whole series silently not drawing.
     await ready(page, "/analytics/hrv");
-    const card = page.locator(".bg-surface-container").first();
+    const card = page
+      .getByRole("heading", { name: "Heart Rate Variability (RMSSD)" })
+      .locator("..");
     await expect(card).toBeVisible({ timeout: 15_000 });
     await settle(page);
     await expect(card).toHaveScreenshot("hrv-chart.png");
@@ -106,10 +90,13 @@ test.describe("chart appearance", () => {
     await expect(card).toHaveScreenshot("hr-zones.png");
   });
 
-  test("nutrition — intervention markers WITH their labels", async ({ page }) => {
+  test("vitals — intervention markers WITH their labels", async ({ page }) => {
     // The regression this locks: reference lines drawing with no caption.
-    await ready(page, "/analytics/nutrition");
-    const card = page.locator(".bg-surface-container").nth(1);
+    // The fixture deliberately spans the Eight Sleep intervention date.
+    await ready(page, "/analytics/vitals");
+    const card = page
+      .getByRole("heading", { name: "Blood Oxygen (SpO2)" })
+      .locator("..");
     await expect(card).toBeVisible({ timeout: 15_000 });
     await settle(page);
     await expect(card).toHaveScreenshot("nutrition-annotated.png");

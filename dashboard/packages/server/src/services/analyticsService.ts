@@ -6,12 +6,14 @@ import type {
   IngredientByDay,
   IntakeCorrelations,
 } from "@health-dashboard/shared";
-import type { SupplementRepository } from "../repositories/supplementRepo.js";
-import type { MedicationRepository } from "../repositories/medicationRepo.js";
-import type { ActivityRepository } from "../repositories/activityRepo.js";
-import type { SleepRepository } from "../repositories/sleepRepo.js";
-import type { HeartRateRepository } from "../repositories/heartRateRepo.js";
-import type { HrvRepository } from "../repositories/hrvRepo.js";
+import type {
+  ActivitySeriesPort,
+  HeartRateSeriesPort,
+  HrvSeriesPort,
+  MedicationAnalyticsPort,
+  SleepSeriesPort,
+  SupplementAnalyticsPort,
+} from "./analytics/ports.js";
 import { describeCorrelation, pearson } from "./stats.js";
 import {
   addDays,
@@ -65,12 +67,12 @@ export class AnalyticsService {
   private readonly tz: string;
 
   constructor(
-    private supplementRepo: SupplementRepository,
-    private medicationRepo: MedicationRepository,
-    private activityRepo: ActivityRepository,
-    private sleepRepo: SleepRepository,
-    private heartRateRepo: HeartRateRepository,
-    private hrvRepo: HrvRepository,
+    private readonly supplementRepo: SupplementAnalyticsPort,
+    private readonly medicationRepo: MedicationAnalyticsPort,
+    private readonly activityRepo: ActivitySeriesPort,
+    private readonly sleepRepo: SleepSeriesPort,
+    private readonly heartRateRepo: HeartRateSeriesPort,
+    private readonly hrvRepo: HrvSeriesPort,
     opts: { userTimezone: string } = { userTimezone: "UTC" },
   ) {
     this.tz = opts.userTimezone;
