@@ -2,7 +2,7 @@ export interface IngestState {
   dataType: string;
   latestFetchedDate: string | null;
   earliestFetchedDate: string | null;
-  backfillComplete: boolean;
+  historyTargetMet: boolean;
   lastSuccessAtUtc: string | null;
   lastRunId: number | null;
   updatedAtUtc: string | null;

@@ -16,6 +16,11 @@ Operational and administrative screens live under **System**. Detailed metric
 screens are selected from the Explore picker rather than occupying permanent
 navigation space.
 
+Google Health is the sole Fitbit-device ingestion API. Existing database
+tables whose names begin with `fitbit_` are retained temporarily as an internal
+storage contract; they do not indicate that the retired Fitbit Web API is
+still queried.
+
 ## Repository map
 
 ```text

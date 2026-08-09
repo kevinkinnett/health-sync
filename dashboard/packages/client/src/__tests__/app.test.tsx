@@ -119,6 +119,6 @@ describe("App routing and layout", () => {
   it("renders Ingest page at /ingest", async () => {
     renderWithProviders("/ingest");
     expect(await screen.findByText("Pipeline Status")).toBeInTheDocument();
-    expect(screen.getByText("Backfill Progress by Data Type")).toBeInTheDocument();
+    expect(screen.getByText("Historical Coverage by Data Type")).toBeInTheDocument();
   });
 });

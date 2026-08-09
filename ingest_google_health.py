@@ -1,22 +1,20 @@
 """
-Ingest Google Health API data — the migration target for the legacy Fitbit
-Web API (which Google decommissions ~Sept 2026).
+Ingest Google Health API data — the production replacement for the retired
+Fitbit Web API.
 
 TWO things happen:
   1. MAXIMAL RAW CAPTURE — every data point of every type, from every source
      (Fitbit/Pixel + Eight Sleep via Health Connect + anything else), lossless,
      into universe.google_health_data_point. Source-stamped so we can route.
   2. DAILY ROLLUPS — derived daily values written into the EXISTING universe.
-     fitbit_* tables so the dashboard / readiness / alerts keep working
-     unchanged. FITBIT-platform-routed (so we don't double-count Eight Sleep,
+     fitbit_* compatibility tables so the dashboard / readiness / alerts keep
+     working unchanged. FITBIT-platform-routed (so we don't double-count Eight Sleep,
      which has its own dedicated ingest with richer fields).
 
-PARALLEL-RUN SAFETY: the rollups OVERWRITE the live fitbit_* tables, so they
-are gated behind `write_daily` (default FALSE). Run this alongside the legacy
-ingest with write_daily=False — it only fills the raw table; the live tables
-stay legacy-driven and we can validate raw-derived vs legacy anytime. At
-CUTOVER (before Sept 2026): set write_daily=True here and DISABLE
-ingest_fitbit + ingest_fitbit_food.
+CUTOVER STATUS: Google Health owns raw capture and the live daily rollups. The
+production schedule passes `write_daily=True`; `write_daily=False` remains a
+safe raw-capture-only diagnostic mode. The legacy Fitbit ingest jobs are
+retired. The fitbit_* names are storage compatibility, not an active provider.
 
 Validated vs legacy (2026-05-30): resting-HR / respiratory / skin-temp are
 EXACT; sleep is ~equal (minor method diff). HRV adopts Google's per-5-min
@@ -690,7 +688,7 @@ def main(
         # Any crash below must still finalize the run row — an unhandled
         # raise used to leave it 'running' forever (monitoring-blind).
         captured: dict = {}
-        rolled = {"skipped": "write_daily=False (parallel-run; raw only)"}
+        rolled = {"skipped": "write_daily=False (raw capture only)"}
         try:
             captured = capture_raw(conn, token, max_pages)
             if write_daily:
