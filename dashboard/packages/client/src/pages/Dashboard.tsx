@@ -4,54 +4,65 @@ import { GoalRings } from "../components/GoalRings";
 import { ReadinessCard } from "../components/ReadinessCard";
 import { DrivingCard } from "../components/DrivingCard";
 import { DidItWorkCard } from "../components/DidItWorkCard";
-import { QueryBoundary } from "../components/QueryBoundary";
-import { ActivityChart } from "../components/charts/ActivityChart";
-import { SleepStagesChart } from "../components/charts/SleepStagesChart";
-import { HeartRateChart } from "../components/charts/HeartRateChart";
-import { WeightChart } from "../components/charts/WeightChart";
 import {
   useHealthSummary,
   useWeeklyInsights,
   useReadiness,
-  useActivity,
-  useSleep,
-  useHeartRate,
-  useWeight,
   useDriving,
   useExperimentSummaries,
 } from "../api/queries";
 import { useUnits } from "../stores/unitsStore";
 import { convertWeight, weightUnitLabel } from "../lib/units";
 import { METRIC_COLOR } from "../components/charts/chartPalette";
+import { PageHeader } from "../components/ui/PageHeader";
+import { PageError, PageSkeleton, PartialDataNotice } from "../components/ui/PageState";
+import type { HealthSummary } from "@health-dashboard/shared";
+
+function isHealthSummary(value: unknown): value is HealthSummary {
+  if (value == null || typeof value !== "object") return false;
+  const candidate = value as Partial<HealthSummary>;
+  return Boolean(candidate.activity && candidate.sleep && candidate.heartRate && candidate.weight);
+}
 
 export function Dashboard() {
   const summary = useHealthSummary();
   const insights = useWeeklyInsights();
   const readiness = useReadiness();
-  const activity = useActivity();
-  const sleep = useSleep();
-  const heartRate = useHeartRate();
-  const weight = useWeight();
   const driving = useDriving();
   const experiments = useExperimentSummaries();
   const units = useUnits();
 
   if (summary.isLoading) {
-    return (
-      <div className="flex items-center justify-center py-24">
-        <div className="text-outline text-sm font-medium">Loading...</div>
-      </div>
-    );
+    return <PageSkeleton />;
+  }
+
+  if (summary.isError || !isHealthSummary(summary.data)) {
+    return <PageError onRetry={() => void summary.refetch()} />;
   }
 
   const s = summary.data;
+  const supporting = [insights, readiness, driving, experiments];
+  const hasPartialError = supporting.some((query) => query.isError);
+  const weeklyData =
+    insights.data && !Array.isArray(insights.data) && "currentPeriod" in insights.data
+      ? insights.data
+      : null;
+  const drivingData = driving.data && !Array.isArray(driving.data) ? driving.data : null;
+  const retrySupporting = () => {
+    for (const query of supporting) void query.refetch();
+  };
 
   return (
     <div className="space-y-6">
-      {/* Readiness — the "today" instrument, above everything else. */}
-      <QueryBoundary query={readiness} skeleton={null}>
-        {(data) => <ReadinessCard data={data} to="/readiness" />}
-      </QueryBoundary>
+      <PageHeader
+        eyebrow="Your daily briefing"
+        title="Today"
+        description="Recovery, meaningful changes, and the few signals worth your attention right now."
+      />
+
+      {hasPartialError && <PartialDataNotice onRetry={retrySupporting} />}
+
+      {readiness.data && <ReadinessCard data={readiness.data} to="/readiness" />}
 
       {/*
         Two columns, and the stat tiles live INSIDE the left one.
@@ -65,7 +76,7 @@ export function Dashboard() {
       */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start">
         <div className="xl:col-span-2 space-y-6">
-          {insights.data && <WeeklyInsights data={insights.data} />}
+          {weeklyData && <WeeklyInsights data={weeklyData} />}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <StatCard
@@ -118,20 +129,9 @@ export function Dashboard() {
               step goal" — and because unasked, it went unanswered for
               weeks while the engine behind it sat finished. */}
           {experiments.data && <DidItWorkCard data={experiments.data} />}
-          {s && <GoalRings summary={s} />}
-          <QueryBoundary query={driving} skeleton={null}>
-            {(data) => <DrivingCard data={data} />}
-          </QueryBoundary>
+          <GoalRings summary={s} />
+          {drivingData && <DrivingCard data={drivingData} />}
         </div>
-      </div>
-
-
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {activity.data && <ActivityChart data={activity.data} />}
-        {sleep.data && <SleepStagesChart data={sleep.data} />}
-        {heartRate.data && <HeartRateChart data={heartRate.data} />}
-        <WeightChart data={weight.data ?? []} />
       </div>
     </div>
   );

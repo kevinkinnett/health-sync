@@ -1,30 +1,32 @@
+import { lazy, Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Layout } from "./components/Layout";
 import { AnalyticsLayout } from "./components/AnalyticsLayout";
-import { Dashboard } from "./pages/Dashboard";
-import { Readiness } from "./pages/Readiness";
-import { Timeline } from "./pages/Timeline";
-import { Ingest } from "./pages/Ingest";
-import { Settings } from "./pages/Settings";
-import { ApiConsole } from "./pages/ApiConsole";
-import { Insights } from "./pages/Insights";
-import { Supplements } from "./pages/Supplements";
-import { Medications } from "./pages/Medications";
-import { AnalyticsOverview } from "./pages/analytics/Overview";
-import { AnalyticsActivity } from "./pages/analytics/Activity";
-import { AnalyticsSleep } from "./pages/analytics/Sleep";
-import { AnalyticsHeartRate } from "./pages/analytics/HeartRate";
-import { AnalyticsHrv } from "./pages/analytics/Hrv";
-import { AnalyticsWeight } from "./pages/analytics/Weight";
-import { AnalyticsExercises } from "./pages/analytics/Exercises";
-import { AnalyticsVitals } from "./pages/analytics/Vitals";
-import { AnalyticsEightSleep } from "./pages/analytics/EightSleep";
-import { AnalyticsNutrition } from "./pages/analytics/Nutrition";
-import { AnalyticsRecords } from "./pages/analytics/Records";
-import { AnalyticsCorrelations } from "./pages/analytics/Correlations";
-import { AnalyticsSupplements } from "./pages/analytics/Supplements";
-import { AnalyticsMedications } from "./pages/analytics/Medications";
+
+const Dashboard = lazy(() => import("./pages/Dashboard").then((m) => ({ default: m.Dashboard })));
+const Readiness = lazy(() => import("./pages/Readiness").then((m) => ({ default: m.Readiness })));
+const Timeline = lazy(() => import("./pages/Timeline").then((m) => ({ default: m.Timeline })));
+const Ingest = lazy(() => import("./pages/Ingest").then((m) => ({ default: m.Ingest })));
+const Settings = lazy(() => import("./pages/Settings").then((m) => ({ default: m.Settings })));
+const ApiConsole = lazy(() => import("./pages/ApiConsole").then((m) => ({ default: m.ApiConsole })));
+const Insights = lazy(() => import("./pages/Insights").then((m) => ({ default: m.Insights })));
+const Supplements = lazy(() => import("./pages/Supplements").then((m) => ({ default: m.Supplements })));
+const Medications = lazy(() => import("./pages/Medications").then((m) => ({ default: m.Medications })));
+const AnalyticsOverview = lazy(() => import("./pages/analytics/Overview").then((m) => ({ default: m.AnalyticsOverview })));
+const AnalyticsActivity = lazy(() => import("./pages/analytics/Activity").then((m) => ({ default: m.AnalyticsActivity })));
+const AnalyticsSleep = lazy(() => import("./pages/analytics/Sleep").then((m) => ({ default: m.AnalyticsSleep })));
+const AnalyticsHeartRate = lazy(() => import("./pages/analytics/HeartRate").then((m) => ({ default: m.AnalyticsHeartRate })));
+const AnalyticsHrv = lazy(() => import("./pages/analytics/Hrv").then((m) => ({ default: m.AnalyticsHrv })));
+const AnalyticsWeight = lazy(() => import("./pages/analytics/Weight").then((m) => ({ default: m.AnalyticsWeight })));
+const AnalyticsExercises = lazy(() => import("./pages/analytics/Exercises").then((m) => ({ default: m.AnalyticsExercises })));
+const AnalyticsVitals = lazy(() => import("./pages/analytics/Vitals").then((m) => ({ default: m.AnalyticsVitals })));
+const AnalyticsEightSleep = lazy(() => import("./pages/analytics/EightSleep").then((m) => ({ default: m.AnalyticsEightSleep })));
+const AnalyticsNutrition = lazy(() => import("./pages/analytics/Nutrition").then((m) => ({ default: m.AnalyticsNutrition })));
+const AnalyticsRecords = lazy(() => import("./pages/analytics/Records").then((m) => ({ default: m.AnalyticsRecords })));
+const AnalyticsCorrelations = lazy(() => import("./pages/analytics/Correlations").then((m) => ({ default: m.AnalyticsCorrelations })));
+const AnalyticsSupplements = lazy(() => import("./pages/analytics/Supplements").then((m) => ({ default: m.AnalyticsSupplements })));
+const AnalyticsMedications = lazy(() => import("./pages/analytics/Medications").then((m) => ({ default: m.AnalyticsMedications })));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -39,6 +41,7 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
+        <Suspense fallback={<div role="status" className="px-6 py-20 text-center text-sm text-outline">Loading view…</div>}>
         <Routes>
           <Route element={<Layout />}>
             <Route path="/" element={<Dashboard />} />
@@ -74,6 +77,7 @@ export default function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>
+        </Suspense>
       </BrowserRouter>
     </QueryClientProvider>
   );

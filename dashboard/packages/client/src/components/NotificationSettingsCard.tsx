@@ -133,6 +133,9 @@ export function NotificationSettingsCard() {
   // Resync the draft whenever the canonical value changes (initial load
   // and after a save, which seeds the cache with the clamped result).
   useEffect(() => {
+    // The server may clamp thresholds, so its canonical save response must
+    // replace the local form draft rather than leaving an impossible value.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (data) setDraft(data);
   }, [data]);
 

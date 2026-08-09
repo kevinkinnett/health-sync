@@ -106,8 +106,8 @@ export function DateTimePicker({ value, onChange }: DateTimePickerProps) {
     );
   }
 
-  function applyPreset(minutes: number) {
-    commit(new Date(Date.now() - minutes * 60 * 1000));
+  function applyPreset(minutes: number, now: Date) {
+    commit(new Date(now.getTime() - minutes * 60 * 1000));
   }
 
   function nextMonth() {
@@ -130,7 +130,7 @@ export function DateTimePicker({ value, onChange }: DateTimePickerProps) {
         {QUICK_PRESETS.map((p) => (
           <button
             key={p.label}
-            onClick={() => applyPreset(p.minutes)}
+            onClick={() => applyPreset(p.minutes, new Date())}
             className="px-2.5 py-1 text-[11px] font-semibold rounded-full bg-surface-container-high text-on-surface-variant hover:bg-secondary/20 hover:text-on-surface transition-colors"
           >
             {p.label}

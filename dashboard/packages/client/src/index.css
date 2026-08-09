@@ -77,9 +77,9 @@
   --color-inverse-primary: #2b6cae;
 
   /* ── Fonts ── */
-  --font-headline: "Manrope", system-ui, sans-serif;
-  --font-body: "Inter", system-ui, sans-serif;
-  --font-label: "Inter", system-ui, sans-serif;
+  --font-headline: "Manrope Variable", system-ui, sans-serif;
+  --font-body: "Inter Variable", system-ui, sans-serif;
+  --font-label: "Inter Variable", system-ui, sans-serif;
 }
 
 /* ── Base styles ── */

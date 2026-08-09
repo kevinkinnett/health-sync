@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   useSupplementAdherence,
   useSupplementCorrelations,
@@ -69,16 +69,9 @@ export function AnalyticsSupplements() {
     return bestId;
   }, [intakeByDay.data]);
 
-  const [selectedItemId, setSelectedItemId] = useState<number | null>(null);
+  const [chosenItemId, setChosenItemId] = useState<number | null>(null);
+  const selectedItemId = chosenItemId ?? mostLoggedItemId;
   const [lagDays, setLagDays] = useState(0);
-
-  // Auto-select the most-logged item once the rollup arrives, but only
-  // if the user hasn't already picked one.
-  useEffect(() => {
-    if (selectedItemId == null && mostLoggedItemId != null) {
-      setSelectedItemId(mostLoggedItemId);
-    }
-  }, [mostLoggedItemId, selectedItemId]);
 
   const adherence = useSupplementAdherence(selectedItemId);
   const correlations = useSupplementCorrelations(selectedItemId, lagDays);
@@ -112,7 +105,7 @@ export function AnalyticsSupplements() {
           <select
             value={selectedItemId ?? ""}
             onChange={(e) =>
-              setSelectedItemId(
+              setChosenItemId(
                 e.target.value === "" ? null : Number(e.target.value),
               )
             }

@@ -16,8 +16,8 @@ interface WindmillConfig {
   workspace: string;
 }
 
-const SCRIPT_PATH = "u/kevin/ingest_fitbit";
-const SCHEDULE_PREFIX = "u/kevin/ingest_fitbit";
+const SCRIPT_PATH = "u/kevin/ingest_google_health";
+const SCHEDULE_PREFIX = "u/kevin/ingest_google_health";
 
 export class IngestService {
   constructor(
@@ -59,15 +59,36 @@ export class IngestService {
   }
 
   async getOverview(runLimit: number): Promise<IngestOverview> {
-    const [state, runs, activeJobs, completedJobs, schedules] =
+    const [state, runs, windmillConnected, activeJobs, completedJobs, schedules] =
       await Promise.all([
         this.getState(),
         this.getRuns(runLimit),
+        this.isWindmillConnected(),
         this.getActiveJobs(),
         this.getCompletedJobs(runLimit),
         this.getSchedules(),
       ]);
-    return { state, runs, activeJobs, completedJobs, schedules };
+    return {
+      state,
+      runs,
+      windmillConnected,
+      activeJobs,
+      completedJobs,
+      schedules,
+    };
+  }
+
+  private async isWindmillConnected(): Promise<boolean> {
+    try {
+      const response = await this.wmFetch(
+        "connectivity check",
+        this.wmUrl(`/scripts/list?path_exact=${SCRIPT_PATH}&per_page=1`),
+      );
+      return response.ok;
+    } catch (err) {
+      logger.error({ err }, "Failed to reach Windmill");
+      return false;
+    }
   }
 
   async getActiveJobs(): Promise<WindmillJob[]> {
@@ -172,6 +193,9 @@ export class IngestService {
       method: "POST",
       body: JSON.stringify({
         db_resource_path: "u/kevin/universe_db",
+        max_pages: 3,
+        write_daily: true,
+        rollup_days: 45,
       }),
     });
 

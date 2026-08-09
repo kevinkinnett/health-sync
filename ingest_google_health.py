@@ -29,7 +29,6 @@ Auth: u/kevin/google_health_oauth  (Google OAuth client {web:{...}} + tokens)
 DB:   u/kevin/universe_db
 """
 
-import hashlib
 import json
 import time
 from datetime import date, datetime, timedelta, timezone
@@ -39,6 +38,7 @@ import requests
 import wmill
 
 from u.kevin.ingest_common import conn_kwargs, create_ingest_run, update_ingest_run
+from u.kevin.google_health_points import parse_point
 
 PROVIDER = "google_health"
 JOB_NAME = "google_health_ingest"
@@ -99,38 +99,6 @@ def ensure_raw_table(cur) -> None:
     """)
     cur.execute("CREATE INDEX IF NOT EXISTS ix_ghdp_type_time ON universe.google_health_data_point (data_type, start_time DESC)")
     cur.execute("CREATE INDEX IF NOT EXISTS ix_ghdp_type_date ON universe.google_health_data_point (data_type, source_platform, point_date)")
-
-
-def parse_point(dt: str, p: dict) -> dict:
-    value_key = next((k for k in p if k not in ("name", "dataSource")), None)
-    value = p.get(value_key, {}) if value_key else {}
-    src = p.get("dataSource", {})
-    platform = src.get("platform")
-    app = (src.get("application") or {}).get("packageName")
-    device = (src.get("device") or {}).get("displayName")
-    start = end = pdate = None
-    if isinstance(value, dict):
-        iv, st, dd = value.get("interval"), value.get("sampleTime"), value.get("date")
-        if isinstance(iv, dict):
-            start, end = iv.get("startTime"), iv.get("endTime")
-        elif isinstance(st, dict):
-            start = end = st.get("physicalTime")
-        if isinstance(dd, dict):
-            pdate = f"{dd['year']:04d}-{dd['month']:02d}-{dd['day']:02d}"
-    if not pdate and start:
-        pdate = start[:10]
-    key = p.get("name")
-    if not key:
-        # Most-granular-first: a sample's full timestamp keeps every
-        # intraday point distinct. Keying on the bare date collapsed all
-        # of a day's unnamed samples (SpO2/HRV) into ONE surviving row —
-        # the rollups then averaged 1-2 samples instead of the night.
-        # Date-only points (daily summaries) still key per-day, correctly.
-        key = "|".join([dt, platform or "", app or "", start or pdate or ""])
-        if not (pdate or start):
-            key += "|" + hashlib.md5(json.dumps(p, sort_keys=True).encode()).hexdigest()[:10]
-    return {"key": key, "name": p.get("name"), "platform": platform, "app": app,
-            "device": device, "start": start, "end": end, "pdate": pdate, "raw": p}
 
 
 def capture_raw(conn, token: str, max_pages: int) -> dict:

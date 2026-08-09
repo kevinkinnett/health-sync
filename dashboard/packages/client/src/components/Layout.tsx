@@ -4,176 +4,17 @@ import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useDateRangeStore, type PresetRange } from "../stores/dateRangeStore";
 import { useUserTimezone } from "../api/queries";
 import { AlertBell } from "./AlertBell";
+import {
+  allNavItems,
+  bottomNavQuickItems,
+  navSections,
+} from "./navigation";
 
 const presets: { label: string; value: PresetRange }[] = [
   { label: "7D", value: "7d" },
   { label: "30D", value: "30d" },
   { label: "90D", value: "90d" },
   { label: "All", value: "all" },
-];
-
-interface NavLinkDef {
-  to: string;
-  label: string;
-  icon: string;
-  end?: boolean;
-}
-
-interface NavSectionDef {
-  /** Optional small-caps section label (omit for the very first section). */
-  header?: string;
-  items: NavLinkDef[];
-}
-
-/**
- * Sectioned left-rail nav. Each analytics screen has its own deep
- * link under the "Analyze" header so users can jump straight there
- * without going through the parent /analytics route.
- *
- * The "Track" section is the intake-logging UI (where you actually
- * record a dose), separated from the analytics views that report on
- * those doses to keep the two intents from blurring.
- */
-/**
- * The "Analyze" sub-section's items, in order. Exported so
- * `<AnalyticsLayout>`'s in-page pill strip can derive its own list
- * from the same source — previously it kept a parallel array which
- * silently drifted. Items in this list MUST live under
- * `/analytics/*` (the relative paths the layout's pill strip
- * generates from `to.split("/").pop()`); the only exception is
- * `/insights` which lives at the top level but reads as part of
- * the analyze family.
- */
-export const analyzeNavItems: NavLinkDef[] = [
-  { to: "/analytics/overview", label: "Overview", icon: "insights" },
-  { to: "/analytics/activity", label: "Activity", icon: "footprint" },
-  { to: "/analytics/sleep", label: "Sleep", icon: "bedtime" },
-  { to: "/analytics/heart-rate", label: "Heart Rate", icon: "favorite" },
-  { to: "/analytics/hrv", label: "HRV", icon: "monitor_heart" },
-  { to: "/analytics/vitals", label: "Vitals", icon: "vital_signs" },
-  { to: "/analytics/eight-sleep", label: "Eight Sleep", icon: "bed" },
-  { to: "/analytics/nutrition", label: "Nutrition", icon: "restaurant" },
-  { to: "/analytics/weight", label: "Weight", icon: "scale" },
-  { to: "/analytics/exercises", label: "Exercises", icon: "exercise" },
-  { to: "/analytics/records", label: "Records", icon: "emoji_events" },
-  {
-    to: "/analytics/correlations",
-    label: "Correlations",
-    icon: "scatter_plot",
-  },
-  {
-    to: "/analytics/supplements",
-    label: "Supplement Trends",
-    icon: "medication",
-  },
-  {
-    to: "/analytics/medications",
-    label: "Medication Trends",
-    icon: "prescriptions",
-  },
-  { to: "/insights", label: "AI Insights", icon: "auto_awesome" },
-];
-
-/**
- * Look up a shared analytics item by path.
- *
- * The sidebar groups links by the QUESTION they answer, while the
- * analytics pill strip needs them in route order — so the two orders
- * differ, but the definitions must not. Selecting by path keeps one
- * declaration per link; throwing on a miss means a renamed route breaks
- * the build rather than silently dropping a nav entry.
- */
-const ANALYZE_BY_PATH = new Map(analyzeNavItems.map((i) => [i.to, i]));
-
-function analyze(...paths: string[]): NavLinkDef[] {
-  return paths.map((path) => {
-    const item = ANALYZE_BY_PATH.get(path);
-    if (!item) throw new Error(`Unknown analytics nav path: ${path}`);
-    return item;
-  });
-}
-
-/**
- * Sidebar grouping.
- *
- * Organised by what the user is trying to find out, not by which table
- * the data came from. The audit's finding was that 22 screens mirrored
- * the database rather than the questions — "how am I now", "what's
- * moving", "what did I change", "did it work", "what did I take".
- *
- * Nothing was removed in the regrouping: every route that existed still
- * exists, and `nav-parity` asserts each analytics item appears exactly
- * once across these sections.
- */
-export const navSections: NavSectionDef[] = [
-  {
-    items: [
-      { to: "/", label: "Dashboard", icon: "dashboard", end: true },
-      { to: "/readiness", label: "Readiness", icon: "bolt" },
-    ],
-  },
-  {
-    header: "Trends",
-    items: analyze(
-      "/analytics/overview",
-      "/analytics/activity",
-      "/analytics/sleep",
-      "/analytics/heart-rate",
-      "/analytics/hrv",
-      "/analytics/vitals",
-      "/analytics/eight-sleep",
-      "/analytics/nutrition",
-      "/analytics/weight",
-      "/analytics/exercises",
-      "/analytics/records",
-    ),
-  },
-  {
-    // The three "find me a relationship" surfaces the audit flagged as
-    // overlapping, now sitting together with the changepoint view.
-    header: "Experiments",
-    items: [
-      { to: "/timeline", label: "Timeline", icon: "timeline" },
-      ...analyze("/analytics/correlations", "/insights"),
-    ],
-  },
-  {
-    // One domain, one place: the logging screen and its trend view.
-    header: "Log",
-    items: [
-      { to: "/supplements", label: "Supplement Log", icon: "edit_note" },
-      { to: "/medications", label: "Medication Log", icon: "edit_note" },
-      ...analyze("/analytics/supplements", "/analytics/medications"),
-    ],
-  },
-  {
-    header: "System",
-    items: [
-      {
-        to: "/ingest",
-        label: "Data Pipeline",
-        icon: "settings_input_component",
-      },
-      { to: "/api-console", label: "API Console", icon: "api" },
-      { to: "/settings", label: "Console Settings", icon: "settings" },
-    ],
-  },
-];
-
-const allNavItems: NavLinkDef[] = navSections.flatMap((s) => s.items);
-
-/**
- * Routes pinned to the mobile bottom-nav for thumb-reach quick access.
- * The labels are intentionally shorter than the sidebar's full labels
- * (e.g. "Analytics" vs "Overview", "Pipeline" vs "Data Pipeline") so the
- * 4-icon strip doesn't truncate. Everything else is reached via the
- * "More" button → mobile drawer, which renders the FULL `navSections`
- * — the same data the desktop sidebar uses, so the two cannot drift.
- */
-const bottomNavQuickItems: NavLinkDef[] = [
-  { to: "/", label: "Dashboard", icon: "dashboard", end: true },
-  { to: "/analytics/overview", label: "Analytics", icon: "query_stats" },
-  { to: "/ingest", label: "Pipeline", icon: "settings_input_component" },
 ];
 
 /**
@@ -233,10 +74,10 @@ function SideNav() {
           </div>
           <div>
             <p className="text-primary font-bold font-body text-sm leading-tight">
-              Health OS
+              Vitalis
             </p>
             <p className="text-outline text-[10px] uppercase tracking-widest font-semibold">
-              Precision Curator
+              Personal health
             </p>
           </div>
         </div>
@@ -253,13 +94,6 @@ function SideNav() {
 
       {/* Footer */}
       <div className="border-t border-outline-variant/10 px-4 py-3 space-y-1">
-        <a
-          href="#"
-          className="flex items-center gap-3 px-3 py-2 text-outline hover:text-on-surface text-sm transition-colors"
-        >
-          <span className="material-symbols-outlined text-[18px]">help</span>
-          Support
-        </a>
         <BuildStamp />
       </div>
     </aside>
@@ -339,6 +173,9 @@ function TopBar() {
         n.end ? location.pathname === n.to : location.pathname.startsWith(n.to),
       )
       .sort((a, b) => b.to.length - a.to.length)[0]?.label ?? "Dashboard";
+  const showDateRange =
+    location.pathname.startsWith("/analytics/") ||
+    location.pathname.startsWith("/timeline");
 
   return (
     <header className="fixed top-0 w-full z-50 bg-surface/80 glass flex justify-between items-center px-6 py-3 lg:pl-[calc(16rem+1.5rem)]">
@@ -353,7 +190,7 @@ function TopBar() {
 
       <div className="flex items-center gap-3">
         {/* Date range presets */}
-        <div className="hidden sm:flex items-center gap-1 bg-surface-container-low px-1.5 py-1 rounded-xl border border-outline-variant/10">
+        <div className={`${showDateRange ? "hidden sm:flex" : "hidden"} items-center gap-1 bg-surface-container-low px-1.5 py-1 rounded-xl border border-outline-variant/10`}>
           {presets.map((p) => (
             <button
               key={p.value}
@@ -373,6 +210,7 @@ function TopBar() {
         <AlertBell />
         <NavLink
           to="/settings"
+          aria-label="Settings"
           className="text-outline hover:text-on-surface transition-colors p-1"
         >
           <span className="material-symbols-outlined">settings</span>
@@ -451,12 +289,6 @@ function useTzReconciliation(): void {
 export function Layout() {
   useTzReconciliation();
   const [menuOpen, setMenuOpen] = useState(false);
-  const location = useLocation();
-  // Close the mobile menu whenever the route changes — covers the case
-  // where a NavLink in the drawer fires before its onClick has flushed.
-  useEffect(() => {
-    setMenuOpen(false);
-  }, [location.pathname]);
   return (
     <div className="min-h-screen bg-surface">
       <TopBar />

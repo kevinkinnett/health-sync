@@ -3,7 +3,6 @@ import { fileURLToPath } from "node:url";
 import express, { type Express } from "express";
 import cors from "cors";
 import swaggerUi from "swagger-ui-express";
-import { logger } from "./logger.js";
 import { requestLogger } from "./middleware/requestLogger.js";
 import { apiLogger } from "./middleware/apiLogger.js";
 import { ActivityRepository } from "./repositories/activityRepo.js";

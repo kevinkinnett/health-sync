@@ -523,6 +523,7 @@ const API_LOG_STATS: ApiLogStats = {
 const INGEST_OVERVIEW: IngestOverview = {
   state: [],
   runs: [],
+  windmillConnected: true,
   activeJobs: [],
   completedJobs: [],
   schedules: [],
