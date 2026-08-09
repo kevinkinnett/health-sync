@@ -42,6 +42,12 @@ It has one responsibility—normalizing and keying a point—and no network,
 database, or Windmill imports. The ingestion entry point retains orchestration,
 retry, persistence, and rollup responsibilities for now.
 
+Ingestion observability follows that same provider boundary. Run history is
+filtered to `google_health`, and historical coverage is derived from
+`google_health_data_point` rather than the retired Fitbit ingest-state table.
+The `fitbit_*` daily tables remain a storage-compatibility seam until versioned
+migrations can rename them without breaking dashboard queries.
+
 ## UI decisions
 
 The dashboard shell follows a workflow-first information architecture:

@@ -6,20 +6,20 @@ import {
 } from "../api/queries";
 import type {
   WindmillSchedule,
-  WindmillCompletedJob,
   IngestRun,
   IngestRunTypeDetail,
   IngestState,
 } from "@health-dashboard/shared";
 import { STATUS } from "../components/charts/chartPalette";
 import {
-  BACKFILL_TARGET_DAYS,
-  computeBackfillEstimate,
-  fetchedHistoryDays,
-  isBackfillTargetMet,
-  isTrackedBackfillState,
-} from "../lib/ingestBackfill";
+  HISTORY_TARGET_DAYS,
+  findLargestCoverageGap,
+  historyDaysCovered,
+  isHistoryTargetMet,
+  isTrackedCoverageState,
+} from "../lib/ingestCoverage";
 import { PageError, PageSkeleton } from "../components/ui/PageState";
+import { windmillJobPhase } from "../lib/ingestJobs";
 
 // ────────────────────────────────────────────
 // Helpers
@@ -47,6 +47,8 @@ function formatJobDuration(ms: number): string {
 function scheduleLabel(path: string | null): { label: string; color: string } {
   if (!path)
     return { label: "Manual", color: "bg-primary/10 text-primary" };
+  if (path.includes("google_health"))
+    return { label: "Google Health", color: "bg-secondary/10 text-secondary" };
   if (path.includes("backfill"))
     return { label: "Backfill", color: "bg-tertiary/10 text-tertiary" };
   if (path.includes("daily"))
@@ -126,45 +128,33 @@ function DbStatusIndicator({ windmillConnected }: { windmillConnected: boolean }
   );
 }
 
-function BackfillEstimateCard({
-  state, runs, completedJobs,
-}: {
-  state: IngestState[]; runs: IngestRun[]; completedJobs: WindmillCompletedJob[];
-}) {
-  const trackedState = state.filter(isTrackedBackfillState);
+function CoverageSummaryCard({ state }: { state: IngestState[] }) {
+  const trackedState = state.filter(isTrackedCoverageState);
   if (trackedState.length === 0) return null;
-  if (trackedState.every(isBackfillTargetMet)) {
+  if (trackedState.every(isHistoryTargetMet)) {
     return (
       <div className="p-4 bg-secondary/10 border-l-4 border-secondary rounded-r-xl flex items-center gap-3">
         <span className="material-symbols-outlined text-secondary" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
         <div>
-          <span className="text-sm font-bold text-secondary">Backfill complete!</span>
-          <span className="text-xs text-on-surface-variant ml-2">All data types have {BACKFILL_TARGET_DAYS} days of history.</span>
+          <span className="text-sm font-bold text-secondary">Historical coverage target met</span>
+          <span className="text-xs text-on-surface-variant ml-2">All tracked Google Health metrics have at least {HISTORY_TARGET_DAYS} days of history.</span>
         </div>
       </div>
     );
   }
-  const estimate = computeBackfillEstimate(trackedState, runs, completedJobs);
-  if (!estimate) return null;
-  const { worstType, daysRemaining, daysPerDay, estimatedDays } = estimate;
-  let timeStr: string;
-  if (estimatedDays == null || daysPerDay === 0) timeStr = "Insufficient data";
-  else if (estimatedDays < 1) { const h = Math.max(1, Math.round(estimatedDays * 24)); timeStr = `~${h}h`; }
-  else if (estimatedDays < 30) { const d = Math.round(estimatedDays); timeStr = `~${d}d`; }
-  else { const w = Math.round(estimatedDays / 7); timeStr = `~${w}w`; }
+  const gap = findLargestCoverageGap(trackedState);
+  if (!gap) return null;
 
   return (
-    <div className="p-4 bg-error-container/10 border-l-4 border-error rounded-r-xl flex items-start gap-4">
-      <span className="material-symbols-outlined text-error mt-0.5" style={{ fontVariationSettings: "'FILL' 1" }}>warning</span>
+    <div className="p-4 bg-tertiary/10 border-l-4 border-tertiary rounded-r-xl flex items-start gap-4">
+      <span className="material-symbols-outlined text-tertiary mt-0.5">history</span>
       <div className="flex-1">
         <div className="flex items-center justify-between">
-          <h4 className="text-sm font-bold text-error uppercase tracking-wider">Backfill Estimated Completion</h4>
-          <span className="text-xs text-on-surface-variant">Bottleneck: <span className="capitalize">{worstType.replace(/_/g, " ")}</span></span>
+          <h4 className="text-sm font-bold text-tertiary uppercase tracking-wider">Historical Coverage</h4>
+          <span className="text-xs text-on-surface-variant">Largest gap: <span className="capitalize">{gap.dataType.replace(/_/g, " ")}</span></span>
         </div>
         <p className="text-on-surface-variant text-sm mt-1">
-          Estimated time remaining: <span className="text-on-surface font-bold tabular-nums">{timeStr}</span>.
-          {daysPerDay > 0 && <> Throughput: {Math.round(daysPerDay)} days/calendar day. </>}
-          {daysRemaining} of 365 days remaining.
+          <span className="capitalize">{gap.dataType.replace(/_/g, " ")}</span> currently has <span className="text-on-surface font-bold tabular-nums">{gap.daysCovered} days</span> of the {HISTORY_TARGET_DAYS}-day target. Google Health may expose different history depths by metric.
         </p>
       </div>
     </div>
@@ -172,13 +162,9 @@ function BackfillEstimateCard({
 }
 
 const SCHEDULE_DESCRIPTIONS: Record<string, { title: string; description: string }> = {
-  ingest_google_health_daily: {
-    title: "Daily Sync",
-    description: "Incremental updates for all connected telemetry endpoints. Runs once daily at noon UTC.",
-  },
-  ingest_google_health_backfill: {
-    title: "Historical Backfill",
-    description: "Importing deep-history data for trend analysis modeling. Runs every 2 hours with a 120-request budget.",
+  ingest_google_health: {
+    title: "Google Health Sync",
+    description: "Captures Google Health data and refreshes the dashboard's daily health metrics every four hours.",
   },
 };
 
@@ -255,6 +241,13 @@ export function Ingest() {
   const activeJobs = Array.isArray(data?.activeJobs) ? data.activeJobs : [];
   const completedJobs = Array.isArray(data?.completedJobs) ? data.completedJobs : [];
   const schedules = Array.isArray(data?.schedules) ? data.schedules : [];
+  const runningJobCount = activeJobs.filter(
+    (job) => windmillJobPhase(job) === "running",
+  ).length;
+  const scheduledJobCount = activeJobs.filter(
+    (job) => windmillJobPhase(job) === "scheduled",
+  ).length;
+  const queuedJobCount = activeJobs.length - runningJobCount - scheduledJobCount;
 
   const toggleExpanded = (jobId: string) => {
     setExpandedJobs((prev) => {
@@ -286,8 +279,8 @@ export function Ingest() {
         </div>
       </section>
 
-      {/* Backfill Alert */}
-      <BackfillEstimateCard state={state} runs={runs} completedJobs={completedJobs} />
+      {/* Historical coverage summary */}
+      <CoverageSummaryCard state={state} />
 
       {/* Schedule Cards */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -300,8 +293,10 @@ export function Ingest() {
       {activeJobs.length > 0 && (
         <div className="bg-surface-container rounded-xl border border-outline-variant/10 overflow-hidden">
           <div className="px-6 py-4 border-b border-outline-variant/10 flex items-center justify-between">
-            <h3 className="font-bold font-headline text-on-surface">Active & Queued Jobs</h3>
-            <span className="text-[10px] font-bold text-outline uppercase tracking-widest">{activeJobs.filter(j => j.running).length} Running · {activeJobs.filter(j => !j.running).length} Queued</span>
+            <h3 className="font-bold font-headline text-on-surface">Upcoming & Active Jobs</h3>
+            <span className="text-[10px] font-bold text-outline uppercase tracking-widest">
+              {runningJobCount} Running · {scheduledJobCount} Scheduled · {queuedJobCount} Queued
+            </span>
           </div>
           <table className="w-full text-left">
             <thead className="bg-surface-container-low text-[10px] text-outline uppercase font-bold tracking-wider">
@@ -309,12 +304,19 @@ export function Ingest() {
                 <th className="px-6 py-3">Job ID</th>
                 <th className="px-6 py-3">Source</th>
                 <th className="px-6 py-3">Status</th>
-                <th className="px-6 py-3 text-right">Started</th>
+                <th className="px-6 py-3 text-right">Timing</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-outline-variant/10">
               {activeJobs.map((job) => {
                 const source = scheduleLabel(job.schedulePath);
+                const phase = windmillJobPhase(job);
+                const statusLabel = phase === "running" ? "Processing" : phase === "scheduled" ? "Scheduled" : "Queued";
+                const timing = phase === "running" && job.startedAt
+                  ? new Date(job.startedAt).toLocaleTimeString()
+                  : phase === "scheduled" && job.scheduledFor
+                    ? new Date(job.scheduledFor).toLocaleString()
+                    : "—";
                 return (
                   <tr key={job.id} className="hover:bg-surface-bright/30 transition-colors">
                     <td className="px-6 py-4">
@@ -323,12 +325,12 @@ export function Ingest() {
                     <td className="px-6 py-4"><span className={`text-xs font-bold px-2 py-0.5 rounded-full ${source.color}`}>{source.label}</span></td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
-                        <div className={`w-1.5 h-1.5 rounded-full ${job.running ? "bg-secondary shadow-[0_0_8px_#4edea3]" : "bg-outline"}`} />
-                        <span className={`text-xs font-medium ${job.running ? "text-secondary" : "text-outline"}`}>{job.running ? "Processing" : "Queued"}</span>
+                        <div className={`w-1.5 h-1.5 rounded-full ${phase === "running" ? "bg-secondary shadow-[0_0_8px_#4edea3]" : phase === "scheduled" ? "bg-tertiary" : "bg-outline"}`} />
+                        <span className={`text-xs font-medium ${phase === "running" ? "text-secondary" : phase === "scheduled" ? "text-tertiary" : "text-outline"}`}>{statusLabel}</span>
                       </div>
                     </td>
                     <td className="px-6 py-4 text-right text-xs text-on-surface-variant tabular-nums">
-                      {job.running && job.startedAt ? new Date(job.startedAt).toLocaleTimeString() : "—"}
+                      {timing}
                     </td>
                   </tr>
                 );
@@ -338,15 +340,15 @@ export function Ingest() {
         </div>
       )}
 
-      {/* Backfill Progress */}
+      {/* Historical coverage */}
       <div className="bg-surface-container rounded-xl border border-outline-variant/10 overflow-hidden">
         <div className="px-6 py-4 border-b border-outline-variant/10">
-          <h3 className="font-bold font-headline text-on-surface">Backfill Progress by Data Type</h3>
+          <h3 className="font-bold font-headline text-on-surface">Historical Coverage by Data Type</h3>
         </div>
         <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-6">
           {(() => {
             const DAILY = ["activity", "sleep", "heart_rate", "body_weight"];
-            const RANGE = ["spo2", "hrv", "breathing_rate", "skin_temp", "vo2_max"];
+            const RANGE = ["spo2", "hrv", "breathing_rate", "skin_temp"];
             const PAGINATED = ["exercise_log"];
             const stateByType = Object.fromEntries(state.map((s) => [s.dataType, s]));
             const all = [...DAILY, ...RANGE, ...PAGINATED];
@@ -355,9 +357,9 @@ export function Ingest() {
             return all.map((t, i) => {
               const s = stateByType[t];
               if (!s) return null;
-              const daysFetched = fetchedHistoryDays(s);
-              const pct = Math.min(100, Math.round((daysFetched / BACKFILL_TARGET_DAYS) * 100));
-              const targetMet = isBackfillTargetMet(s);
+              const daysFetched = historyDaysCovered(s);
+              const pct = Math.min(100, Math.round((daysFetched / HISTORY_TARGET_DAYS) * 100));
+              const targetMet = isHistoryTargetMet(s);
               const barColor = targetMet ? "bg-secondary" : colors[i % colors.length];
               return (
                 <div key={t} className="space-y-2">
@@ -369,10 +371,10 @@ export function Ingest() {
                     <div className={`h-full rounded-full ${barColor}`} style={{ width: `${targetMet ? 100 : pct}%` }} />
                   </div>
                   <p className="text-[10px] text-outline tabular-nums">
-                    {s.backfillComplete
-                      ? "Completed"
+                    {s.historyTargetMet
+                      ? `${HISTORY_TARGET_DAYS}-day history target met`
                       : targetMet
-                        ? `${BACKFILL_TARGET_DAYS}-day history target met`
+                        ? `${HISTORY_TARGET_DAYS}-day history target met`
                         : `${s.earliestFetchedDate ?? "—"} to ${s.latestFetchedDate ?? "—"}`}
                   </p>
                 </div>

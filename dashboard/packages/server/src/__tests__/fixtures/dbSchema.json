@@ -272,6 +272,19 @@
     "min_value",
     "raw_jsonb"
   ],
+  "universe.google_health_data_point": [
+    "data_type",
+    "end_time",
+    "fetched_at",
+    "name",
+    "point_date",
+    "point_key",
+    "source_app",
+    "source_device",
+    "source_platform",
+    "start_time",
+    "value_jsonb"
+  ],
   "universe.health_alert": [
     "created_at",
     "date",
