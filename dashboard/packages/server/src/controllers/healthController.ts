@@ -3,6 +3,7 @@ import type { HealthDataService } from "../services/healthDataService.js";
 import type { TrainingService } from "../services/training/trainingService.js";
 import { todayInTz } from "../services/userTz.js";
 import { parseDateRange } from "./_params.js";
+import { healthSummaryResponseSchema, readinessResponseSchema } from "../contracts/dashboardContracts.js";
 
 /**
  * Read-side controllers for the dashboard's primary metric endpoints.
@@ -32,7 +33,7 @@ export class HealthController {
 
   async getSummary(_req: Request, res: Response): Promise<void> {
     const summary = await this.service.getSummary();
-    res.json(summary);
+    res.json(healthSummaryResponseSchema.parse(summary));
   }
 
   async getActivity(req: Request, res: Response): Promise<void> {
@@ -114,7 +115,7 @@ export class HealthController {
     const historyDays = Number.isFinite(raw)
       ? Math.min(60, Math.max(7, Math.trunc(raw)))
       : undefined;
-    res.json(await this.service.getReadiness(historyDays));
+    res.json(readinessResponseSchema.parse(await this.service.getReadiness(historyDays)));
   }
 
   async getDriving(_req: Request, res: Response): Promise<void> {

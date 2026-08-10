@@ -53,6 +53,7 @@ import { InsightController } from "./controllers/insightController.js";
 import { createInsightRoutes } from "./routes/insights.js";
 import { errorMapper } from "./middleware/errorMapper.js";
 import { IngestService } from "./services/ingestService.js";
+import { IngestHealthMonitor } from "./services/ingestHealthMonitor.js";
 import { SupplementService } from "./services/supplementService.js";
 import { MedicationService } from "./services/medicationService.js";
 import { LlmClient } from "./services/llmClient.js";
@@ -118,16 +119,6 @@ export async function createApp(pool: Pool, config: Config): Promise<Express> {
   const alertRepo = new AlertRepository(pool);
   const settingRepo = new SettingRepository(pool);
   const interventionRepo = new InterventionRepository(pool);
-
-  // Ensure user-input tables exist before serving traffic
-  await supplementRepo.ensureTables();
-  await medicationRepo.ensureTables();
-  await dossierRepo.ensureTables();
-  await apiLogRepo.ensureTables();
-  await insightRepo.ensureTables();
-  await alertRepo.ensureTables();
-  await settingRepo.ensureTables();
-  await interventionRepo.ensureTables();
 
   // Services
   const healthDataService = new HealthDataService(
@@ -262,7 +253,13 @@ export async function createApp(pool: Pool, config: Config): Promise<Express> {
   // Proactive health alerts (anomaly detection over recovery signals).
   // Reads thresholds/toggles from settings; the evaluate response carries
   // the push-delivery policy for the scheduled Windmill job.
-  const alertService = new AlertService(healthDataService, alertRepo, settingService);
+  const ingestHealthMonitor = new IngestHealthMonitor(ingestService, settingRepo, alertRepo);
+  const alertService = new AlertService(
+    healthDataService,
+    alertRepo,
+    settingService,
+    ingestHealthMonitor,
+  );
   const alertController = new AlertController(alertService);
   app.use("/api/alerts", createAlertRoutes(alertController));
 

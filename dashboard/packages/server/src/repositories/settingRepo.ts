@@ -12,16 +12,6 @@ import type { Pool } from "pg";
 export class SettingRepository {
   constructor(private pool: Pool) {}
 
-  async ensureTables(): Promise<void> {
-    await this.pool.query(`
-      CREATE TABLE IF NOT EXISTS universe.app_setting (
-        key        TEXT PRIMARY KEY,
-        value      JSONB NOT NULL,
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
-    `);
-  }
-
   /** The stored JSON value for `key`, or null if unset. */
   async get<T = unknown>(key: string): Promise<T | null> {
     const { rows } = await this.pool.query(

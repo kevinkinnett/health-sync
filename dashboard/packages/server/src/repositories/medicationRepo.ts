@@ -14,51 +14,10 @@ import { toDateStr, toTimestampStr } from "./mappers.js";
  * Mirrors {@link SupplementRepository} but lives in its own `medication`
  * schema so prescription drugs stay logically separated from supplements.
  *
- * Tables are created at server startup via {@link ensureTables}.
+ * Tables are owned by versioned database migrations.
  */
 export class MedicationRepository {
   constructor(private pool: Pool) {}
-
-  async ensureTables(): Promise<void> {
-    await this.pool.query(`CREATE SCHEMA IF NOT EXISTS medication`);
-    await this.pool.query(`
-      CREATE TABLE IF NOT EXISTS medication.item (
-        id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-        name            TEXT NOT NULL,
-        brand           TEXT,
-        form            TEXT,
-        default_amount  NUMERIC(10,3),
-        default_unit    TEXT NOT NULL,
-        notes           TEXT,
-        is_active       BOOLEAN NOT NULL DEFAULT TRUE,
-        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      )
-    `);
-    await this.pool.query(`
-      CREATE INDEX IF NOT EXISTS ix_medication_item_active
-        ON medication.item (is_active, name)
-    `);
-    await this.pool.query(`
-      CREATE TABLE IF NOT EXISTS medication.intake (
-        id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-        item_id     BIGINT NOT NULL REFERENCES medication.item(id) ON DELETE RESTRICT,
-        taken_at    TIMESTAMPTZ NOT NULL,
-        amount      NUMERIC(10,3) NOT NULL,
-        unit        TEXT NOT NULL,
-        notes       TEXT,
-        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      )
-    `);
-    await this.pool.query(`
-      CREATE INDEX IF NOT EXISTS ix_medication_intake_taken_at
-        ON medication.intake (taken_at DESC)
-    `);
-    await this.pool.query(`
-      CREATE INDEX IF NOT EXISTS ix_medication_intake_item_time
-        ON medication.intake (item_id, taken_at DESC)
-    `);
-  }
 
   async listItems(includeInactive = false): Promise<MedicationItem[]> {
     const sql = includeInactive

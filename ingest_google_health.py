@@ -36,7 +36,7 @@ import requests
 import wmill
 
 from u.kevin.ingest_common import conn_kwargs, create_ingest_run, update_ingest_run
-from u.kevin.google_health_points import parse_point
+from u.kevin.google_health_capture import GoogleHealthApi, RawPointStore, capture_types
 
 PROVIDER = "google_health"
 JOB_NAME = "google_health_ingest"
@@ -86,60 +86,9 @@ def google_access_token(res_path: str) -> str:
 # Raw capture
 # ---------------------------------------------------------------------------
 
-def ensure_raw_table(cur) -> None:
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS universe.google_health_data_point (
-            data_type TEXT NOT NULL, point_key TEXT NOT NULL, name TEXT,
-            source_platform TEXT, source_app TEXT, source_device TEXT,
-            start_time TIMESTAMPTZ, end_time TIMESTAMPTZ, point_date DATE,
-            value_jsonb JSONB NOT NULL, fetched_at TIMESTAMPTZ DEFAULT NOW(),
-            PRIMARY KEY (data_type, point_key))
-    """)
-    cur.execute("CREATE INDEX IF NOT EXISTS ix_ghdp_type_time ON universe.google_health_data_point (data_type, start_time DESC)")
-    cur.execute("CREATE INDEX IF NOT EXISTS ix_ghdp_type_date ON universe.google_health_data_point (data_type, source_platform, point_date)")
-
-
 def capture_raw(conn, token: str, max_pages: int) -> dict:
-    """Paginate each type newest-first (max_pages cap) → raw table. Idempotent."""
-    h = {"Authorization": f"Bearer {token}"}
-    cur = conn.cursor()
-    results = {}
-    for dt in TYPES:
-        token_pg, count, pages, err = None, 0, 0, None
-        while pages < max_pages:
-            params = {"pageSize": 1000}
-            if token_pg:
-                params["pageToken"] = token_pg
-            # A timeout/conn drop on ONE type must not kill the whole run
-            # (it did on 2026-06-12: a 90s timeout crashed the deep run and
-            # orphaned its ingest_run row mid-'running').
-            try:
-                r = requests.get(f"{BASE}/users/me/dataTypes/{dt}/dataPoints", headers=h, params=params, timeout=90)
-            except requests.RequestException as exc:
-                err = f"request failed: {str(exc)[:80]}"
-                break
-            if r.status_code != 200:
-                err = f"{r.status_code}: {r.text[:80]}"
-                break
-            d = r.json()
-            for p in d.get("dataPoints", []):
-                pf = parse_point(dt, p)
-                cur.execute("""
-                    INSERT INTO universe.google_health_data_point
-                        (data_type, point_key, name, source_platform, source_app, source_device, start_time, end_time, point_date, value_jsonb)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                    ON CONFLICT (data_type, point_key) DO UPDATE SET
-                        value_jsonb=EXCLUDED.value_jsonb, point_date=EXCLUDED.point_date,
-                        start_time=EXCLUDED.start_time, end_time=EXCLUDED.end_time, fetched_at=NOW()
-                """, (dt, pf["key"], pf["name"], pf["platform"], pf["app"], pf["device"], pf["start"], pf["end"], pf["pdate"], json.dumps(pf["raw"])))
-                count += 1
-            conn.commit()
-            token_pg = d.get("nextPageToken")
-            pages += 1
-            if not token_pg:
-                break
-        results[dt] = {"points": count} if not err else {"error": err}
-    return results
+    """Production adapter over independently testable API/store collaborators."""
+    return capture_types(GoogleHealthApi(token), RawPointStore(conn), TYPES, max_pages)
 
 
 # ---------------------------------------------------------------------------
@@ -656,6 +605,17 @@ def run_rollups(conn, token: str, rollup_days: int) -> dict:
             "weight_logs": weight_n, "exercise_logs": exercise_n, **activity}
 
 
+class GoogleHealthRollupWriter:
+    """Rollup boundary kept separate from raw capture and run coordination."""
+
+    def __init__(self, connection, access_token: str):
+        self._connection = connection
+        self._access_token = access_token
+
+    def write(self, rollup_days: int) -> dict:
+        return run_rollups(self._connection, self._access_token, rollup_days)
+
+
 # ---------------------------------------------------------------------------
 # Run tracking + main
 # ---------------------------------------------------------------------------
@@ -680,9 +640,7 @@ def main(
     token = google_access_token(creds_resource_path or DEFAULT_OAUTH_RES)
     db = wmill.get_resource(db_resource_path or DEFAULT_DB_RES)
     with psycopg.connect(**conn_kwargs(db)) as conn:
-        cur = conn.cursor()
-        ensure_raw_table(cur)
-        conn.commit()
+        RawPointStore(conn).ensure_schema()
         run_id = create_ingest_run(conn, PROVIDER, JOB_NAME)
 
         # Any crash below must still finalize the run row — an unhandled
@@ -692,7 +650,7 @@ def main(
         try:
             captured = capture_raw(conn, token, max_pages)
             if write_daily:
-                rolled = run_rollups(conn, token, rollup_days)
+                rolled = GoogleHealthRollupWriter(conn, token).write(rollup_days)
         except Exception as exc:  # noqa: BLE001
             try:
                 conn.rollback()

@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { BuildInfo } from "@health-dashboard/shared";
 import { BuildStamp } from "../components/BuildStamp";
+import { BuildCompatibilityGate } from "../components/BuildCompatibilityGate";
 import { buildsAgree, formatBuild, isBuildInfo } from "../buildInfo";
 
 const apiFetchMock = vi.fn();
@@ -110,7 +111,10 @@ describe("isBuildInfo", () => {
 });
 
 describe("BuildStamp", () => {
-  beforeEach(() => apiFetchMock.mockReset());
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+    apiFetchMock.mockResolvedValue(build());
+  });
 
   it("always shows the client build, even before the server answers", () => {
     // The client build is the one you cannot discover any other way — a
@@ -166,5 +170,46 @@ describe("BuildStamp", () => {
     apiFetchMock.mockResolvedValue(build({ commit: "unknown", shortCommit: "unknown" }));
     renderStamp();
     expect(screen.queryByTestId("build-mismatch")).not.toBeInTheDocument();
+  });
+});
+
+describe("BuildCompatibilityGate", () => {
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+    apiFetchMock.mockResolvedValue(build());
+  });
+
+  function renderGate(server: unknown, update = vi.fn()) {
+    apiFetchMock.mockResolvedValue(server);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <BuildCompatibilityGate client={build()} update={update}>
+          <div>compatible content</div>
+        </BuildCompatibilityGate>
+      </QueryClientProvider>,
+    );
+    return update;
+  }
+
+  it("continues when client and server agree", async () => {
+    renderGate(build());
+    expect(screen.getByText("compatible content")).toBeInTheDocument();
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith("/version"));
+    expect(screen.queryByTestId("build-compatibility-gate")).not.toBeInTheDocument();
+  });
+
+  it("blocks incompatible route content and offers an update", async () => {
+    const update = renderGate(build({ commit: "deadbeef", shortCommit: "deadbee" }));
+    await screen.findByTestId("build-compatibility-gate");
+    expect(screen.queryByText("compatible content")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /update and reload/i }));
+    expect(update).toHaveBeenCalledOnce();
+  });
+
+  it("does not block when an older server cannot identify itself", async () => {
+    renderGate([]);
+    expect(screen.getByText("compatible content")).toBeInTheDocument();
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalled());
   });
 });

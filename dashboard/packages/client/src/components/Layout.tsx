@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { BuildStamp } from "./BuildStamp";
+import { BuildCompatibilityGate } from "./BuildCompatibilityGate";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useDateRangeStore, type PresetRange } from "../stores/dateRangeStore";
 import { useUserTimezone } from "../api/queries";
@@ -297,7 +298,9 @@ export function Layout() {
       <MobileMenu open={menuOpen} onClose={() => setMenuOpen(false)} />
       <main className="pt-16 pb-24 lg:pb-8 lg:pl-64 px-4 md:px-8">
         <div className="max-w-7xl mx-auto mt-4">
-          <Outlet />
+          <BuildCompatibilityGate>
+            <Outlet />
+          </BuildCompatibilityGate>
         </div>
       </main>
     </div>

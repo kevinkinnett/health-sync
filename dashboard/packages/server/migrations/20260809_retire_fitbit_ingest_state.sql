@@ -1,16 +1,5 @@
--- Retire the state table used by the discontinued Fitbit Web API importer.
---
--- The application no longer reads this table. Rename it instead of dropping
--- it so the 11 historical rows remain recoverable while the active schema and
--- SQL contract stop advertising Fitbit as an ingestion provider.
---
--- Idempotency:
---   * first run renames the active table;
---   * later runs are no-ops when only the retired table exists;
---   * both names existing is treated as an unsafe ambiguous state.
-
-BEGIN;
-
+-- Preserve historical state while removing the retired Fitbit Web API table
+-- from the active schema contract.
 DO $$
 BEGIN
   IF to_regclass('universe.fitbit_ingest_state') IS NOT NULL
@@ -32,5 +21,3 @@ BEGIN
   END IF;
 END
 $$;
-
-COMMIT;

@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import type { IngestService } from "../services/ingestService.js";
 import { logger } from "../logger.js";
+import { ingestOverviewResponseSchema, ingestStatusResponseSchema } from "../contracts/dashboardContracts.js";
 
 export class IngestController {
   constructor(private service: IngestService) {}
@@ -9,7 +10,7 @@ export class IngestController {
     try {
       const limit = parseInt(req.query.limit as string, 10) || 20;
       const overview = await this.service.getOverview(limit);
-      res.json(overview);
+      res.json(ingestOverviewResponseSchema.parse(overview));
     } catch (err) {
       logger.error({ err }, "Failed to fetch ingest overview");
       res.status(500).json({ error: "Failed to fetch ingest overview" });
@@ -29,7 +30,7 @@ export class IngestController {
   async getStatus(_req: Request, res: Response): Promise<void> {
     try {
       const status = await this.service.getStatus();
-      res.json(status);
+      res.json(ingestStatusResponseSchema.parse(status));
     } catch (err) {
       logger.error({ err }, "Failed to fetch ingest status");
       res.status(500).json({ error: "Failed to fetch ingest status" });

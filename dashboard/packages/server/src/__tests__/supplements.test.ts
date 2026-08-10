@@ -47,10 +47,6 @@ class FakeRepo {
     this.nextIntakeIngredientId = 1;
   }
 
-  async ensureTables(): Promise<void> {
-    /* noop for fake */
-  }
-
   // ---- Items --------------------------------------------------------------
 
   async listItems(includeInactive = false): Promise<SupplementItem[]> {

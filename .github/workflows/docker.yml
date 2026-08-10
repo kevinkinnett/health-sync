@@ -38,6 +38,14 @@ jobs:
         run: pnpm turbo run test
         working-directory: dashboard
 
+      - name: Build production bundles
+        run: pnpm build
+        working-directory: dashboard
+
+      - name: Enforce client bundle budgets
+        run: pnpm --filter @health-dashboard/client bundle:check
+        working-directory: dashboard
+
   build-and-push:
     if: github.event_name != 'pull_request'
     needs: test

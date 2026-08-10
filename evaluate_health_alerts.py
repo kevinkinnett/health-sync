@@ -1,7 +1,7 @@
 """
 Windmill scheduled script — proactive health-alert evaluation + push.
 
-Runs daily (after the morning Fitbit sync). It asks the dashboard to
+Runs every two hours. It asks the dashboard to
 run anomaly detection over the recovery signals, then forwards any
 NEWLY-created alerts to Apprise so they reach the phone before you'd
 otherwise open the app.
@@ -11,7 +11,8 @@ ingest already runs here on a schedule, the workers are on the Tailnet
 (so they can reach both the dashboard and Apprise), and keeping the
 schedule observable next to the ingest jobs is the established pattern.
 
-Detection + dedup/cooldown live server-side (POST /api/alerts/evaluate
+Detection, ingestion stale/recovery transitions, and dedup/cooldown live
+server-side (POST /api/alerts/evaluate
 returns ONLY alerts created this run), so this script just fans the
 new ones out to Apprise — no risk of re-pushing a persisting condition.
 

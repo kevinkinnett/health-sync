@@ -1,6 +1,5 @@
 import type {
   HealthSummary,
-  SparklineData,
   WeeklyInsights,
   CorrelationsData,
   DayOfWeekHeatmapData,
@@ -22,11 +21,13 @@ import type { EightSleepRepository } from "../repositories/eightSleepRepo.js";
 import type { FoodRepository } from "../repositories/foodRepo.js";
 import type { TeslaDriveRepository } from "../repositories/teslaDriveRepo.js";
 import { addDays } from "./userTz.js";
-import { computeReadiness, type ReadinessDayInput } from "./readiness.js";
+import type { ReadinessDayInput } from "./readiness.js";
 import { RecordsService } from "./health/records.js";
 import { HeatmapService } from "./health/heatmap.js";
 import { WeeklyInsightsService } from "./health/weeklyInsights.js";
 import { CorrelationsService } from "./health/correlations.js";
+import { SummaryUseCase } from "./health/summaryUseCase.js";
+import { ReadinessUseCase } from "./health/readinessUseCase.js";
 
 /**
  * Read-side facade over the health repositories.
@@ -49,6 +50,8 @@ export class HealthDataService {
   private readonly heatmap: HeatmapService;
   private readonly weekly: WeeklyInsightsService;
   private readonly correlations: CorrelationsService;
+  private readonly summary: SummaryUseCase;
+  private readonly readiness: ReadinessUseCase;
 
   constructor(
     private activityRepo: ActivityRepository,
@@ -65,6 +68,11 @@ export class HealthDataService {
     private foodRepo: FoodRepository,
     private teslaDriveRepo: TeslaDriveRepository,
   ) {
+    this.summary = new SummaryUseCase(activityRepo, sleepRepo, heartRateRepo, weightRepo);
+    this.readiness = new ReadinessUseCase(
+      hrvRepo, heartRateRepo, sleepRepo, breathingRateRepo,
+      spo2Repo, skinTempRepo, eightSleepRepo,
+    );
     this.records = new RecordsService(activityRepo, sleepRepo, heartRateRepo);
     this.heatmap = new HeatmapService(activityRepo, sleepRepo, heartRateRepo);
     this.weekly = new WeeklyInsightsService(
@@ -85,46 +93,7 @@ export class HealthDataService {
   }
 
   async getSummary(): Promise<HealthSummary> {
-    const [activity, sleep, heartRate, weight] = await Promise.all([
-      this.activityRepo.findLatest(8),
-      this.sleepRepo.findLatest(8),
-      this.heartRateRepo.findLatest(8),
-      this.weightRepo.findLatest(8),
-    ]);
-
-    return {
-      activity: {
-        latest: activity[0] ?? null,
-        sparkline: activity
-          .slice(0, 7)
-          .reverse()
-          .map((d): SparklineData => ({ date: d.date, value: d.steps })),
-      },
-      sleep: {
-        latest: sleep[0] ?? null,
-        sparkline: sleep
-          .slice(0, 7)
-          .reverse()
-          .map((d): SparklineData => ({
-            date: d.date,
-            value: d.totalMinutesAsleep != null ? Math.round(d.totalMinutesAsleep / 60 * 10) / 10 : null,
-          })),
-      },
-      heartRate: {
-        latest: heartRate[0] ?? null,
-        sparkline: heartRate
-          .slice(0, 7)
-          .reverse()
-          .map((d): SparklineData => ({ date: d.date, value: d.restingHeartRate })),
-      },
-      weight: {
-        latest: weight[0] ?? null,
-        sparkline: weight
-          .slice(0, 7)
-          .reverse()
-          .map((d): SparklineData => ({ date: d.date, value: d.weightKg })),
-      },
-    };
+    return this.summary.execute();
   }
 
   // --- Per-metric read-throughs ------------------------------------------
@@ -186,58 +155,7 @@ export class HealthDataService {
    * the join lives in exactly one place.
    */
   async getReadinessInputs(): Promise<ReadinessDayInput[]> {
-    const N = 90;
-    const [hrv, heartRate, sleep, breathing, spo2, skinTemp, eight] =
-      await Promise.all([
-        this.hrvRepo.findLatest(N),
-        this.heartRateRepo.findLatest(N),
-        this.sleepRepo.findLatest(N),
-        this.breathingRateRepo.findLatest(N),
-        this.spo2Repo.findLatest(N),
-        this.skinTempRepo.findLatest(N),
-        this.eightSleepRepo.findLatest(N),
-      ]);
-
-    const byDate = new Map<string, ReadinessDayInput>();
-    const ensure = (date: string): ReadinessDayInput => {
-      let d = byDate.get(date);
-      if (!d) {
-        d = {
-          date,
-          hrv: {},
-          rhr: {},
-          sleepMin: {},
-          breathing: {},
-          spo2: {},
-          skinTemp: null,
-          restlessness: null,
-        };
-        byDate.set(date, d);
-      }
-      return d;
-    };
-
-    // Physical Fitbit-device sources. These measurements are imported through
-    // Google Health; the key stays device-oriented because readiness fusion
-    // compares sensors, not API transports.
-    for (const h of hrv) ensure(h.date).hrv.fitbit = h.dailyRmssd;
-    for (const h of heartRate) ensure(h.date).rhr.fitbit = h.restingHeartRate;
-    for (const s of sleep) ensure(s.date).sleepMin.fitbit = s.totalMinutesAsleep;
-    for (const b of breathing) ensure(b.date).breathing.fitbit = b.breathingRate;
-    for (const s of spo2) ensure(s.date).spo2.fitbit = s.avgValue;
-    for (const s of skinTemp) ensure(s.date).skinTemp = s.nightlyRelative;
-
-    // Eight Sleep sources (mattress sensor)
-    for (const e of eight) {
-      const d = ensure(e.date);
-      d.hrv.eightSleep = e.avgHrvRmssd;
-      d.rhr.eightSleep = e.avgHeartRate;
-      d.sleepMin.eightSleep = e.sleepDurationMin;
-      d.breathing.eightSleep = e.avgRespiratoryRate;
-      d.restlessness = e.tnt;
-    }
-
-    return [...byDate.values()];
+    return this.readiness.inputs();
   }
 
   /**
@@ -245,7 +163,7 @@ export class HealthDataService {
    * `services/readiness.ts` for the z-vs-baseline methodology.
    */
   async getReadiness(historyDays?: number): Promise<ReadinessScore> {
-    return computeReadiness(await this.getReadinessInputs(), historyDays);
+    return this.readiness.execute(historyDays);
   }
 
   // --- Driving ------------------------------------------------------------

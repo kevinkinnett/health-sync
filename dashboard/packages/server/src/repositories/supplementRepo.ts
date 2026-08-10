@@ -18,7 +18,7 @@ import { toDateStr, toTimestampStr } from "./mappers.js";
  * Lives in its own `supplement` schema (separate from `universe.*` ingest
  * tables) to make the user-input vs. ingested distinction obvious.
  *
- * Tables are created at server startup via {@link ensureTables}.
+ * Tables are owned by versioned database migrations.
  *
  * The composition model:
  * - `supplement.ingredient` is a canonical catalog of substances
@@ -31,99 +31,6 @@ import { toDateStr, toTimestampStr } from "./mappers.js";
  */
 export class SupplementRepository {
   constructor(private pool: Pool) {}
-
-  async ensureTables(): Promise<void> {
-    await this.pool.query(`CREATE SCHEMA IF NOT EXISTS supplement`);
-    await this.pool.query(`
-      CREATE TABLE IF NOT EXISTS supplement.item (
-        id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-        name            TEXT NOT NULL,
-        brand           TEXT,
-        form            TEXT,
-        default_amount  NUMERIC(10,3),
-        default_unit    TEXT NOT NULL,
-        notes           TEXT,
-        is_active       BOOLEAN NOT NULL DEFAULT TRUE,
-        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      )
-    `);
-    await this.pool.query(`
-      CREATE INDEX IF NOT EXISTS ix_supplement_item_active
-        ON supplement.item (is_active, name)
-    `);
-    await this.pool.query(`
-      CREATE TABLE IF NOT EXISTS supplement.intake (
-        id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-        item_id     BIGINT NOT NULL REFERENCES supplement.item(id) ON DELETE RESTRICT,
-        taken_at    TIMESTAMPTZ NOT NULL,
-        amount      NUMERIC(10,3) NOT NULL,
-        unit        TEXT NOT NULL,
-        notes       TEXT,
-        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      )
-    `);
-    await this.pool.query(`
-      CREATE INDEX IF NOT EXISTS ix_supplement_intake_taken_at
-        ON supplement.intake (taken_at DESC)
-    `);
-    await this.pool.query(`
-      CREATE INDEX IF NOT EXISTS ix_supplement_intake_item_time
-        ON supplement.intake (item_id, taken_at DESC)
-    `);
-
-    // Ingredient catalog
-    await this.pool.query(`
-      CREATE TABLE IF NOT EXISTS supplement.ingredient (
-        id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-        name        TEXT NOT NULL,
-        notes       TEXT,
-        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      )
-    `);
-    // Case-insensitive uniqueness so "Ashwagandha" and "ashwagandha" collapse
-    await this.pool.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS uq_supplement_ingredient_lower_name
-        ON supplement.ingredient (LOWER(name))
-    `);
-
-    // Composition: one row per (supplement, ingredient) pair
-    await this.pool.query(`
-      CREATE TABLE IF NOT EXISTS supplement.item_ingredient (
-        item_id        BIGINT NOT NULL REFERENCES supplement.item(id) ON DELETE CASCADE,
-        ingredient_id  BIGINT NOT NULL REFERENCES supplement.ingredient(id) ON DELETE RESTRICT,
-        amount         NUMERIC(10,3) NOT NULL,
-        unit           TEXT NOT NULL,
-        sort_order     INT NOT NULL DEFAULT 0,
-        PRIMARY KEY (item_id, ingredient_id)
-      )
-    `);
-    await this.pool.query(`
-      CREATE INDEX IF NOT EXISTS ix_supplement_item_ingredient_ingredient
-        ON supplement.item_ingredient (ingredient_id)
-    `);
-
-    // Per-intake snapshot of the breakdown at log time
-    await this.pool.query(`
-      CREATE TABLE IF NOT EXISTS supplement.intake_ingredient (
-        id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-        intake_id       BIGINT NOT NULL REFERENCES supplement.intake(id) ON DELETE CASCADE,
-        ingredient_id   BIGINT NOT NULL REFERENCES supplement.ingredient(id) ON DELETE RESTRICT,
-        ingredient_name TEXT NOT NULL,
-        amount          NUMERIC(10,3) NOT NULL,
-        unit            TEXT NOT NULL
-      )
-    `);
-    await this.pool.query(`
-      CREATE INDEX IF NOT EXISTS ix_supplement_intake_ingredient_intake
-        ON supplement.intake_ingredient (intake_id)
-    `);
-    await this.pool.query(`
-      CREATE INDEX IF NOT EXISTS ix_supplement_intake_ingredient_ingredient
-        ON supplement.intake_ingredient (ingredient_id)
-    `);
-  }
 
   // ---------------------------------------------------------------------------
   // Items

@@ -21,8 +21,17 @@ The intended request path is:
 3. A service owns application rules and cross-domain coordination.
 4. A repository owns PostgreSQL queries and row mapping.
 
-Shared types define the API boundary, but shared runtime helpers are avoided so
-the browser and Node runtimes can evolve independently.
+Shared types define the compile-time API boundary. High-risk dashboard
+responses also pass Zod schemas in the controller, making the deployed boundary
+executable. Response changes are additive for at least one deployment window:
+the server emits both old and new fields until cached PWA clients have had a
+chance to update. Removing or changing a field requires a new endpoint version.
+
+The client compares its build stamp with the uncached `/api/version` response.
+If commits differ during a rolling deployment, route content is gated and the
+user is prompted to activate the new service-worker build. An unidentified old
+server remains usable, because absence of version metadata is not proof of an
+incompatible contract.
 
 ## SOLID assessment
 
@@ -37,10 +46,18 @@ Concrete repositories still satisfy those interfaces structurally. This makes
 the service's actual needs explicit and gives tests small seams without adding
 runtime machinery.
 
-The Google Health parser is similarly isolated in `google_health_points.py`.
-It has one responsibility—normalizing and keying a point—and no network,
-database, or Windmill imports. The ingestion entry point retains orchestration,
-retry, persistence, and rollup responsibilities for now.
+The summary and readiness paths are now focused use cases under
+`services/health/`. They consume small `findLatest` capabilities and own their
+respective assembly rules; `HealthDataService` remains a stable facade for
+controllers while delegating scoring, summary construction, records, heatmaps,
+weekly insights, and correlations.
+
+The Google Health parser is isolated in `google_health_points.py`. API
+pagination and raw persistence live behind separate collaborators in
+`google_health_capture.py`, with no Windmill or run-tracking dependency. The
+entry point coordinates those collaborators and a dedicated rollup writer;
+validated rollup SQL remains physically co-located until its Windmill module
+can be deployed atomically with the import change.
 
 Ingestion observability follows that same provider boundary. Run history is
 filtered to `google_health`, and historical coverage is derived from
@@ -53,11 +70,18 @@ compares the Fitbit wrist device with the Eight Sleep mattress, but API
 responses identify that Fitbit-device measurements arrived through Google
 Health. A service-owned freshness policy marks Google Health stale after five
 hours without a successful run: the four-hour cadence plus one hour of grace.
+The scheduled alert evaluator checks this every two hours. A persisted monitor
+state emits one warning when ingestion becomes stale and one recovery notice
+when it becomes healthy again; both flow through the same dashboard-controlled
+Apprise policy as biometric alerts.
 
-The first versioned schema retirement lives under `database/migrations/`.
+Versioned schema changes live under `dashboard/packages/server/migrations/`.
 `20260809_retire_fitbit_ingest_state.sql` transactionally renames the obsolete
 Fitbit Web API state table to a read-only archive. It is idempotent and refuses
-to proceed if active and retired names both exist.
+to proceed if active and retired names both exist. The deployment entry point
+runs pending files under an advisory lock, verifies immutable checksums, and
+records each migration in the same transaction as its SQL. Repositories never
+create or alter tables during application construction.
 
 ## UI decisions
 
@@ -79,6 +103,9 @@ The dashboard shell follows a workflow-first information architecture:
   Google Fonts being reachable.
 - Page modules are lazy-loaded so charting and insight code are downloaded only
   when those routes are opened.
+- CI builds the production client and enforces budgets for the initial entry,
+  largest lazy chunk, total JavaScript, and stylesheets. Dependency growth must
+  therefore be an explicit threshold decision rather than an invisible deploy.
 
 ## Guardrails
 
@@ -95,23 +122,11 @@ The dashboard shell follows a workflow-first information architecture:
 
 ## Prioritized technical debt
 
-1. **Move schema evolution out of repositories.** Several repositories call
-   `ensureTables()` during application boot. Replace these with versioned,
-   transactional migrations run as a deployment step. Until that migration is
-   complete, repository startup DDL remains intentionally visible in
-   `createApp.ts`.
-2. **Split `HealthDataService` by use case.** It coordinates many repositories.
-   Extract summary, correlation, and comparison use cases behind narrow input
-   ports as each area changes, instead of doing a high-risk wholesale rewrite.
-3. **Decompose Google Health ingestion further.** Separate API pagination,
-   raw persistence, and rollup SQL into testable collaborators. Preserve the
-   current idempotent and monotone-write behavior during that work.
-4. **Add contract tests at the API boundary.** Validate representative server
-   responses against the shapes the React query layer expects, especially the
-   Today summary and partial-data cases.
-5. **Measure route payloads in CI.** Route splitting is in place; add a small
-   bundle-budget check so chart or icon dependencies cannot silently return to
-   the initial bundle.
+1. **Move validated Google Health rollup SQL into its own module.** API
+   pagination and raw persistence are now separate testable collaborators, and
+   rollup execution has its own writer boundary. Move the already-validated SQL
+   physically only when the Windmill module deployment can land atomically with
+   the import change; preserve current idempotent and monotone-write behavior.
 
 These are incremental seams, not a call to rewrite. Each extraction should land
 with a test that demonstrates the preserved behavior.

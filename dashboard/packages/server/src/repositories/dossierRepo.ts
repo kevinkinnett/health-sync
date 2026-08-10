@@ -44,51 +44,6 @@ export interface UpsertDossierInput {
 export class DossierRepository {
   constructor(private pool: Pool) {}
 
-  async ensureTables(): Promise<void> {
-    await this.pool.query(`CREATE SCHEMA IF NOT EXISTS dossier`);
-    await this.pool.query(`
-      CREATE TABLE IF NOT EXISTS dossier.entry (
-        id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-        item_type     TEXT NOT NULL CHECK (item_type IN ('supplement', 'medication')),
-        item_id       BIGINT NOT NULL,
-        item_name     TEXT NOT NULL,
-        item_brand    TEXT,
-        item_form     TEXT,
-        content       JSONB NOT NULL,
-        model         TEXT NOT NULL,
-        input_tokens  INT,
-        output_tokens INT,
-        fetched_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        UNIQUE (item_type, item_id)
-      )
-    `);
-    await this.pool.query(`
-      CREATE INDEX IF NOT EXISTS ix_dossier_entry_type_id
-        ON dossier.entry (item_type, item_id)
-    `);
-
-    await this.pool.query(`
-      CREATE TABLE IF NOT EXISTS dossier.llm_usage (
-        id                BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-        task              TEXT NOT NULL,
-        item_type         TEXT,
-        item_id           BIGINT,
-        requested_model   TEXT NOT NULL,
-        actual_model      TEXT,
-        prompt_tokens     INT,
-        completion_tokens INT,
-        reasoning_tokens  INT,
-        duration_ms       INT NOT NULL,
-        status            TEXT NOT NULL,
-        created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      )
-    `);
-    await this.pool.query(`
-      CREATE INDEX IF NOT EXISTS ix_dossier_llm_usage_created
-        ON dossier.llm_usage (created_at DESC)
-    `);
-  }
-
   async get(
     itemType: DossierItemType,
     itemId: number,

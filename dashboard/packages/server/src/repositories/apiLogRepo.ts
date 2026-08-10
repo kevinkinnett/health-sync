@@ -36,31 +36,6 @@ export interface ApiLogStats {
 export class ApiLogRepository {
   constructor(private pool: Pool) {}
 
-  /**
-   * Idempotently create the table and its single supporting index.
-   * Called once at boot so the v1 surface can serve traffic from a
-   * fresh database without a separate migration step.
-   */
-  async ensureTables(): Promise<void> {
-    await this.pool.query(`
-      CREATE TABLE IF NOT EXISTS universe.api_log (
-        id              SERIAL PRIMARY KEY,
-        caller          TEXT,
-        method          TEXT NOT NULL,
-        path            TEXT NOT NULL,
-        status_code     INTEGER NOT NULL,
-        duration_ms     INTEGER NOT NULL,
-        request_params  JSONB,
-        error           TEXT,
-        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
-    `);
-    await this.pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_api_log_created
-        ON universe.api_log (created_at DESC);
-    `);
-  }
-
   async log(entry: {
     caller: string | null;
     method: string;

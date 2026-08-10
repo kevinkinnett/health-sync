@@ -207,6 +207,7 @@ function scoreDay(days: ReadinessDayInput[], idx: number): DayScore {
       weightPct: WEIGHTS[metric],
       status: statusFor(signedZ),
       sources: fused.perSource.map((p) => ({
+        label: p.label,
         provenance: p.provenance,
         z: round2(p.z * DIRECTION[metric]),
       })),
@@ -238,6 +239,7 @@ function scoreDay(days: ReadinessDayInput[], idx: number): DayScore {
         weightPct: WEIGHTS.restlessness,
         status: statusFor(signedZ),
         sources: [{
+          label: "Eight Sleep",
           provenance: SOURCE_PROVENANCE.eightSleep,
           z: round2(signedZ),
         }],
@@ -262,6 +264,7 @@ function scoreDay(days: ReadinessDayInput[], idx: number): DayScore {
       weightPct: WEIGHTS.skinTemp,
       status: statusFor(signedZ),
       sources: [{
+        label: "Fitbit",
         provenance: SOURCE_PROVENANCE.fitbit,
         z: round2(signedZ),
       }],
