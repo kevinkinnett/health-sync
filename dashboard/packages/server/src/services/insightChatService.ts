@@ -21,7 +21,8 @@ import { runAgenticLoop } from "./agenticLoop.js";
  */
 const CHAT_SYSTEM_PROMPT = `
 You are a personal health analyst with access to the user's complete
-Fitbit + supplements + medications data through a registered set of
+Fitbit-device measurements imported through Google Health, plus supplements
+and medications, through a registered set of
 read-only tools. Answer the user's questions about their own health
 data using those tools.
 

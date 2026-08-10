@@ -84,7 +84,7 @@ const HEALTH_CATEGORIES: CategoryDef[] = [
       "indicator. The user also has an Eight Sleep mattress " +
       "(query_eight_sleep) — a contact sensor that measures overnight HR, " +
       "HRV, respiratory rate, sleep stages and bed temperature; prefer it " +
-      "for sleep-time vitals and note where it diverges from Fitbit. Fold " +
+      "for sleep-time vitals and note where it diverges from the Fitbit device. Fold " +
       "in skin-temperature deviation (query_skin_temp) and blood-oxygen " +
       "(query_spo2) — call out any multi-night skin-temp rise or SpO2 dips, " +
       "which can flag illness. Note any nights below 7 hours and deep-sleep " +
@@ -110,7 +110,7 @@ const HEALTH_CATEGORIES: CategoryDef[] = [
       "time the user spent in fat-burn / cardio / peak zones. The Eight " +
       "Sleep mattress (query_eight_sleep) measures overnight HR + HRV + " +
       "respiratory rate from a contact sensor — more sensitive to nightly " +
-      "change than the Fitbit wrist; use it and flag where the two sources " +
+      "change than the Fitbit wrist device; use it and flag where the two sensors " +
       "diverge. Bring in breathing rate (query_breathing_rate), blood-" +
       "oxygen (query_spo2), and cardio fitness / VO2 max (query_cardio_score, " +
       "a slow-moving range string). Flag the classic under-recovery / " +

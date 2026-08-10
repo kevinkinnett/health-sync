@@ -22,7 +22,7 @@ export function AnalyticsNutrition() {
     <div className="space-y-4">
       <p className="text-sm text-on-surface-variant">
         Calorie and macronutrient intake from the days you logged food in
-        Google Health / Fitbit (the AI photo logging counts too). Only logged
+        Google Health from the Fitbit app (AI photo logging counts too). Only logged
         days show here — a gap means nothing was logged, not zero.
       </p>
       <QueryBoundary

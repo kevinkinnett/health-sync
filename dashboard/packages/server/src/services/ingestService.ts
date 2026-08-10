@@ -6,6 +6,9 @@ import type {
   WindmillCompletedJob,
   WindmillSchedule,
   IngestOverview,
+  IngestFreshness,
+  IngestStatus,
+  HealthDataProvenance,
 } from "@health-dashboard/shared";
 import type { IngestRepository } from "../repositories/ingestRepo.js";
 import { logger } from "../logger.js";
@@ -18,6 +21,47 @@ interface WindmillConfig {
 
 const SCRIPT_PATH = "u/kevin/ingest_google_health";
 const SCHEDULE_PREFIX = "u/kevin/ingest_google_health";
+export const GOOGLE_HEALTH_EXPECTED_INTERVAL_MINUTES = 4 * 60;
+export const GOOGLE_HEALTH_STALE_AFTER_MINUTES = 5 * 60;
+
+export const GOOGLE_HEALTH_PROVENANCE: HealthDataProvenance = {
+  device: "fitbit",
+  deviceLabel: "Fitbit device",
+  provider: "google_health",
+  providerLabel: "Google Health",
+};
+
+/** Pure clock policy: one hour of grace beyond the four-hour schedule. */
+export function evaluateGoogleHealthFreshness(
+  state: IngestState[],
+  nowMs = Date.now(),
+): IngestFreshness {
+  const latestMs = state
+    .map((item) => item.lastSuccessAtUtc)
+    .filter((value): value is string => Boolean(value))
+    .map((value) => new Date(value).getTime())
+    .filter(Number.isFinite)
+    .reduce((latest, value) => Math.max(latest, value), Number.NEGATIVE_INFINITY);
+
+  if (!Number.isFinite(latestMs)) {
+    return {
+      status: "unknown",
+      lastSuccessAtUtc: null,
+      expectedIntervalMinutes: GOOGLE_HEALTH_EXPECTED_INTERVAL_MINUTES,
+      staleAfterMinutes: GOOGLE_HEALTH_STALE_AFTER_MINUTES,
+    };
+  }
+
+  return {
+    status:
+      nowMs - latestMs > GOOGLE_HEALTH_STALE_AFTER_MINUTES * 60_000
+        ? "stale"
+        : "healthy",
+    lastSuccessAtUtc: new Date(latestMs).toISOString(),
+    expectedIntervalMinutes: GOOGLE_HEALTH_EXPECTED_INTERVAL_MINUTES,
+    staleAfterMinutes: GOOGLE_HEALTH_STALE_AFTER_MINUTES,
+  };
+}
 
 export class IngestService {
   constructor(
@@ -58,6 +102,14 @@ export class IngestService {
     return this.ingestRepo.getRuns(limit);
   }
 
+  async getStatus(): Promise<IngestStatus> {
+    const state = await this.getState();
+    return {
+      provenance: GOOGLE_HEALTH_PROVENANCE,
+      freshness: evaluateGoogleHealthFreshness(state),
+    };
+  }
+
   async getOverview(runLimit: number): Promise<IngestOverview> {
     const [state, runs, windmillConnected, activeJobs, completedJobs, schedules] =
       await Promise.all([
@@ -69,6 +121,10 @@ export class IngestService {
         this.getSchedules(),
       ]);
     return {
+      status: {
+        provenance: GOOGLE_HEALTH_PROVENANCE,
+        freshness: evaluateGoogleHealthFreshness(state),
+      },
       state,
       runs,
       windmillConnected,

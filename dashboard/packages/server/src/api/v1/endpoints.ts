@@ -229,7 +229,7 @@ export function buildV1Endpoints(): V1EndpointDef[] {
       path: "/cardio-score",
       summary: "Cardio fitness (VO2 max)",
       description:
-        "Per-day cardio-fitness score (VO2 max). Reported by Fitbit as a RANGE string such as \"43-47\", not a single number — it changes slowly, so expect long flat stretches.",
+        "Historical per-day cardio-fitness score (VO2 max) from the retired Fitbit Web API. Stored as a RANGE string such as \"43-47\", not a single number; Google Health currently supplies no replacement points.",
       parameters: dateRangeParams,
       handler: async (args, ctx) => {
         const { start, end } = resolveDateRange(args, ctx.userTimezone);
@@ -240,7 +240,7 @@ export function buildV1Endpoints(): V1EndpointDef[] {
       path: "/eight-sleep",
       summary: "Eight Sleep nightly data",
       description:
-        "Per-night Eight Sleep mattress data: sleep score, time asleep and stage minutes (deep/light/REM), average overnight heart rate, HRV (RMSSD), respiratory rate, bed/room temperature, and toss-and-turn count. A contact-sensor recovery source — generally more sensitive to night-to-night change than the Fitbit wrist, and fused into the readiness score. Compare against Fitbit's HR/HRV/sleep when both are present.",
+        "Per-night Eight Sleep mattress data: sleep score, time asleep and stage minutes (deep/light/REM), average overnight heart rate, HRV (RMSSD), respiratory rate, bed/room temperature, and toss-and-turn count. A contact-sensor recovery source — generally more sensitive to night-to-night change than the Fitbit wrist device, and fused into the readiness score. Fitbit-device measurements arrive through Google Health; compare the physical sensors when both are present.",
       parameters: dateRangeParams,
       handler: async (args, ctx) => {
         const { start, end } = resolveDateRange(args, ctx.userTimezone);

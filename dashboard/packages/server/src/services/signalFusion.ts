@@ -1,9 +1,10 @@
 /**
  * Sensor fusion for the recovery signals.
  *
- * Fitbit (wrist) and Eight Sleep (mattress) both measure HRV, resting HR,
- * breathing, and sleep. This combines them into one z per signal without
- * letting either source dominate.
+ * A Fitbit wrist device and an Eight Sleep mattress both measure HRV,
+ * resting HR, breathing, and sleep. Fitbit measurements arrive through the
+ * Google Health API; that transport detail is deliberately separate from the
+ * physical sensor identity used by this model.
  *
  * Method (grounded in this user's 28-night overlap analysis):
  *   1. z-score EACH source against its OWN trailing baseline — this erases
@@ -21,6 +22,9 @@
  *   - SpO2 is Fitbit-only (Eight Sleep doesn't measure it).
  */
 
+import type { ReadinessSourceProvenance } from "@health-dashboard/shared";
+
+/** Physical sensor identity used by the fusion model. */
 export type ReadinessSource = "fitbit" | "eightSleep";
 
 /** A metric's raw value per source for a single day (null = missing). */
@@ -29,9 +33,22 @@ export type SourceValues = Partial<Record<ReadinessSource, number | null>>;
 /** Signals measured by more than one source (fused). */
 export type FusibleMetric = "hrv" | "rhr" | "sleep" | "breathing" | "spo2";
 
-export const SOURCE_LABELS: Record<ReadinessSource, string> = {
-  fitbit: "Fitbit",
-  eightSleep: "Eight Sleep",
+export const SOURCE_PROVENANCE: Record<
+  ReadinessSource,
+  ReadinessSourceProvenance
+> = {
+  fitbit: {
+    device: "fitbit",
+    deviceLabel: "Fitbit device",
+    provider: "google_health",
+    providerLabel: "Google Health",
+  },
+  eightSleep: {
+    device: "eight_sleep",
+    deviceLabel: "Eight Sleep",
+    provider: "eight_sleep",
+    providerLabel: "Eight Sleep",
+  },
 };
 
 export const SOURCE_WEIGHTS: Record<
@@ -50,7 +67,7 @@ export const DISAGREE_THRESHOLD = 1.0;
 
 export interface PerSourceZ {
   source: ReadinessSource;
-  label: string;
+  provenance: ReadinessSourceProvenance;
   z: number;
 }
 
@@ -107,7 +124,11 @@ export function fuseMetric(
     const m = mean(base);
     const s = std(base, m);
     const z = s > 0 ? clamp((today - m) / s, -opts.zClamp, opts.zClamp) : 0;
-    perSource.push({ source: src, label: SOURCE_LABELS[src], z: round2(z) });
+    perSource.push({
+      source: src,
+      provenance: SOURCE_PROVENANCE[src],
+      z: round2(z),
+    });
     weightedZ += w * z;
     weightSum += w;
     rawValues.push(today * w);

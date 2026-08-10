@@ -34,12 +34,6 @@ import fixture from "./fixtures/dbSchema.json" with { type: "json" };
  */
 
 const schema = fixture as SchemaFixture;
-// Tables can remain physically present during a staged retirement even after
-// application reads have moved away from them. Keep that debt explicit here
-// until a versioned migration removes the table.
-const intentionallyUnreferencedTables = new Set([
-  "universe.fitbit_ingest_state",
-]);
 const repoDir = join(
   dirname(fileURLToPath(import.meta.url)),
   "..",
@@ -62,9 +56,7 @@ describe("SQL ↔ schema contract", () => {
     const referenced = new Set(
       repoFiles.flatMap((f) => extractTableRefs(f.sql)),
     );
-    const orphaned = Object.keys(schema).filter(
-      (t) => !referenced.has(t) && !intentionallyUnreferencedTables.has(t),
-    );
+    const orphaned = Object.keys(schema).filter((t) => !referenced.has(t));
     expect(orphaned).toEqual([]);
   });
 

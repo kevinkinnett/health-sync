@@ -3,6 +3,7 @@ import type {
   IngestState,
   IngestRun,
   IngestOverview,
+  IngestStatus,
   TriggerResponse,
 } from "@health-dashboard/shared";
 import { apiFetch } from "../client";
@@ -20,6 +21,14 @@ export function useIngestState() {
   return useQuery<IngestState[]>({
     queryKey: ["ingest", "state"],
     queryFn: () => apiFetch("/ingest/state"),
+  });
+}
+
+export function useIngestStatus() {
+  return useQuery<IngestStatus>({
+    queryKey: ["ingest", "status"],
+    queryFn: () => apiFetch("/ingest/status"),
+    refetchInterval: 60_000,
   });
 }
 

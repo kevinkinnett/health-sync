@@ -1,4 +1,4 @@
-FROM node:20-alpine AS build
+FROM node:24-alpine AS build
 RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
 WORKDIR /app
 
@@ -32,7 +32,7 @@ COPY turbo.json ./
 RUN pnpm turbo run build
 
 # Production image
-FROM node:20-alpine
+FROM node:24-alpine
 RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
 WORKDIR /app
 

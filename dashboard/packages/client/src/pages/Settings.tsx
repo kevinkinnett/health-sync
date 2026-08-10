@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useHealthCheck, useIngestState } from "../api/queries";
+import { useHealthCheck, useIngestStatus } from "../api/queries";
 import { useUnitsStore } from "../stores/unitsStore";
 import type { UnitSystem } from "../lib/units";
 import { formatRelativeAgo } from "../lib/relativeTime";
@@ -135,20 +135,20 @@ function ApiAccessCard() {
 }
 
 function SourceStatusCard() {
-  const ingest = useIngestState();
-  const latestSuccess = (ingest.data ?? [])
-    .map((state) => state.lastSuccessAtUtc)
-    .filter((value): value is string => Boolean(value))
-    .sort()
-    .at(-1);
+  const ingest = useIngestStatus();
+  const freshness = ingest.data?.freshness;
+  const latestSuccess = freshness?.lastSuccessAtUtc;
+  const stale = freshness?.status === "stale";
 
   const detail = ingest.isLoading
     ? "Checking…"
     : ingest.isError
       ? "Status unavailable"
-      : latestSuccess
-        ? `Last successful sync ${formatRelativeAgo(latestSuccess)}`
-        : "No successful sync recorded";
+      : stale
+        ? `Sync overdue — last success ${formatRelativeAgo(latestSuccess!)}`
+        : latestSuccess
+          ? `Last successful sync ${formatRelativeAgo(latestSuccess)}`
+          : "No successful Google Health sync recorded";
 
   return (
     <Card className="p-6">
@@ -158,8 +158,10 @@ function SourceStatusCard() {
       />
       <div className="mt-5">
         <StatusRow
-          label="Health data pipeline"
-          state={ingest.isError ? "bad" : latestSuccess ? "good" : "neutral"}
+          label={ingest.data
+            ? `${ingest.data.provenance.deviceLabel} via ${ingest.data.provenance.providerLabel}`
+            : "Google Health pipeline"}
+          state={ingest.isError || stale ? "bad" : latestSuccess ? "good" : "neutral"}
           detail={detail}
         />
       </div>
