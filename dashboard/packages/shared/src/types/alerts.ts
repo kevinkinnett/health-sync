@@ -19,7 +19,11 @@ export type HealthAlertKind =
   /** Blood-oxygen average crossed an absolute low floor. */
   | "low_spo2"
   /** Readiness fell sharply vs the recent trend or hit "compromised". */
-  | "readiness_drop";
+  | "readiness_drop"
+  /** Google Health missed its expected ingestion window. */
+  | "ingest_stale"
+  /** Google Health succeeded after a stale period. */
+  | "ingest_recovered";
 
 /** A persisted alert row (server-assigned id + timestamps). */
 export interface HealthAlert {

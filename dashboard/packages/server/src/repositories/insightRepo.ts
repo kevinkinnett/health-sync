@@ -69,46 +69,6 @@ export interface ChatRecord {
 export class InsightRepository {
   constructor(private pool: Pool) {}
 
-  async ensureTables(): Promise<void> {
-    await this.pool.query(`
-      CREATE TABLE IF NOT EXISTS universe.health_insight (
-        id              SERIAL PRIMARY KEY,
-        generation_id   UUID NOT NULL,
-        category        TEXT NOT NULL,
-        title           TEXT NOT NULL,
-        content         TEXT NOT NULL,
-        date_from       DATE NOT NULL,
-        date_to         DATE NOT NULL,
-        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
-    `);
-    await this.pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_health_insight_generation
-        ON universe.health_insight (generation_id, created_at);
-    `);
-    await this.pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_health_insight_created
-        ON universe.health_insight (created_at DESC);
-    `);
-
-    await this.pool.query(`
-      CREATE TABLE IF NOT EXISTS universe.health_insight_chat (
-        id              SERIAL PRIMARY KEY,
-        conversation_id UUID NOT NULL,
-        role            TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'tool')),
-        content         TEXT,
-        tool_calls      JSONB,
-        tool_call_id    TEXT,
-        tool_name       TEXT,
-        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
-    `);
-    await this.pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_health_insight_chat_conv
-        ON universe.health_insight_chat (conversation_id, id);
-    `);
-  }
-
   // ------ Insights -------------------------------------------------------
 
   async listGenerations(limit = 50): Promise<InsightGenerationSummary[]> {

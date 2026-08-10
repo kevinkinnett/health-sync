@@ -17,13 +17,14 @@ import type { Config } from "../config.js";
  *
  * Typechecking cannot catch a router mounted at the wrong path, a route
  * module that throws at construction, or a service constructed after its
- * dependant. Until `createApp` was split out of `index.ts` this was
+ * dependant. Database DDL is intentionally absent here: the deployment
+ * migration runner owns schema evolution. Until `createApp` was split out of `index.ts` this was
  * untestable at all — importing the module read env vars and bound a port.
  *
  * The pool is faked, so this asserts wiring, not data.
  */
 
-/** Minimal pool that satisfies `ensureTables()` and `SELECT 1`. */
+/** Minimal pool that satisfies repository reads and `SELECT 1`. */
 function fakePool(): Pool {
   return {
     query: async () => ({ rows: [], rowCount: 0 }),

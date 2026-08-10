@@ -17,30 +17,6 @@ const COOLDOWN_DAYS = 3;
 export class AlertRepository {
   constructor(private pool: Pool) {}
 
-  async ensureTables(): Promise<void> {
-    await this.pool.query(`
-      CREATE TABLE IF NOT EXISTS universe.health_alert (
-        id          SERIAL PRIMARY KEY,
-        kind        TEXT NOT NULL,
-        severity    TEXT NOT NULL,
-        title       TEXT NOT NULL,
-        detail      TEXT NOT NULL,
-        metric      TEXT,
-        date        DATE NOT NULL,
-        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        read_at     TIMESTAMPTZ
-      );
-    `);
-    await this.pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_health_alert_created
-        ON universe.health_alert (created_at DESC);
-    `);
-    await this.pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_health_alert_kind_date
-        ON universe.health_alert (kind, date DESC);
-    `);
-  }
-
   /**
    * Insert an alert unless one of the same kind already exists with a
    * `date` within `cooldownDays` of this one. Returns the new row, or

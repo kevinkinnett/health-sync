@@ -16,35 +16,6 @@ import { toDateStr } from "./mappers.js";
 export class InterventionRepository {
   constructor(private pool: Pool) {}
 
-  async ensureTables(): Promise<void> {
-    await this.pool.query(`
-      CREATE TABLE IF NOT EXISTS universe.intervention (
-        id          SERIAL PRIMARY KEY,
-        kind        TEXT NOT NULL,
-        category    TEXT NOT NULL,
-        name        TEXT NOT NULL,
-        started_on  DATE NOT NULL,
-        ended_on    DATE,
-        source      TEXT NOT NULL DEFAULT 'manual',
-        source_ref  TEXT,
-        detail      TEXT,
-        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
-    `);
-    // Derived rows are keyed by their origin so re-deriving updates in
-    // place instead of piling up duplicates on every run.
-    await this.pool.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS ux_intervention_source_ref
-        ON universe.intervention (source_ref)
-        WHERE source_ref IS NOT NULL
-    `);
-    await this.pool.query(`
-      CREATE INDEX IF NOT EXISTS ix_intervention_started
-        ON universe.intervention (started_on DESC)
-    `);
-  }
-
   async findAll(): Promise<Intervention[]> {
     const { rows } = await this.pool.query(
       `${SELECT} ORDER BY started_on DESC, id DESC`,

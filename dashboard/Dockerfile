@@ -28,6 +28,7 @@ RUN pnpm install --frozen-lockfile
 
 # Build everything
 COPY packages/ packages/
+COPY packages/server/migrations/ packages/server/migrations/
 COPY turbo.json ./
 RUN pnpm turbo run build
 
@@ -51,6 +52,7 @@ COPY --from=build /app/packages/shared/package.json packages/shared/
 COPY --from=build /app/packages/shared/src/ packages/shared/src/
 COPY --from=build /app/packages/server/package.json packages/server/
 COPY --from=build /app/packages/server/dist/ packages/server/dist/
+COPY --from=build /app/packages/server/migrations/ packages/server/migrations/
 RUN pnpm install --frozen-lockfile --prod
 
 # Copy built client into server's public dir
@@ -58,4 +60,4 @@ COPY --from=build /app/packages/client/dist/ packages/server/dist/public/
 
 WORKDIR /app/packages/server
 EXPOSE 3001
-CMD ["node", "dist/index.js"]
+CMD ["sh", "-c", "node dist/migrateCli.js && node dist/index.js"]

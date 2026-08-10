@@ -36,7 +36,7 @@ dashboard/
 ingest_*.py           Windmill ingestion entry points
 google_health_points.py
                       Pure Google Health point normalization
-database/migrations/  Versioned, transactional schema migrations
+dashboard/packages/server/migrations/  Versioned, transactional schema migrations
 tests/                Dependency-free Python unit tests
 ```
 

@@ -62,11 +62,18 @@ compares the Fitbit wrist device with the Eight Sleep mattress, but API
 responses identify that Fitbit-device measurements arrived through Google
 Health. A service-owned freshness policy marks Google Health stale after five
 hours without a successful run: the four-hour cadence plus one hour of grace.
+The scheduled alert evaluator checks this every two hours. A persisted monitor
+state emits one warning when ingestion becomes stale and one recovery notice
+when it becomes healthy again; both flow through the same dashboard-controlled
+Apprise policy as biometric alerts.
 
-The first versioned schema retirement lives under `database/migrations/`.
+Versioned schema changes live under `dashboard/packages/server/migrations/`.
 `20260809_retire_fitbit_ingest_state.sql` transactionally renames the obsolete
 Fitbit Web API state table to a read-only archive. It is idempotent and refuses
-to proceed if active and retired names both exist.
+to proceed if active and retired names both exist. The deployment entry point
+runs pending files under an advisory lock, verifies immutable checksums, and
+records each migration in the same transaction as its SQL. Repositories never
+create or alter tables during application construction.
 
 ## UI decisions
 
@@ -104,21 +111,13 @@ The dashboard shell follows a workflow-first information architecture:
 
 ## Prioritized technical debt
 
-1. **Move schema evolution out of repositories.** Several repositories call
-   `ensureTables()` during application boot. Replace these with versioned,
-   transactional migrations run as a deployment step. Until that migration is
-   complete, repository startup DDL remains intentionally visible in
-   `createApp.ts`.
-2. **Split `HealthDataService` by use case.** It coordinates many repositories.
+1. **Split `HealthDataService` by use case.** It coordinates many repositories.
    Extract summary, correlation, and comparison use cases behind narrow input
    ports as each area changes, instead of doing a high-risk wholesale rewrite.
-3. **Decompose Google Health ingestion further.** Separate API pagination,
+2. **Decompose Google Health ingestion further.** Separate API pagination,
    raw persistence, and rollup SQL into testable collaborators. Preserve the
    current idempotent and monotone-write behavior during that work.
-4. **Add contract tests at the API boundary.** Validate representative server
-   responses against the shapes the React query layer expects, especially the
-   Today summary and partial-data cases.
-5. **Measure route payloads in CI.** Route splitting is in place; add a small
+3. **Measure route payloads in CI.** Route splitting is in place; add a small
    bundle-budget check so chart or icon dependencies cannot silently return to
    the initial bundle.
 

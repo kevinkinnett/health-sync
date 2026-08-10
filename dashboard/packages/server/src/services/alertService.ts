@@ -8,6 +8,8 @@ import type { AlertRepository } from "../repositories/alertRepo.js";
 import type { SettingService } from "./settingService.js";
 import { computeReadiness } from "./readiness.js";
 import { detectAlerts, DEFAULT_DETECTION, type DetectionConfig } from "./alerts.js";
+import type { IngestHealthMonitor } from "./ingestHealthMonitor.js";
+import { logger } from "../logger.js";
 
 /**
  * Orchestrates anomaly detection + persistence. Pulls the joined
@@ -23,15 +25,26 @@ export class AlertService {
     private healthData: HealthDataService,
     private repo: AlertRepository,
     private settings: SettingService,
+    private ingestMonitor?: IngestHealthMonitor,
   ) {}
 
   /** Detect + persist; returns the alerts created this run + push policy. */
   async evaluate(): Promise<EvaluateAlertsResponse> {
     const s = await this.settings.getNotificationSettings();
-    const days = await this.healthData.getReadinessInputs();
-    const readiness = computeReadiness(days);
+    const created: HealthAlert[] = [];
 
-    const config: DetectionConfig = {
+    // Operational freshness is independent of biometric calculations. Keep
+    // monitoring useful even when one health query is temporarily malformed.
+    if (this.ingestMonitor) {
+      const operational = await this.ingestMonitor.evaluate();
+      if (operational) created.push(operational);
+    }
+
+    try {
+      const days = await this.healthData.getReadinessInputs();
+      const readiness = computeReadiness(days);
+
+      const config: DetectionConfig = {
       illnessSigma: s.thresholds.illnessSigma,
       // not surfaced in the UI (yet) — keep the default.
       skinTempWarm: DEFAULT_DETECTION.skinTempWarm,
@@ -39,13 +52,15 @@ export class AlertService {
       spo2WarnBelow: s.thresholds.spo2WarnBelow,
       readinessDropPoints: s.thresholds.readinessDropPoints,
       kinds: s.kinds,
-    };
-    const detected = detectAlerts(days, readiness, config);
+      };
+      const detected = detectAlerts(days, readiness, config);
 
-    const created: HealthAlert[] = [];
-    for (const d of detected) {
-      const row = await this.repo.insertIfNew(d, s.thresholds.cooldownDays);
-      if (row) created.push(row);
+      for (const d of detected) {
+        const row = await this.repo.insertIfNew(d, s.thresholds.cooldownDays);
+        if (row) created.push(row);
+      }
+    } catch (err) {
+      logger.error({ err }, "Health alert detection failed; operational alerts were preserved");
     }
     return {
       created,
