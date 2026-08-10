@@ -47,10 +47,6 @@ class FakeDossierRepo {
     this.usage.length = 0;
   }
 
-  async ensureTables(): Promise<void> {
-    /* noop */
-  }
-
   async get(
     type: DossierItemType,
     id: number,
@@ -93,7 +89,6 @@ function key(type: DossierItemType, id: number) {
 
 class FakeSupplementRepo {
   items = new Map<number, SupplementItem>();
-  async ensureTables(): Promise<void> {}
   async getItem(id: number): Promise<SupplementItem | null> {
     return this.items.get(id) ?? null;
   }
@@ -101,7 +96,6 @@ class FakeSupplementRepo {
 
 class FakeMedicationRepo {
   items = new Map<number, MedicationItem>();
-  async ensureTables(): Promise<void> {}
   async getItem(id: number): Promise<MedicationItem | null> {
     return this.items.get(id) ?? null;
   }

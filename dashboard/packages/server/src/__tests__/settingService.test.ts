@@ -21,7 +21,6 @@ function fakeRepo(initial: unknown = null): SettingRepository & {
   if (initial != null) store.set("notifications", initial);
   return {
     store,
-    ensureTables: async () => {},
     get: async (key: string) => (store.has(key) ? store.get(key) : null),
     set: async (key: string, value: unknown) => {
       store.set(key, value);

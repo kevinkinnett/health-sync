@@ -17,7 +17,6 @@ function fakeRepo() {
   const store = new Map<string, unknown>();
   return {
     store,
-    ensureTables: async () => {},
     get: async (k: string) => (store.has(k) ? store.get(k) : null),
     set: async (k: string, v: unknown) => {
       store.set(k, v);

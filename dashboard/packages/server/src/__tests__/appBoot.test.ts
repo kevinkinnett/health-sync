@@ -11,15 +11,15 @@ import type { Config } from "../config.js";
  * Every other server test builds its own tiny express app around one
  * controller and a fake service, so nothing exercised the REAL wiring:
  * ~40 constructions whose ORDER matters (settingService has to exist
- * before the LLM services that resolve their model from it), seven
- * `ensureTables()` calls that must complete before traffic, and ~12
- * routers that must actually be mounted at the paths the client fetches.
+ * before the LLM services that resolve their model from it), and ~12 routers
+ * that must actually be mounted at the paths the client fetches.
  *
  * Typechecking cannot catch a router mounted at the wrong path, a route
  * module that throws at construction, or a service constructed after its
  * dependant. Database DDL is intentionally absent here: the deployment
- * migration runner owns schema evolution. Until `createApp` was split out of `index.ts` this was
- * untestable at all — importing the module read env vars and bound a port.
+ * migration runner owns schema evolution. Until `createApp` was split out of
+ * `index.ts` this was untestable at all — importing the module read env vars
+ * and bound a port.
  *
  * The pool is faked, so this asserts wiring, not data.
  */

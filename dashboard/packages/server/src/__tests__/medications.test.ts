@@ -30,10 +30,6 @@ class FakeRepo {
     this.nextIntakeId = 1;
   }
 
-  async ensureTables(): Promise<void> {
-    /* noop for fake */
-  }
-
   async listItems(includeInactive = false): Promise<MedicationItem[]> {
     const all = [...this.items.values()];
     return all

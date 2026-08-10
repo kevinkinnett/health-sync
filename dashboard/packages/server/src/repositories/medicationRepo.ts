@@ -14,7 +14,7 @@ import { toDateStr, toTimestampStr } from "./mappers.js";
  * Mirrors {@link SupplementRepository} but lives in its own `medication`
  * schema so prescription drugs stay logically separated from supplements.
  *
- * Tables are created at server startup via {@link ensureTables}.
+ * Tables are owned by versioned database migrations.
  */
 export class MedicationRepository {
   constructor(private pool: Pool) {}
