@@ -102,6 +102,13 @@ export default defineConfig(({ mode }) => {
         navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [
           {
+            // A cached version response can either hide a real mismatch or
+            // invent one after a deploy. This endpoint is the compatibility
+            // signal, so it must always describe the server reached now.
+            urlPattern: /^\/api\/version(?:\?.*)?$/,
+            handler: "NetworkOnly",
+          },
+          {
             urlPattern: /^\/api\//,
             handler: "NetworkFirst",
             options: {

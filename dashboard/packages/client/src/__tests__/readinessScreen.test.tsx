@@ -53,8 +53,8 @@ const SCORE: ReadinessScore = {
       weightPct: 35,
       status: "good",
       sources: [
-        { provenance: FITBIT_VIA_GOOGLE, z: 0.9 },
-        { provenance: EIGHT_SLEEP, z: 1.8 },
+        { label: "Fitbit", provenance: FITBIT_VIA_GOOGLE, z: 0.9 },
+        { label: "Eight Sleep", provenance: EIGHT_SLEEP, z: 1.8 },
       ],
     },
     {
@@ -67,8 +67,8 @@ const SCORE: ReadinessScore = {
       weightPct: 25,
       status: "good",
       sources: [
-        { provenance: FITBIT_VIA_GOOGLE, z: 0.2 },
-        { provenance: EIGHT_SLEEP, z: 1.6 },
+        { label: "Fitbit", provenance: FITBIT_VIA_GOOGLE, z: 0.2 },
+        { label: "Eight Sleep", provenance: EIGHT_SLEEP, z: 1.6 },
       ],
       disagreement: true,
     },

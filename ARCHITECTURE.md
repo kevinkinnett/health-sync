@@ -21,8 +21,17 @@ The intended request path is:
 3. A service owns application rules and cross-domain coordination.
 4. A repository owns PostgreSQL queries and row mapping.
 
-Shared types define the API boundary, but shared runtime helpers are avoided so
-the browser and Node runtimes can evolve independently.
+Shared types define the compile-time API boundary. High-risk dashboard
+responses also pass Zod schemas in the controller, making the deployed boundary
+executable. Response changes are additive for at least one deployment window:
+the server emits both old and new fields until cached PWA clients have had a
+chance to update. Removing or changing a field requires a new endpoint version.
+
+The client compares its build stamp with the uncached `/api/version` response.
+If commits differ during a rolling deployment, route content is gated and the
+user is prompted to activate the new service-worker build. An unidentified old
+server remains usable, because absence of version metadata is not proof of an
+incompatible contract.
 
 ## SOLID assessment
 

@@ -51,6 +51,12 @@ export const SOURCE_PROVENANCE: Record<
   },
 };
 
+/** Additive compatibility field for clients cached before provenance existed. */
+export const SOURCE_LABELS: Record<ReadinessSource, string> = {
+  fitbit: "Fitbit",
+  eightSleep: "Eight Sleep",
+};
+
 export const SOURCE_WEIGHTS: Record<
   FusibleMetric,
   Partial<Record<ReadinessSource, number>>
@@ -67,6 +73,7 @@ export const DISAGREE_THRESHOLD = 1.0;
 
 export interface PerSourceZ {
   source: ReadinessSource;
+  label: string;
   provenance: ReadinessSourceProvenance;
   z: number;
 }
@@ -126,6 +133,7 @@ export function fuseMetric(
     const z = s > 0 ? clamp((today - m) / s, -opts.zClamp, opts.zClamp) : 0;
     perSource.push({
       source: src,
+      label: SOURCE_LABELS[src],
       provenance: SOURCE_PROVENANCE[src],
       z: round2(z),
     });

@@ -4,6 +4,7 @@ import { readinessSourceContribution, readinessSourceLabel } from "../lib/readin
 describe("readiness source provenance", () => {
   it("separates a Fitbit device from the Google Health provider", () => {
     const source = {
+      label: "Fitbit",
       provenance: {
         device: "fitbit" as const,
         deviceLabel: "Fitbit device",
@@ -20,6 +21,7 @@ describe("readiness source provenance", () => {
   it("does not repeat a first-party device/provider name", () => {
     expect(
       readinessSourceLabel({
+        label: "Eight Sleep",
         provenance: {
           device: "eight_sleep",
           deviceLabel: "Eight Sleep",
@@ -29,5 +31,11 @@ describe("readiness source provenance", () => {
         z: -0.2,
       }),
     ).toBe("Eight Sleep");
+  });
+
+  it("accepts a legacy response while client and server builds overlap", () => {
+    expect(
+      readinessSourceLabel({ label: "Fitbit", z: 0.4 } as never),
+    ).toBe("Fitbit");
   });
 });

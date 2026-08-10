@@ -38,6 +38,9 @@ export interface ReadinessSourceProvenance {
 
 /** One sensor's signed-z contribution to a fused component. */
 export interface ReadinessComponentSource {
+  /** Backward-compatible display name retained for cached clients. New code
+   * should prefer `provenance`, which separates device from provider. */
+  label: string;
   /** Device and ingestion provider are distinct so transport changes do not
    * erase the physical sensor's analytical identity. */
   provenance: ReadinessSourceProvenance;
