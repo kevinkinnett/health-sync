@@ -1,3 +1,26 @@
+export interface HealthDataProvenance {
+  /** Physical product that measured the signal. */
+  device: "fitbit";
+  deviceLabel: "Fitbit device";
+  /** Transport/API used to import the signal into Vitalis. */
+  provider: "google_health";
+  providerLabel: "Google Health";
+}
+
+export type IngestFreshnessStatus = "healthy" | "stale" | "unknown";
+
+export interface IngestFreshness {
+  status: IngestFreshnessStatus;
+  lastSuccessAtUtc: string | null;
+  expectedIntervalMinutes: number;
+  staleAfterMinutes: number;
+}
+
+export interface IngestStatus {
+  provenance: HealthDataProvenance;
+  freshness: IngestFreshness;
+}
+
 export interface IngestState {
   dataType: string;
   latestFetchedDate: string | null;
@@ -63,6 +86,7 @@ export interface WindmillSchedule {
 }
 
 export interface IngestOverview {
+  status: IngestStatus;
   state: IngestState[];
   runs: IngestRun[];
   /** True only when the API reached Windmill during this overview request. */

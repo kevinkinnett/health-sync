@@ -39,7 +39,8 @@ export function Insights() {
           </h1>
           <p className="text-on-surface-variant text-lg">
             LLM-narrated reports across six dimensions, plus open-ended chat
-            grounded in your real Fitbit + supplements + medications data.
+            grounded in your Fitbit-device data imported through Google Health,
+            plus supplements and medications.
           </p>
         </div>
         <TabSwitcher value={tab} onChange={setTab} />

@@ -217,7 +217,9 @@ export class HealthDataService {
       return d;
     };
 
-    // Fitbit sources
+    // Physical Fitbit-device sources. These measurements are imported through
+    // Google Health; the key stays device-oriented because readiness fusion
+    // compares sensors, not API transports.
     for (const h of hrv) ensure(h.date).hrv.fitbit = h.dailyRmssd;
     for (const h of heartRate) ensure(h.date).rhr.fitbit = h.restingHeartRate;
     for (const s of sleep) ensure(s.date).sleepMin.fitbit = s.totalMinutesAsleep;

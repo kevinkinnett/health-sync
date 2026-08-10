@@ -10,6 +10,19 @@ vi.mock("../api/client", () => ({
   apiFetch: (path?: string) => apiFetchMock(path),
 }));
 
+const FITBIT_VIA_GOOGLE = {
+  device: "fitbit" as const,
+  deviceLabel: "Fitbit device",
+  provider: "google_health" as const,
+  providerLabel: "Google Health",
+};
+const EIGHT_SLEEP = {
+  device: "eight_sleep" as const,
+  deviceLabel: "Eight Sleep",
+  provider: "eight_sleep" as const,
+  providerLabel: "Eight Sleep",
+};
+
 function renderScreen() {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
@@ -40,8 +53,8 @@ const SCORE: ReadinessScore = {
       weightPct: 35,
       status: "good",
       sources: [
-        { label: "Fitbit", z: 0.9 },
-        { label: "Eight Sleep", z: 1.8 },
+        { provenance: FITBIT_VIA_GOOGLE, z: 0.9 },
+        { provenance: EIGHT_SLEEP, z: 1.8 },
       ],
     },
     {
@@ -54,8 +67,8 @@ const SCORE: ReadinessScore = {
       weightPct: 25,
       status: "good",
       sources: [
-        { label: "Fitbit", z: 0.2 },
-        { label: "Eight Sleep", z: 1.6 },
+        { provenance: FITBIT_VIA_GOOGLE, z: 0.2 },
+        { provenance: EIGHT_SLEEP, z: 1.6 },
       ],
       disagreement: true,
     },
@@ -122,7 +135,11 @@ describe("Readiness screen", () => {
     apiFetchMock.mockResolvedValue(SCORE);
     renderScreen();
     // HRV fused from two sensors → both shown with signed z.
-    expect(await screen.findByText(/Fitbit \+0\.9 · Eight Sleep \+1\.8/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        /Fitbit device via Google Health \+0\.9 · Eight Sleep \+1\.8/,
+      ),
+    ).toBeInTheDocument();
     // RHR sensors disagreed → flag rendered.
     expect(screen.getByText("⚑")).toBeInTheDocument();
   });

@@ -14,6 +14,10 @@ export type { EightSleepDay } from "./types/eightSleep.js";
 export type { FoodLogDay } from "./types/food.js";
 export type { DrivingDay, DrivingSummary } from "./types/driving.js";
 export type {
+  HealthDataProvenance,
+  IngestFreshnessStatus,
+  IngestFreshness,
+  IngestStatus,
   IngestState,
   IngestRun,
   IngestRunTypeDetail,
@@ -64,6 +68,9 @@ export type {
   ReadinessBand,
   ReadinessComponentStatus,
   ReadinessMetric,
+  ReadinessDevice,
+  ReadinessProvider,
+  ReadinessSourceProvenance,
   ReadinessComponentSource,
   ReadinessComponent,
   ReadinessPoint,
@@ -166,4 +173,3 @@ export type {
   TrainingSession,
   TrainingSummary,
 } from "./types/training.js";
-

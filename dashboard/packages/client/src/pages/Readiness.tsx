@@ -12,12 +12,13 @@ import {
 } from "../components/charts/MetricLineChart";
 import { ReadinessWaterfall } from "../components/charts/ReadinessWaterfall";
 import { READINESS_BAND_COLOR } from "../components/charts/chartPalette";
+import { readinessSourceContribution } from "../lib/readinessSource";
 
 /**
  * Readiness detail screen — the "more information" view behind the
  * dashboard's readiness card. Shows the full per-signal breakdown
- * (every metric, not just the top drivers), each signal's Fitbit-vs-
- * Eight-Sleep fusion, the trend, and how the score is computed.
+ * (every metric, not just the top drivers), each physical sensor's
+ * contribution and ingestion provenance, the trend, and the methodology.
  *
  * All from `useReadiness()` — no extra endpoint.
  */
@@ -110,7 +111,7 @@ function ReadinessDetail({ data }: { data: ReadinessScore }) {
         <ul className="text-xs text-on-surface-variant space-y-1.5 list-disc pl-4">
           <li>Every signal is compared to <strong>your own</strong> trailing {data.baselineDays}-day baseline, not population norms — 50 means "exactly typical for you".</li>
           <li>Each deviation is signed so <strong>positive always means better-recovered</strong> (HRV up = good; resting HR up = bad).</li>
-          <li>Signals from two devices (Fitbit + Eight Sleep) are <strong>fused</strong> — each z-scored against its own baseline, then blended, so neither sensor's scale dominates.</li>
+          <li>Signals from two devices (Fitbit device via Google Health + Eight Sleep) are <strong>fused</strong> — each z-scored against its own baseline, then blended, so neither sensor's scale dominates.</li>
           <li>Weighted, renormalised over whatever's available, and mapped to 0–100. Bands: ≥66 primed · 40–65 balanced · &lt;40 compromised.</li>
         </ul>
       </div>
@@ -199,7 +200,7 @@ function ComponentRow({ c }: { c: ReadinessComponent }) {
 
       {c.sources && c.sources.length > 0 && (
         <div className="text-[11px] text-outline mt-1">
-          {c.sources.map((s) => `${s.label} ${s.z >= 0 ? "+" : ""}${s.z}`).join(" · ")}
+          {c.sources.map(readinessSourceContribution).join(" · ")}
         </div>
       )}
     </>

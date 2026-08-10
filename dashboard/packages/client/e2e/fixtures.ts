@@ -14,6 +14,7 @@ import type {
   HrvDay,
   ExperimentReport,
   IngestOverview,
+  IngestStatus,
   Intervention,
   LlmModelSettings,
   NotificationSettings,
@@ -520,7 +521,23 @@ const API_LOG_STATS: ApiLogStats = {
   byPath: [{ path: "/api/v1/summary", count: 64, avgDurationMs: 38 }],
 };
 
+const INGEST_STATUS: IngestStatus = {
+  provenance: {
+    device: "fitbit",
+    deviceLabel: "Fitbit device",
+    provider: "google_health",
+    providerLabel: "Google Health",
+  },
+  freshness: {
+    status: "healthy",
+    lastSuccessAtUtc: "2026-07-26T12:30:00.000Z",
+    expectedIntervalMinutes: 240,
+    staleAfterMinutes: 300,
+  },
+};
+
 const INGEST_OVERVIEW: IngestOverview = {
+  status: INGEST_STATUS,
   state: [],
   runs: [],
   windmillConnected: true,
@@ -563,6 +580,7 @@ const ROUTES: [RegExp, unknown][] = [
   [/\/api\/settings\/notifications$/, NOTIFICATIONS],
   [/\/api\/admin\/api-logs\/stats/, API_LOG_STATS],
   [/\/api\/ingest\/overview/, INGEST_OVERVIEW],
+  [/\/api\/ingest\/status/, INGEST_STATUS],
   [/\/api\/ingest\/state/, []],
 ];
 

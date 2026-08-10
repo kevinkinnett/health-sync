@@ -225,9 +225,12 @@ describe("computeReadiness", () => {
     const hrv = r.components.find((c) => c.metric === "hrv")!;
     // Both sensors contributed.
     expect(hrv.sources?.length).toBe(2);
-    expect(hrv.sources?.map((s) => s.label).sort()).toEqual([
+    expect(hrv.sources?.map((s) => s.provenance.deviceLabel).sort()).toEqual([
       "Eight Sleep",
-      "Fitbit",
+      "Fitbit device",
     ]);
+    expect(
+      hrv.sources?.find((s) => s.provenance.device === "fitbit")?.provenance.provider,
+    ).toBe("google_health");
   });
 });

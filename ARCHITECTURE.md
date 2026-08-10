@@ -48,6 +48,17 @@ filtered to `google_health`, and historical coverage is derived from
 The `fitbit_*` daily tables remain a storage-compatibility seam until versioned
 migrations can rename them without breaking dashboard queries.
 
+Provenance separates the physical sensor from the transport. Readiness still
+compares the Fitbit wrist device with the Eight Sleep mattress, but API
+responses identify that Fitbit-device measurements arrived through Google
+Health. A service-owned freshness policy marks Google Health stale after five
+hours without a successful run: the four-hour cadence plus one hour of grace.
+
+The first versioned schema retirement lives under `database/migrations/`.
+`20260809_retire_fitbit_ingest_state.sql` transactionally renames the obsolete
+Fitbit Web API state table to a read-only archive. It is idempotent and refuses
+to proceed if active and retired names both exist.
+
 ## UI decisions
 
 The dashboard shell follows a workflow-first information architecture:

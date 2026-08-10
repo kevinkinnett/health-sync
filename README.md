@@ -21,6 +21,11 @@ tables whose names begin with `fitbit_` are retained temporarily as an internal
 storage contract; they do not indicate that the retired Fitbit Web API is
 still queried.
 
+Vitalis keeps measurement provenance explicit: **Fitbit device** identifies
+the physical sensor, while **Google Health** identifies the provider/API that
+delivered those measurements. Pipeline status becomes stale five hours after
+the last successful run (the four-hour schedule plus one hour of grace).
+
 ## Repository map
 
 ```text
@@ -31,6 +36,7 @@ dashboard/
 ingest_*.py           Windmill ingestion entry points
 google_health_points.py
                       Pure Google Health point normalization
+database/migrations/  Versioned, transactional schema migrations
 tests/                Dependency-free Python unit tests
 ```
 
@@ -39,7 +45,7 @@ the prioritized technical-debt list.
 
 ## Dashboard development
 
-The dashboard uses pnpm workspaces and Node.js. From `dashboard/`:
+The dashboard uses pnpm workspaces and Node.js 24. From `dashboard/`:
 
 ```bash
 pnpm install

@@ -15,7 +15,8 @@ import { useChartAnnotations } from "../../components/charts/annotations";
 
 /**
  * Overnight "vitals" / recovery screen. These four metrics were
- * ingested from Fitbit for ~13 months but had no UI until now —
+ * measured by the Fitbit device and imported through Google Health, with
+ * legacy Fitbit Web API history retained —
  * surfacing them is roadmap item #1 ("collected but not understood").
  *
  * SpO2, breathing rate, and skin-temp deviation are the classic
@@ -138,7 +139,7 @@ function CardioScoreCard({ data }: { data: CardioScoreDay[] }) {
         Cardio Fitness (VO2 max)
       </h3>
       <p className="text-xs text-outline mb-4">
-        Fitbit's estimated VO2 max, reported as a range. It moves slowly,
+        Historical Fitbit-device VO2 max from the retired Web API, reported as a range. It moves slowly,
         so expect long flat stretches — the history below lists only the
         points where it shifted within this window.
       </p>

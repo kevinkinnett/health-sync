@@ -9,6 +9,7 @@ import type {
   IngestRun,
   IngestRunTypeDetail,
   IngestState,
+  IngestStatus,
 } from "@health-dashboard/shared";
 import { STATUS } from "../components/charts/chartPalette";
 import {
@@ -161,6 +162,31 @@ function CoverageSummaryCard({ state }: { state: IngestState[] }) {
   );
 }
 
+function FreshnessWarning({ status }: { status: IngestStatus | null }) {
+  if (!status || status.freshness.status === "healthy") return null;
+
+  const { freshness, provenance } = status;
+  const hasLastSuccess = Boolean(freshness.lastSuccessAtUtc);
+  return (
+    <div
+      role="alert"
+      className="p-4 bg-error/10 border-l-4 border-error rounded-r-xl flex items-start gap-4"
+    >
+      <span className="material-symbols-outlined text-error mt-0.5">sync_problem</span>
+      <div>
+        <h4 className="text-sm font-bold text-error uppercase tracking-wider">
+          {hasLastSuccess ? "Google Health sync overdue" : "Google Health sync not observed"}
+        </h4>
+        <p className="text-on-surface-variant text-sm mt-1">
+          {provenance.deviceLabel} data arrives through {provenance.providerLabel} every four hours. {hasLastSuccess
+            ? `The last successful run was ${new Date(freshness.lastSuccessAtUtc!).toLocaleString()}, outside the ${freshness.staleAfterMinutes / 60}-hour freshness window.`
+            : "No successful run is recorded yet."} Check the Windmill schedule and job logs.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 const SCHEDULE_DESCRIPTIONS: Record<string, { title: string; description: string }> = {
   ingest_google_health: {
     title: "Google Health Sync",
@@ -280,6 +306,7 @@ export function Ingest() {
       </section>
 
       {/* Historical coverage summary */}
+      <FreshnessWarning status={data?.status ?? null} />
       <CoverageSummaryCard state={state} />
 
       {/* Schedule Cards */}

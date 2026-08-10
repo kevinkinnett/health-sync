@@ -26,10 +26,21 @@ export type ReadinessMetric =
   | "skinTemp"
   | "restlessness";
 
+export type ReadinessDevice = "fitbit" | "eight_sleep";
+export type ReadinessProvider = "google_health" | "eight_sleep";
+
+export interface ReadinessSourceProvenance {
+  device: ReadinessDevice;
+  deviceLabel: string;
+  provider: ReadinessProvider;
+  providerLabel: string;
+}
+
 /** One sensor's signed-z contribution to a fused component. */
 export interface ReadinessComponentSource {
-  /** Display label, e.g. "Fitbit" / "Eight Sleep". */
-  label: string;
+  /** Device and ingestion provider are distinct so transport changes do not
+   * erase the physical sensor's analytical identity. */
+  provenance: ReadinessSourceProvenance;
   /** Signed z (positive = better recovery), this source alone. */
   z: number;
 }

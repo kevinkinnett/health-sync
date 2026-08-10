@@ -6,6 +6,7 @@ import type {
 } from "@health-dashboard/shared";
 import {
   fuseMetric,
+  SOURCE_PROVENANCE,
   type FusibleMetric,
   type ReadinessSource,
   type SourceValues,
@@ -23,8 +24,8 @@ import {
  * baseline, then fused (see `signalFusion.ts`). Neither sensor trumps the
  * other — they're weighted by how much real signal each carries for that
  * metric, then averaged. A signal with only one source present just uses
- * that source. SpO2 + skin temp are Fitbit-only; restlessness is Eight
- * Sleep-only.
+ * that source. SpO2 + skin temp are measured by the Fitbit device and
+ * imported through Google Health; restlessness is Eight Sleep-only.
  *
  * Per metric, per day: fused z → signed (+ always = "more recovered") →
  * weighted, renormalized over present metrics → tanh → 0–100.
@@ -88,7 +89,7 @@ export interface ReadinessDayInput {
   sleepMin: SourceValues;
   breathing: SourceValues;
   spo2: SourceValues;
-  /** Fitbit-only, already a baseline-relative deviation (°, + = warmer). */
+  /** Fitbit-device signal imported via Google Health; baseline-relative. */
   skinTemp: number | null;
   /** Eight Sleep-only toss-and-turn count (higher = more restless). */
   restlessness: number | null;
@@ -205,7 +206,10 @@ function scoreDay(days: ReadinessDayInput[], idx: number): DayScore {
       contribution: 0,
       weightPct: WEIGHTS[metric],
       status: statusFor(signedZ),
-      sources: fused.perSource.map((p) => ({ label: p.label, z: round2(p.z * DIRECTION[metric]) })),
+      sources: fused.perSource.map((p) => ({
+        provenance: p.provenance,
+        z: round2(p.z * DIRECTION[metric]),
+      })),
       disagreement: fused.disagreement,
     });
   }
@@ -233,14 +237,17 @@ function scoreDay(days: ReadinessDayInput[], idx: number): DayScore {
         contribution: 0,
         weightPct: WEIGHTS.restlessness,
         status: statusFor(signedZ),
-        sources: [{ label: "Eight Sleep", z: round2(signedZ) }],
+        sources: [{
+          provenance: SOURCE_PROVENANCE.eightSleep,
+          z: round2(signedZ),
+        }],
       });
     } else {
       components.push(unavailable("restlessness", todayVal != null ? round1(todayVal) : null));
     }
   }
 
-  // --- Skin temp (Fitbit only, no rolling baseline) ---
+  // --- Skin temp (Fitbit device via Google Health, no rolling baseline) ---
   if (target.skinTemp != null) {
     const signedZ = skinTempSignedZ(target.skinTemp);
     weightedSum += WEIGHTS.skinTemp * signedZ;
@@ -254,7 +261,10 @@ function scoreDay(days: ReadinessDayInput[], idx: number): DayScore {
       contribution: 0,
       weightPct: WEIGHTS.skinTemp,
       status: statusFor(signedZ),
-      sources: [{ label: "Fitbit", z: round2(signedZ) }],
+      sources: [{
+        provenance: SOURCE_PROVENANCE.fitbit,
+        z: round2(signedZ),
+      }],
     });
   } else {
     components.push({ ...unavailable("skinTemp"), baseline: 0 });

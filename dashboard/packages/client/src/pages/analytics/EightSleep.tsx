@@ -11,7 +11,7 @@ import { useChartAnnotations } from "../../components/charts/annotations";
 /**
  * Eight Sleep nightly screen (roadmap Phase 2). The mattress is a
  * contact-sensor source for the overnight recovery signals — surfaced
- * here as browsable history. These same metrics are fused with Fitbit
+ * here as browsable history. These same metrics are fused with Fitbit-device
  * into the readiness score; this view shows the Eight Sleep side raw.
  */
 export function AnalyticsEightSleep() {
@@ -21,7 +21,7 @@ export function AnalyticsEightSleep() {
       <p className="text-sm text-on-surface-variant">
         Your Eight Sleep Pod measures overnight heart rate, HRV, breathing,
         sleep stages, and bed/room temperature without anything on your wrist.
-        These feed your readiness score alongside Fitbit — here they are raw.
+        These feed your readiness score alongside Fitbit-device measurements imported through Google Health — here they are raw.
       </p>
       <QueryBoundary
         query={q}
@@ -68,7 +68,7 @@ function EightSleepBody({ data }: { data: EightSleepDay[] }) {
       <MetricLineChart
         annotations={marks}
         title="Overnight Heart Rate"
-        description="Average heart rate during sleep. This is the more dynamic signal that drives ~65% of the fused resting-HR readiness input — Fitbit's wrist RHR is far more smoothed."
+        description="Average heart rate during sleep. This is the more dynamic signal that drives ~65% of the fused resting-HR readiness input — the Fitbit device's wrist RHR is far more smoothed."
         unit="bpm"
         color={METRIC_COLOR.restingHr}
         movingAverage
@@ -77,7 +77,7 @@ function EightSleepBody({ data }: { data: EightSleepDay[] }) {
       <MetricLineChart
         annotations={marks}
         title="HRV (RMSSD)"
-        description="Heart-rate variability during sleep. Higher = better recovered; agrees closely with Fitbit (r≈0.91)."
+        description="Heart-rate variability during sleep. Higher = better recovered; agrees closely with the Fitbit device (r≈0.91)."
         unit="ms"
         color={METRIC_COLOR.deepMin}
         movingAverage

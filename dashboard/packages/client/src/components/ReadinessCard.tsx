@@ -7,6 +7,7 @@ import type {
   ReadinessScore,
 } from "@health-dashboard/shared";
 import { READINESS_BAND_COLOR } from "./charts/chartPalette";
+import { readinessSourceContribution } from "../lib/readinessSource";
 
 /**
  * The morning-glance instrument: one big "how recovered am I today"
@@ -96,7 +97,7 @@ export function ReadinessCard({ data, to }: { data: ReadinessScore; to?: string 
           )}
           {data.components.some((c) => (c.sources?.length ?? 0) >= 2) && (
             <p className="text-[10px] text-outline">
-              Fused from Fitbit + Eight Sleep
+              Fused from Fitbit device via Google Health + Eight Sleep
               {drivers.some((c) => c.disagreement)
                 ? " · ⚑ marks where the sensors disagreed"
                 : ""}
@@ -184,7 +185,7 @@ function ScoreDial({ score, ring }: { score: number; ring: string }) {
 function DriverChip({ component }: { component: ReadinessComponent }) {
   const good = component.status === "good";
   const title = component.sources?.length
-    ? component.sources.map((s) => `${s.label} ${s.z >= 0 ? "+" : ""}${s.z}`).join(" · ")
+    ? component.sources.map(readinessSourceContribution).join(" · ")
     : undefined;
   return (
     <span
@@ -198,7 +199,7 @@ function DriverChip({ component }: { component: ReadinessComponent }) {
       </span>
       {component.label}
       {component.disagreement && (
-        <span title="Fitbit & Eight Sleep disagreed on this signal" aria-label="sensors disagreed">
+        <span title="Fitbit device and Eight Sleep disagreed on this signal" aria-label="sensors disagreed">
           ⚑
         </span>
       )}

@@ -232,16 +232,6 @@
     "fetched_at",
     "raw_jsonb"
   ],
-  "universe.fitbit_ingest_state": [
-    "backfill_complete",
-    "data_type",
-    "details",
-    "earliest_fetched_date",
-    "last_run_id",
-    "last_success_at_utc",
-    "latest_fetched_date",
-    "updated_at_utc"
-  ],
   "universe.fitbit_skin_temp_daily": [
     "date",
     "fetched_at",
