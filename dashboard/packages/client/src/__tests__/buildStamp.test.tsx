@@ -111,7 +111,10 @@ describe("isBuildInfo", () => {
 });
 
 describe("BuildStamp", () => {
-  beforeEach(() => apiFetchMock.mockReset());
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+    apiFetchMock.mockResolvedValue(build());
+  });
 
   it("always shows the client build, even before the server answers", () => {
     // The client build is the one you cannot discover any other way — a
@@ -171,7 +174,10 @@ describe("BuildStamp", () => {
 });
 
 describe("BuildCompatibilityGate", () => {
-  beforeEach(() => apiFetchMock.mockReset());
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+    apiFetchMock.mockResolvedValue(build());
+  });
 
   function renderGate(server: unknown, update = vi.fn()) {
     apiFetchMock.mockResolvedValue(server);

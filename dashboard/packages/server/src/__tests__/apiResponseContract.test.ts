@@ -30,7 +30,7 @@ describe("dashboard response contracts", () => {
   });
 
   it("rejects removal of the legacy source label during the compatibility window", () => {
-    const { label: _label, ...breakingSource } = source;
+    const breakingSource = { provenance: source.provenance, z: source.z };
     expect(() => readinessResponseSchema.parse({
       date: null, score: null, band: "insufficient", summary: "Not enough data",
       baselineDays: 0,
