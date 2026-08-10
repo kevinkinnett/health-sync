@@ -36,6 +36,8 @@ dashboard/
 ingest_*.py           Windmill ingestion entry points
 google_health_points.py
                       Pure Google Health point normalization
+google_health_capture.py
+                      Testable API pagination and raw-point persistence
 dashboard/packages/server/migrations/  Versioned, transactional schema migrations
 tests/                Dependency-free Python unit tests
 ```
@@ -54,6 +56,7 @@ pnpm lint
 pnpm typecheck
 pnpm test
 pnpm build
+pnpm --filter @health-dashboard/server migrate
 ```
 
 The API defaults to port `3001`; the Vite development server proxies `/api` to
@@ -69,7 +72,7 @@ Run the ingestion normalization tests from the repository root:
 python -m unittest discover -s tests -v
 ```
 
-When deploying `ingest_google_health.py` to Windmill, deploy
-`google_health_points.py` as `u.kevin.google_health_points` first. The explicit
-workspace import keeps the production dependency visible while the helper
-itself remains locally testable without Windmill credentials.
+When deploying `ingest_google_health.py` to Windmill, deploy its helper modules
+as `u.kevin.google_health_points` and `u.kevin.google_health_capture` first. The
+explicit workspace imports keep production dependencies visible while the
+helpers remain locally testable without Windmill credentials.
