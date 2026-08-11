@@ -1,5 +1,5 @@
 import type { HealthDataService } from "../../services/healthDataService.js";
-import type { AnalyticsService } from "../../services/analyticsService.js";
+import type { AnalyticsUseCases } from "../../services/analytics/contracts.js";
 import type { SupplementService } from "../../services/supplementService.js";
 import type { MedicationService } from "../../services/medicationService.js";
 import type { TrainingService } from "../../services/training/trainingService.js";
@@ -46,7 +46,7 @@ export interface V1EndpointDef {
 export interface V1Context {
   userTimezone: string;
   healthDataService: HealthDataService;
-  analyticsService: AnalyticsService;
+  analyticsService: AnalyticsUseCases;
   supplementService: SupplementService;
   medicationService: MedicationService;
   trainingService: TrainingService;
