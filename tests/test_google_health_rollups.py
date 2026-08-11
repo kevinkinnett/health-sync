@@ -34,7 +34,181 @@ class WeightCursor:
         })]
 
 
+class RecordingCursor:
+    def __init__(self, rows=()):
+        self.rows = list(rows)
+        self.calls = []
+
+    def execute(self, sql, params=None):
+        self.calls.append((sql, params))
+
+    def fetchall(self):
+        return self.rows
+
+
+class FakeResponse:
+    def __init__(self, payload):
+        self.payload = payload
+
+    @staticmethod
+    def raise_for_status():
+        return None
+
+    def json(self):
+        return self.payload
+
+
 class GoogleHealthRollupTests(unittest.TestCase):
+    def test_default_storage_mapping_preserves_the_legacy_contract(self):
+        tables = rollups.LEGACY_ROLLUP_TABLES
+
+        self.assertEqual(tables.raw_points, "universe.google_health_data_point")
+        self.assertEqual({
+            tables.activity_daily,
+            tables.body_weight,
+            tables.breathing_rate_daily,
+            tables.exercise_log,
+            tables.food_log_daily,
+            tables.heart_rate_daily,
+            tables.hrv_daily,
+            tables.skin_temp_daily,
+            tables.sleep_daily,
+            tables.spo2_daily,
+        }, {
+            "universe.fitbit_activity_daily",
+            "universe.fitbit_body_weight",
+            "universe.fitbit_breathing_rate_daily",
+            "universe.fitbit_exercise_log",
+            "universe.fitbit_food_log_daily",
+            "universe.fitbit_heart_rate_daily",
+            "universe.fitbit_hrv_daily",
+            "universe.fitbit_skin_temp_daily",
+            "universe.fitbit_sleep_daily",
+            "universe.fitbit_spo2_daily",
+        })
+
+    def test_storage_mapping_rejects_unqualified_or_unsafe_identifiers(self):
+        for value in (
+            "fitbit_activity_daily",
+            "universe.fitbit_activity_daily; DROP TABLE universe.health_alert",
+            "universe.\"fitbit_activity_daily\"",
+            "Universe.fitbit_activity_daily",
+        ):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                rollups.RollupStorageTables(activity_daily=value)
+
+    def test_every_generated_upsert_uses_the_injected_storage_mapping(self):
+        tables = rollups.RollupStorageTables(
+            raw_points="capture.points",
+            activity_daily="rollup.activity",
+            body_weight="rollup.weight",
+            breathing_rate_daily="rollup.breathing",
+            exercise_log="rollup.exercise",
+            food_log_daily="rollup.food",
+            heart_rate_daily="rollup.heart_rate",
+            hrv_daily="rollup.hrv",
+            skin_temp_daily="rollup.skin_temp",
+            sleep_daily="rollup.sleep",
+            spo2_daily="rollup.spo2",
+        )
+        executed = []
+
+        cursor = RecordingCursor()
+        rollups._sql_rollups(cursor, "2026-08-01", tables)
+        executed.extend(sql for sql, _ in cursor.calls)
+
+        cursor = RecordingCursor([(
+            "2026-08-10",
+            {
+                "sleep": {
+                    "summary": {
+                        "minutesAsleep": 420,
+                        "minutesInSleepPeriod": 460,
+                        "stagesSummary": [],
+                    },
+                    "interval": {
+                        "startTime": "2026-08-10T03:00:00Z",
+                        "endTime": "2026-08-10T11:00:00Z",
+                    },
+                },
+            },
+        )])
+        rollups._rollup_sleep(cursor, "2026-08-01", tables)
+        executed.extend(sql for sql, _ in cursor.calls)
+
+        cursor = RecordingCursor([(
+            "2026-08-10",
+            "users/me/dataTypes/weight/dataPoints/abc",
+            {"weight": {"grams": 84_500}},
+        )])
+        rollups._rollup_weight(cursor, "2026-08-01", tables)
+        executed.extend(sql for sql, _ in cursor.calls)
+
+        cursor = RecordingCursor([(
+            "2026-08-10",
+            {"nutritionLog": {"energy": {"kcal": 500}}},
+        )])
+        rollups._rollup_food(cursor, "2026-08-01", tables)
+        executed.extend(sql for sql, _ in cursor.calls)
+
+        cursor = RecordingCursor([(
+            "users/me/dataTypes/exercise/dataPoints/123",
+            {
+                "exercise": {
+                    "interval": {
+                        "startTime": "2026-08-10T13:00:00Z",
+                        "startUtcOffset": "-14400s",
+                    },
+                    "displayName": "Walk",
+                },
+            },
+        )])
+        rollups._rollup_exercise(cursor, "2026-08-01", tables)
+        executed.extend(sql for sql, _ in cursor.calls)
+
+        civil_day = {"year": 2026, "month": 8, "day": 10}
+
+        def post(url, **_kwargs):
+            data_type = url.split("/dataTypes/", 1)[1].split("/", 1)[0]
+            point = {"civilStartTime": {"date": civil_day}}
+            point.update({
+                "total-calories": {"totalCalories": {"kcalSum": 2000}},
+                "active-minutes": {
+                    "activeMinutes": {"activeMinutesRollupByActivityLevel": []},
+                },
+                "distance": {"distance": {"millimetersSum": 5000}},
+                "floors": {"floors": {"countSum": 2}},
+            }[data_type])
+            return FakeResponse({"rollupDataPoints": [point]})
+
+        cursor = RecordingCursor()
+        with patch.object(rollups.requests, "post", side_effect=post):
+            rollups._rollup_activity_daily("token", cursor, 1, tables)
+        executed.extend(sql for sql, _ in cursor.calls)
+
+        insert_targets = {
+            sql.split("INSERT INTO", 1)[1].split(None, 1)[0]
+            for sql in executed
+            if "INSERT INTO" in sql
+        }
+        self.assertEqual(insert_targets, {
+            tables.activity_daily,
+            tables.body_weight,
+            tables.breathing_rate_daily,
+            tables.exercise_log,
+            tables.food_log_daily,
+            tables.heart_rate_daily,
+            tables.hrv_daily,
+            tables.skin_temp_daily,
+            tables.sleep_daily,
+            tables.spo2_daily,
+        })
+        rendered_sql = "\n".join(executed)
+        self.assertIn("FROM capture.points", rendered_sql)
+        self.assertNotIn("universe.fitbit_", rendered_sql)
+        self.assertNotIn("CREATE TABLE", rendered_sql)
+        self.assertNotIn("ALTER TABLE", rendered_sql)
+
     def test_network_rollup_failure_preserves_committed_sql_rollups(self):
         connection = Connection()
         with (
