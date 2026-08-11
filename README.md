@@ -74,6 +74,12 @@ Run the ingestion normalization tests from the repository root:
 python -m unittest discover -s tests -v
 ```
 
+Pull requests and `main` builds gate image publication on lint, the dashboard
+unit/integration suites, these Python ingestion tests, production builds and
+bundle budgets, and a Chromium smoke pass against the production client bundle.
+Visual chart snapshots remain a reviewed local check because the committed
+baselines are platform-specific.
+
 When deploying `ingest_google_health.py` to Windmill, deploy its helper modules
 as `u.kevin.google_health_points`, `u.kevin.google_health_capture`, and
 `u.kevin.google_health_rollups` first. The explicit workspace imports keep
