@@ -155,17 +155,17 @@ describe("LlmClient retry-on-5xx", () => {
     let calls = 0;
     const responses = [
       { ok: false, status: 500, text: async () => "Command failed" },
-      {
-        ok: true,
-        status: 200,
-        // Anthropic Messages shape — the client translates it to the
-        // OpenAI-shaped result the rest of the app consumes.
-        json: async () => ({
-          content: [{ type: "text", text: "ok" }],
-          stop_reason: "end_turn",
-          usage: { input_tokens: 1, output_tokens: 1 },
-        }),
-      },
+      new Response(
+        [
+          'event: message_start\ndata: {"type":"message_start","message":{"model":"m","content":[],"usage":{"input_tokens":1,"output_tokens":0}}}\n\n',
+          'event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}\n\n',
+          'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ok"}}\n\n',
+          'event: content_block_stop\ndata: {"type":"content_block_stop","index":0}\n\n',
+          'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}\n\n',
+          'event: message_stop\ndata: {"type":"message_stop"}\n\n',
+        ].join(""),
+        { status: 200, headers: { "Content-Type": "text/event-stream" } },
+      ),
     ];
     const fetchMock = vi.fn(async () => {
       const r = responses[calls];

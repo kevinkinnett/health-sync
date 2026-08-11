@@ -68,6 +68,18 @@ own prompt policy and response decoding/normalization, while
 the composition root. Prompt changes and malformed model output can therefore
 be tested without HTTP, PostgreSQL, or an LLM proxy.
 
+LLM infrastructure follows the same dependency direction. Application services
+depend only on the provider-neutral `ChatCompleter` contract in
+`services/llm/contracts.ts`. Anthropic request/response translation, retry
+policy, errors, SSE accumulation, and HTTP transport are focused collaborators
+under `services/llm/`; `LlmClient` is the stable façade composed in
+`createApp.ts`. The Tailnet proxy is consumed as an Anthropic Messages stream,
+including text, thinking, and incremental tool-input blocks, but the stream is
+fully accumulated before crossing the application port. Agentic-loop behavior,
+sanitization, persistence, and API response contracts therefore remain
+unchanged while long-running upstream calls receive keepalive events and typed
+mid-stream failure handling.
+
 The Google Health parser is isolated in `google_health_points.py`. API
 pagination and raw persistence live behind separate collaborators in
 `google_health_capture.py`, and validated daily transformations live in

@@ -2,36 +2,81 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   LlmClient,
   LlmHttpError,
+  LlmStreamError,
   toAnthropicRequest,
   fromAnthropicResponse,
 } from "../services/llmClient.js";
 
 // ---------------------------------------------------------------------------
-// fetch stub — returns an Anthropic Messages response
+// fetch stub — returns an Anthropic Messages SSE response
 // ---------------------------------------------------------------------------
 
 const originalFetch = globalThis.fetch;
 let lastRequest: { url: string; init: RequestInit } | null = null;
 
-const ANTHROPIC_OK = {
-  id: "msg_1",
-  type: "message",
-  role: "assistant",
-  model: "sonnet",
-  content: [{ type: "text", text: "ok" }],
-  stop_reason: "end_turn",
-  usage: { input_tokens: 5, output_tokens: 2 },
-};
+const ANTHROPIC_OK_EVENTS = [
+  {
+    type: "message_start",
+    message: {
+      id: "msg_1",
+      model: "sonnet",
+      content: [],
+      stop_reason: null,
+      usage: { input_tokens: 5, output_tokens: 0 },
+    },
+  },
+  { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
+  { type: "ping" },
+  { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "ok" } },
+  { type: "content_block_stop", index: 0 },
+  {
+    type: "message_delta",
+    delta: { stop_reason: "end_turn" },
+    usage: { output_tokens: 2 },
+  },
+  { type: "message_stop" },
+];
+
+function streamResponse(
+  events: unknown[],
+  options: { chunkSize?: number; lineEnding?: "\n" | "\r\n" } = {},
+): Response {
+  const newline = options.lineEnding ?? "\n";
+  const payload = events
+    .map((event) => {
+      const type = (event as { type: string }).type;
+      return `event: ${type}${newline}data: ${JSON.stringify(event)}${newline}${newline}`;
+    })
+    .join("");
+
+  if (!options.chunkSize) {
+    return new Response(payload, {
+      status: 200,
+      headers: { "Content-Type": "text/event-stream" },
+    });
+  }
+
+  const encoded = new TextEncoder().encode(payload);
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (let offset = 0; offset < encoded.length; offset += options.chunkSize!) {
+        controller.enqueue(encoded.slice(offset, offset + options.chunkSize!));
+      }
+      controller.close();
+    },
+  });
+  return new Response(body, {
+    status: 200,
+    headers: { "Content-Type": "text/event-stream" },
+  });
+}
 
 beforeEach(() => {
   lastRequest = null;
   globalThis.fetch = vi.fn(
     async (url: string | URL | Request, init?: RequestInit) => {
       lastRequest = { url: String(url), init: init ?? {} };
-      return new Response(JSON.stringify(ANTHROPIC_OK), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
+      return streamResponse(ANTHROPIC_OK_EVENTS);
     },
   ) as unknown as typeof fetch;
 });
@@ -59,6 +104,8 @@ describe("LlmClient transport", () => {
     expect(lastRequest?.url).toBe("https://proxy.example/v1/messages");
     expect(getHeader("anthropic-version")).toBe("2023-06-01");
     expect(getHeader("x-api-key")).toBe("secret");
+    expect(getHeader("Accept")).toBe("text/event-stream");
+    expect(sentBody().stream).toBe(true);
   });
 
   it("omits x-api-key entirely when no key is configured", async () => {
@@ -96,6 +143,135 @@ describe("LlmClient transport", () => {
     const client = new LlmClient({ baseUrl: "https://proxy.example", apiKey: "" });
     await client.chatCompletion({ model: "sonnet", messages: [{ role: "user", content: "hi" }] });
     expect(sentBody().max_tokens).toBe(8000);
+  });
+
+  it("accumulates thinking, text, and chunked tool JSON across arbitrary byte boundaries", async () => {
+    const events = [
+      {
+        type: "message_start",
+        message: {
+          id: "msg_tools",
+          model: "sonnet",
+          content: [],
+          usage: { input_tokens: 7, output_tokens: 0 },
+        },
+      },
+      {
+        type: "content_block_start",
+        index: 0,
+        content_block: { type: "thinking", thinking: "" },
+      },
+      {
+        type: "content_block_delta",
+        index: 0,
+        delta: { type: "thinking_delta", thinking: "check data" },
+      },
+      {
+        type: "content_block_delta",
+        index: 0,
+        delta: { type: "signature_delta", signature: "signed" },
+      },
+      { type: "content_block_stop", index: 0 },
+      {
+        type: "content_block_start",
+        index: 1,
+        content_block: { type: "tool_use", id: "tool_1", name: "query_sleep", input: {} },
+      },
+      {
+        type: "content_block_delta",
+        index: 1,
+        delta: { type: "input_json_delta", partial_json: '{"days":' },
+      },
+      {
+        type: "content_block_delta",
+        index: 1,
+        delta: { type: "input_json_delta", partial_json: "30}" },
+      },
+      { type: "content_block_stop", index: 1 },
+      { type: "future_event", value: "ignored" },
+      {
+        type: "message_delta",
+        delta: { stop_reason: "tool_use" },
+        usage: { output_tokens: 9 },
+      },
+      { type: "message_stop" },
+    ];
+    globalThis.fetch = vi.fn(async () =>
+      streamResponse(events, { chunkSize: 7, lineEnding: "\r\n" }),
+    ) as unknown as typeof fetch;
+
+    const client = new LlmClient({ baseUrl: "https://proxy.example", apiKey: "" });
+    const result = await client.chatCompletion({
+      model: "sonnet",
+      messages: [{ role: "user", content: "How did I sleep?" }],
+    });
+
+    expect(result.choices[0].message.content).toBeNull();
+    expect(result.choices[0].message.reasoning_content).toBe("check data");
+    expect(result.choices[0].message.tool_calls).toEqual([
+      {
+        id: "tool_1",
+        type: "function",
+        function: { name: "query_sleep", arguments: '{"days":30}' },
+      },
+    ]);
+    expect(result.choices[0].finish_reason).toBe("tool_calls");
+    expect(result.usage).toMatchObject({
+      prompt_tokens: 7,
+      completion_tokens: 9,
+      total_tokens: 16,
+    });
+  });
+
+  it("surfaces mid-stream error events as typed errors", async () => {
+    globalThis.fetch = vi.fn(async () =>
+      streamResponse([
+        ANTHROPIC_OK_EVENTS[0],
+        {
+          type: "error",
+          error: { type: "overloaded_error", message: "busy" },
+        },
+      ]),
+    ) as unknown as typeof fetch;
+    const client = new LlmClient({ baseUrl: "https://proxy.example", apiKey: "" });
+
+    await expect(
+      client.chatCompletion({ model: "sonnet", messages: [] }),
+    ).rejects.toMatchObject({
+      name: "LlmStreamError",
+      errorType: "overloaded_error",
+      retryable: true,
+    });
+  });
+
+  it("rejects a stream that ends before message_stop", async () => {
+    globalThis.fetch = vi.fn(async () =>
+      streamResponse(ANTHROPIC_OK_EVENTS.slice(0, -1)),
+    ) as unknown as typeof fetch;
+    const client = new LlmClient({ baseUrl: "https://proxy.example", apiKey: "" });
+
+    await expect(
+      client.chatCompletion({ model: "sonnet", messages: [] }),
+    ).rejects.toBeInstanceOf(LlmStreamError);
+  });
+
+  it("aborts an upstream request when its call timeout expires", async () => {
+    globalThis.fetch = vi.fn(
+      async (_url: string | URL | Request, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("aborted", "AbortError"));
+          });
+        }),
+    ) as unknown as typeof fetch;
+    const client = new LlmClient({ baseUrl: "https://proxy.example", apiKey: "" });
+
+    await expect(
+      client.chatCompletion(
+        { model: "sonnet", messages: [] },
+        { task: "chat", timeoutMs: 5 },
+      ),
+    ).rejects.toMatchObject({ name: "AbortError" });
   });
 });
 
