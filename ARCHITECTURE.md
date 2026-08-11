@@ -54,16 +54,18 @@ weekly insights, and correlations.
 
 The Google Health parser is isolated in `google_health_points.py`. API
 pagination and raw persistence live behind separate collaborators in
-`google_health_capture.py`, with no Windmill or run-tracking dependency. The
-entry point coordinates those collaborators and a dedicated rollup writer;
-validated rollup SQL remains physically co-located until its Windmill module
-can be deployed atomically with the import change.
+`google_health_capture.py`, and validated daily transformations live in
+`google_health_rollups.py`; neither has a Windmill or run-tracking dependency.
+The `ingest_google_health.py` entry point coordinates those independently
+deployable collaborators and owns credentials and run lifecycle only.
 
 Ingestion observability follows that same provider boundary. Run history is
 filtered to `google_health`, and historical coverage is derived from
 `google_health_data_point` rather than the retired Fitbit ingest-state table.
-The `fitbit_*` daily tables remain a storage-compatibility seam until versioned
-migrations can rename them without breaking dashboard queries.
+Dashboard repositories read provider-neutral `health_*` views. The Google
+Health rollup writer continues writing the `fitbit_*` physical tables during a
+compatibility window; a later physical rename can therefore land behind the
+stable views without changing repository queries.
 
 Provenance separates the physical sensor from the transport. Readiness still
 compares the Fitbit wrist device with the Eight Sleep mattress, but API
@@ -99,6 +101,9 @@ The dashboard shell follows a workflow-first information architecture:
   primitives and disclose what is actually unavailable.
 - Settings reports live API/database state. Windmill is labeled as externally
   managed, and database credentials are explicitly not exposed to the browser.
+- The notification bell is a compact recent-event surface. Full alert history
+  lives at `/alerts`, separates health signals from pipeline incidents, and
+  attaches a relevant next action to every event.
 - Fonts and symbols are bundled locally so the installed PWA does not rely on
   Google Fonts being reachable.
 - Page modules are lazy-loaded so charting and insight code are downloaded only
@@ -122,11 +127,6 @@ The dashboard shell follows a workflow-first information architecture:
 
 ## Prioritized technical debt
 
-1. **Move validated Google Health rollup SQL into its own module.** API
-   pagination and raw persistence are now separate testable collaborators, and
-   rollup execution has its own writer boundary. Move the already-validated SQL
-   physically only when the Windmill module deployment can land atomically with
-   the import change; preserve current idempotent and monotone-write behavior.
-
-These are incremental seams, not a call to rewrite. Each extraction should land
-with a test that demonstrates the preserved behavior.
+Continue replacing provider-specific physical storage names behind versioned
+compatibility views. Do not combine the provider transition with metric logic
+changes; each seam should land with a test that demonstrates preserved behavior.

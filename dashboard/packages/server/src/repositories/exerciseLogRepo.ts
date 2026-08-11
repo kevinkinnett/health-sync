@@ -11,7 +11,7 @@ export class ExerciseLogRepository {
               log_type, calories, duration_ms, distance, distance_unit,
               steps, average_heart_rate, elevation_gain,
               has_active_zone_minutes, fetched_at
-       FROM universe.fitbit_exercise_log
+       FROM universe.health_exercise_log
        WHERE date >= $1 AND date <= $2
        ORDER BY start_time DESC`,
       [start, end],
@@ -25,7 +25,7 @@ export class ExerciseLogRepository {
               log_type, calories, duration_ms, distance, distance_unit,
               steps, average_heart_rate, elevation_gain,
               has_active_zone_minutes, fetched_at
-       FROM universe.fitbit_exercise_log
+       FROM universe.health_exercise_log
        ORDER BY start_time DESC
        LIMIT $1`,
       [limit],

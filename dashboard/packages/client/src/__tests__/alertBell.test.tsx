@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor, within } from "@testing-library/rea
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AlertBell } from "../components/AlertBell";
 import type { AlertsResponse } from "@health-dashboard/shared";
+import { MemoryRouter } from "react-router-dom";
 
 const apiFetchMock = vi.fn();
 vi.mock("../api/client", () => ({
@@ -15,7 +16,9 @@ function renderBell() {
   });
   return render(
     <QueryClientProvider client={qc}>
-      <AlertBell />
+      <MemoryRouter>
+        <AlertBell />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
@@ -64,6 +67,7 @@ describe("AlertBell", () => {
       if (path === "/alerts/read-all" && opts?.method === "POST") {
         return Promise.resolve({ updated: 2 });
       }
+      if (path === "/alerts?limit=8") return Promise.resolve(SAMPLE);
       return Promise.resolve(SAMPLE);
     });
     renderBell();

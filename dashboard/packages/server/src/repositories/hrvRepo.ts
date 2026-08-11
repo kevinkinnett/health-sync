@@ -8,7 +8,7 @@ export class HrvRepository {
   async findByDateRange(start: string, end: string): Promise<HrvDay[]> {
     const { rows } = await this.pool.query(
       `SELECT date, daily_rmssd, deep_rmssd, fetched_at
-       FROM universe.fitbit_hrv_daily
+       FROM universe.health_hrv_daily
        WHERE date >= $1 AND date <= $2
        ORDER BY date`,
       [start, end],
@@ -19,7 +19,7 @@ export class HrvRepository {
   async findLatest(limit: number): Promise<HrvDay[]> {
     const { rows } = await this.pool.query(
       `SELECT date, daily_rmssd, deep_rmssd, fetched_at
-       FROM universe.fitbit_hrv_daily
+       FROM universe.health_hrv_daily
        ORDER BY date DESC
        LIMIT $1`,
       [limit],

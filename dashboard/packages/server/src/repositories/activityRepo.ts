@@ -10,7 +10,7 @@ export class ActivityRepository {
       `SELECT date, steps, calories_out, calories_bmr, active_calories,
               distance_km, floors, minutes_sedentary, minutes_lightly_active,
               minutes_fairly_active, minutes_very_active, fetched_at
-       FROM universe.fitbit_activity_daily
+       FROM universe.health_activity_daily
        WHERE date >= $1 AND date <= $2
        ORDER BY date`,
       [start, end],
@@ -23,7 +23,7 @@ export class ActivityRepository {
       `SELECT date, steps, calories_out, calories_bmr, active_calories,
               distance_km, floors, minutes_sedentary, minutes_lightly_active,
               minutes_fairly_active, minutes_very_active, fetched_at
-       FROM universe.fitbit_activity_daily
+       FROM universe.health_activity_daily
        ORDER BY date DESC
        LIMIT $1`,
       [limit],

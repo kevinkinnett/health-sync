@@ -14,7 +14,7 @@ export class BreathingRateRepository {
   async findByDateRange(start: string, end: string): Promise<BreathingRateDay[]> {
     const { rows } = await this.pool.query(
       `SELECT date, breathing_rate, fetched_at
-       FROM universe.fitbit_breathing_rate_daily
+       FROM universe.health_breathing_rate_daily
        WHERE date >= $1 AND date <= $2
        ORDER BY date`,
       [start, end],
@@ -25,7 +25,7 @@ export class BreathingRateRepository {
   async findLatest(limit: number): Promise<BreathingRateDay[]> {
     const { rows } = await this.pool.query(
       `SELECT date, breathing_rate, fetched_at
-       FROM universe.fitbit_breathing_rate_daily
+       FROM universe.health_breathing_rate_daily
        ORDER BY date DESC
        LIMIT $1`,
       [limit],

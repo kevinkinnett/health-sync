@@ -168,7 +168,7 @@ function TopBar() {
   // Pick the longest path-prefix match so a deep route like
   // "/analytics/activity" is reported as "Activity" rather than
   // bubbling up to a shorter "/analytics" entry.
-  const pageTitle =
+  const pageTitle = location.pathname === "/alerts" ? "Alert History" :
     [...allNavItems]
       .filter((n) =>
         n.end ? location.pathname === n.to : location.pathname.startsWith(n.to),

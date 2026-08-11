@@ -10,8 +10,14 @@ import type { AlertService } from "../services/alertService.js";
 export class AlertController {
   constructor(private service: AlertService) {}
 
-  async list(_req: Request, res: Response): Promise<void> {
-    res.json(await this.service.list());
+  async list(req: Request, res: Response): Promise<void> {
+    const requested = typeof req.query.limit === "string"
+      ? Number.parseInt(req.query.limit, 10)
+      : Number.NaN;
+    const limit = Number.isFinite(requested)
+      ? Math.max(1, Math.min(requested, 200))
+      : 50;
+    res.json(await this.service.list(limit));
   }
 
   async evaluate(_req: Request, res: Response): Promise<void> {
