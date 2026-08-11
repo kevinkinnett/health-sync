@@ -25,6 +25,7 @@ function renderBell() {
 
 const SAMPLE: AlertsResponse = {
   unreadCount: 2,
+  openCount: 2,
   alerts: [
     {
       id: 2,
@@ -35,6 +36,9 @@ const SAMPLE: AlertsResponse = {
       metric: "recovery",
       date: "2026-05-28",
       createdAt: new Date().toISOString(),
+      lastObservedAt: new Date().toISOString(),
+      resolvedAt: null,
+      occurrenceCount: 1,
       readAt: null,
     },
     {
@@ -46,6 +50,9 @@ const SAMPLE: AlertsResponse = {
       metric: "readiness",
       date: "2026-05-28",
       createdAt: new Date().toISOString(),
+      lastObservedAt: new Date().toISOString(),
+      resolvedAt: null,
+      occurrenceCount: 1,
       readAt: null,
     },
   ],

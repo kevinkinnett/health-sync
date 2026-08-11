@@ -6,11 +6,9 @@ import type { DetectedAlert } from "../services/alerts.js";
 /**
  * Persistence for proactive health alerts.
  *
- * The key anti-noise mechanism lives here: `insertIfNew` won't insert
- * an alert of a given kind if one of the same kind already exists
- * within the cooldown window. So the daily evaluation fires an alert
- * once at onset and stays quiet while the condition persists, rather
- * than re-alerting every morning.
+ * The key anti-noise mechanism lives here: one open row represents an alert
+ * episode. Repeated observations update that row, recovery resolves it, and a
+ * later recurrence creates (or briefly reopens) a new episode.
  */
 const COOLDOWN_DAYS = 3;
 
@@ -18,30 +16,50 @@ export class AlertRepository {
   constructor(private pool: Pool) {}
 
   /**
-   * Insert an alert unless one of the same kind already exists with a
-   * `date` within `cooldownDays` of this one. Returns the new row, or
-   * null when suppressed by cooldown (idempotent across same-day runs).
-   * The cooldown defaults to COOLDOWN_DAYS but is overridable from the
-   * user's notification settings.
+   * Observe an alert condition. An existing open episode is refreshed without
+   * producing another notification. A recently-resolved episode is reopened
+   * within the user's cooldown; otherwise a new episode is inserted.
    */
   async insertIfNew(
     alert: DetectedAlert,
     cooldownDays: number = COOLDOWN_DAYS,
   ): Promise<HealthAlert | null> {
-    const { rows: existing } = await this.pool.query(
-      `SELECT 1 FROM universe.health_alert
-       WHERE kind = $1
-         AND date > ($2::date - ($3 || ' days')::interval)
-       LIMIT 1`,
-      [alert.kind, alert.date, String(Math.max(0, Math.floor(cooldownDays)))],
+    const returnedColumns = `id, kind, severity, title, detail, metric, date,
+      created_at, last_observed_at, resolved_at, occurrence_count, read_at`;
+    const { rows: open } = await this.pool.query(
+      `UPDATE universe.health_alert
+       SET severity = $2, title = $3, detail = $4, metric = $5, date = $6,
+           last_observed_at = NOW(), occurrence_count = occurrence_count + 1
+       WHERE kind = $1 AND resolved_at IS NULL
+       RETURNING ${returnedColumns}`,
+      [alert.kind, alert.severity, alert.title, alert.detail, alert.metric, alert.date],
     );
-    if (existing.length > 0) return null;
+    if (open.length > 0) return null;
+
+    const cooldown = Math.max(0, Math.floor(cooldownDays));
+    if (cooldown > 0) {
+      const { rows: reopened } = await this.pool.query(
+        `UPDATE universe.health_alert
+         SET severity = $2, title = $3, detail = $4, metric = $5, date = $6,
+             last_observed_at = NOW(), resolved_at = NULL,
+             occurrence_count = occurrence_count + 1
+         WHERE id = (
+           SELECT id FROM universe.health_alert
+           WHERE kind = $1 AND resolved_at >= NOW() - ($7 || ' days')::interval
+           ORDER BY resolved_at DESC
+           LIMIT 1
+         )
+         RETURNING ${returnedColumns}`,
+        [alert.kind, alert.severity, alert.title, alert.detail, alert.metric, alert.date, String(cooldown)],
+      );
+      if (reopened.length > 0) return null;
+    }
 
     const { rows } = await this.pool.query(
       `INSERT INTO universe.health_alert
          (kind, severity, title, detail, metric, date)
        VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id, kind, severity, title, detail, metric, date, created_at, read_at`,
+       RETURNING ${returnedColumns}`,
       [
         alert.kind,
         alert.severity,
@@ -56,7 +74,8 @@ export class AlertRepository {
 
   async list(limit = 50): Promise<HealthAlert[]> {
     const { rows } = await this.pool.query(
-      `SELECT id, kind, severity, title, detail, metric, date, created_at, read_at
+      `SELECT id, kind, severity, title, detail, metric, date, created_at,
+              last_observed_at, resolved_at, occurrence_count, read_at
        FROM universe.health_alert
        ORDER BY created_at DESC
        LIMIT $1`,
@@ -72,11 +91,39 @@ export class AlertRepository {
     return (rows[0]?.n as number) ?? 0;
   }
 
+  async openCount(): Promise<number> {
+    const { rows } = await this.pool.query(
+      `SELECT COUNT(*)::int AS n FROM universe.health_alert WHERE resolved_at IS NULL`,
+    );
+    return (rows[0]?.n as number) ?? 0;
+  }
+
+  async resolveOpenKinds(kinds: HealthAlert["kind"][]): Promise<number> {
+    if (kinds.length === 0) return 0;
+    const { rowCount } = await this.pool.query(
+      `UPDATE universe.health_alert
+       SET resolved_at = NOW()
+       WHERE resolved_at IS NULL AND kind = ANY($1::text[])`,
+      [kinds],
+    );
+    return rowCount ?? 0;
+  }
+
   async markAllRead(): Promise<number> {
     const { rowCount } = await this.pool.query(
       `UPDATE universe.health_alert SET read_at = NOW() WHERE read_at IS NULL`,
     );
     return rowCount ?? 0;
+  }
+
+  async markRead(id: number): Promise<boolean> {
+    const { rowCount } = await this.pool.query(
+      `UPDATE universe.health_alert
+       SET read_at = COALESCE(read_at, NOW())
+       WHERE id = $1`,
+      [id],
+    );
+    return (rowCount ?? 0) > 0;
   }
 
   private toAlert(r: Record<string, unknown>): HealthAlert {
@@ -89,6 +136,9 @@ export class AlertRepository {
       metric: (r.metric as string | null) ?? null,
       date: toDateStr(r.date),
       createdAt: toTimestampStr(r.created_at) ?? "",
+      lastObservedAt: toTimestampStr(r.last_observed_at) ?? "",
+      resolvedAt: r.resolved_at != null ? toTimestampStr(r.resolved_at) : null,
+      occurrenceCount: Number(r.occurrence_count ?? 1),
       readAt: r.read_at != null ? toTimestampStr(r.read_at) : null,
     };
   }

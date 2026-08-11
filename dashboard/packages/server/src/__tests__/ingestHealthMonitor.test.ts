@@ -40,12 +40,40 @@ describe("Google Health operational monitor", () => {
     const monitor = new IngestHealthMonitor(
       { getStatus: async () => status("stale") },
       { get: async <T>() => ({ status: "healthy", observedAtUtc: "2026-08-09T20:00:00.000Z" } as T), set },
-      { insertIfNew: async () => inserted as never },
+      { insertIfNew: async () => inserted as never, resolveOpenKinds: async () => 0 },
       () => now,
     );
     await expect(monitor.evaluate()).resolves.toMatchObject({ kind: "ingest_stale" });
     expect(set).toHaveBeenCalledWith("monitor.google_health_ingest", {
       status: "stale", observedAtUtc: now.toISOString(),
     });
+  });
+
+  it("resolves the stale incident and records recovery as historical", async () => {
+    const resolveOpenKinds = vi.fn().mockResolvedValue(1);
+    const recovered = {
+      id: 10,
+      ...ingestTransitionAlert("stale", status("healthy"), now),
+      createdAt: now.toISOString(),
+      lastObservedAt: now.toISOString(),
+      resolvedAt: null,
+      occurrenceCount: 1,
+      readAt: null,
+    };
+    const monitor = new IngestHealthMonitor(
+      { getStatus: async () => status("healthy") },
+      {
+        get: async <T>() => ({ status: "stale", observedAtUtc: "2026-08-09T20:00:00.000Z" } as T),
+        set: vi.fn(),
+      },
+      { insertIfNew: async () => recovered as never, resolveOpenKinds },
+      () => now,
+    );
+
+    await expect(monitor.evaluate()).resolves.toMatchObject({ kind: "ingest_recovered" });
+    expect(resolveOpenKinds.mock.calls).toEqual([
+      [["ingest_stale"]],
+      [["ingest_recovered"]],
+    ]);
   });
 });

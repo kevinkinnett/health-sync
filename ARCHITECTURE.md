@@ -77,6 +77,21 @@ state emits one warning when ingestion becomes stale and one recovery notice
 when it becomes healthy again; both flow through the same dashboard-controlled
 Apprise policy as biometric alerts.
 
+Metric policy is separate from that pipeline heartbeat. `ingestPolicies.ts`
+classifies daily and sparse measurements independently, so an old user-entered
+weight does not make an otherwise healthy import look broken. Historical
+coverage is provider-aware: most metrics retain the 365-day goal, while SpO₂
+uses a 90-day useful-history threshold and is explicitly labeled as limited to
+the device history Google Health exposes. Repositories return observations;
+the service policy layer decides what those observations mean.
+
+Alerts are persisted as episodes rather than cooldown events. One open row per
+kind is refreshed while a condition remains present, including an occurrence
+count and last-observed timestamp. A later healthy evaluation resolves it, and
+a recurrence after the cooldown becomes a new episode. Pipeline stale/recovery
+transitions resolve their opposite state. Read acknowledgement is independent
+of resolution and can be applied to one episode or the whole inbox.
+
 Versioned schema changes live under `dashboard/packages/server/migrations/`.
 `20260809_retire_fitbit_ingest_state.sql` transactionally renames the obsolete
 Fitbit Web API state table to a read-only archive. It is idempotent and refuses
@@ -102,8 +117,9 @@ The dashboard shell follows a workflow-first information architecture:
 - Settings reports live API/database state. Windmill is labeled as externally
   managed, and database credentials are explicitly not exposed to the browser.
 - The notification bell is a compact recent-event surface. Full alert history
-  lives at `/alerts`, separates health signals from pipeline incidents, and
-  attaches a relevant next action to every event.
+  lives at `/alerts`, separates current episodes from resolved history and
+  health signals from pipeline incidents, and attaches a relevant next action
+  and acknowledgement control to every event.
 - Fonts and symbols are bundled locally so the installed PWA does not rely on
   Google Fonts being reachable.
 - Page modules are lazy-loaded so charting and insight code are downloaded only
@@ -127,6 +143,22 @@ The dashboard shell follows a workflow-first information architecture:
 
 ## Prioritized technical debt
 
-Continue replacing provider-specific physical storage names behind versioned
-compatibility views. Do not combine the provider transition with metric logic
-changes; each seam should land with a test that demonstrates preserved behavior.
+The remaining provider-specific physical storage rename is deliberately
+deferred. Dashboard readers already depend only on stable `health_*` views, so
+the remaining coupling is confined to the Google Health rollup writer.
+
+When the rename is justified, use a coordinated maintenance cutover:
+
+1. Centralize the rollup writer's physical table mapping without changing its
+   current `fitbit_*` targets, and test every generated upsert target.
+2. Pause the Windmill schedule and wait for any active import to finish.
+3. Apply one database migration that replaces the `health_*` read views with
+   provider-neutral physical tables and creates read-only legacy views where
+   possible.
+4. Deploy the writer mapping to the new physical targets, run a canary import,
+   compare row counts and current dashboard responses, then re-enable the
+   schedule.
+
+Do not combine that cutover with metric calculation or API contract changes.
+`INSERT ... ON CONFLICT` cannot safely continue through ordinary compatibility
+views, so database and writer changes must be treated as one operational unit.

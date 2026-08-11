@@ -281,8 +281,11 @@
     "detail",
     "id",
     "kind",
+    "last_observed_at",
     "metric",
+    "occurrence_count",
     "read_at",
+    "resolved_at",
     "severity",
     "title"
   ],

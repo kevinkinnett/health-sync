@@ -11,6 +11,12 @@ import { detectAlerts, DEFAULT_DETECTION, type DetectionConfig } from "./alerts.
 import type { IngestHealthMonitor } from "./ingestHealthMonitor.js";
 import { logger } from "../logger.js";
 
+const HEALTH_EPISODE_KINDS = [
+  "illness_triad",
+  "low_spo2",
+  "readiness_drop",
+] as const;
+
 /**
  * Orchestrates anomaly detection + persistence. Pulls the joined
  * recovery series once (reusing HealthDataService's join), reads the
@@ -54,11 +60,15 @@ export class AlertService {
       kinds: s.kinds,
       };
       const detected = detectAlerts(days, readiness, config);
+      const observedKinds = new Set(detected.map((alert) => alert.kind));
 
       for (const d of detected) {
         const row = await this.repo.insertIfNew(d, s.thresholds.cooldownDays);
         if (row) created.push(row);
       }
+      await this.repo.resolveOpenKinds(
+        HEALTH_EPISODE_KINDS.filter((kind) => !observedKinds.has(kind)),
+      );
     } catch (err) {
       logger.error({ err }, "Health alert detection failed; operational alerts were preserved");
     }
@@ -73,14 +83,19 @@ export class AlertService {
   }
 
   async list(limit = 50): Promise<AlertsResponse> {
-    const [alerts, unreadCount] = await Promise.all([
+    const [alerts, unreadCount, openCount] = await Promise.all([
       this.repo.list(limit),
       this.repo.unreadCount(),
+      this.repo.openCount(),
     ]);
-    return { alerts, unreadCount };
+    return { alerts, unreadCount, openCount };
   }
 
   async markAllRead(): Promise<number> {
     return this.repo.markAllRead();
+  }
+
+  async markRead(id: number): Promise<boolean> {
+    return this.repo.markRead(id);
   }
 }

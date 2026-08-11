@@ -25,6 +25,8 @@ Vitalis keeps measurement provenance explicit: **Fitbit device** identifies
 the physical sensor, while **Google Health** identifies the provider/API that
 delivered those measurements. Pipeline status becomes stale five hours after
 the last successful run (the four-hour schedule plus one hour of grace).
+Daily metrics also have independent freshness policies; sparse weight and
+exercise measurements are reported as event-driven rather than falsely stale.
 
 ## Repository map
 
@@ -73,6 +75,7 @@ python -m unittest discover -s tests -v
 ```
 
 When deploying `ingest_google_health.py` to Windmill, deploy its helper modules
-as `u.kevin.google_health_points` and `u.kevin.google_health_capture` first. The
-explicit workspace imports keep production dependencies visible while the
-helpers remain locally testable without Windmill credentials.
+as `u.kevin.google_health_points`, `u.kevin.google_health_capture`, and
+`u.kevin.google_health_rollups` first. The explicit workspace imports keep
+production dependencies visible while the helpers remain locally testable
+without Windmill credentials.

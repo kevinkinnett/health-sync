@@ -84,7 +84,9 @@ export class IngestRepository {
   async hasRunningJob(): Promise<boolean> {
     const { rows } = await this.pool.query(
       `SELECT 1 FROM universe.ingest_run
-       WHERE provider = 'google_health' AND status = 'running'
+       WHERE provider = 'google_health'
+         AND status = 'running'
+         AND started_at_utc >= NOW() - INTERVAL '2 hours'
        LIMIT 1`,
     );
     return rows.length > 0;

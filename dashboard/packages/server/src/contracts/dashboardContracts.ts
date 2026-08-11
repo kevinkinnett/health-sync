@@ -81,6 +81,18 @@ const ingestStateSchema = z.object({
   lastSuccessAtUtc: z.string().nullable(),
   lastRunId: z.number().int().nullable(),
   updatedAtUtc: z.string().nullable(),
+  coverage: z.object({
+    status: z.enum(["target_met", "provider_limited", "incomplete", "no_data"]),
+    daysCovered: z.number().int().nonnegative(),
+    targetDays: z.number().int().positive(),
+    limitation: z.string().nullable(),
+  }),
+  metricFreshness: z.object({
+    status: z.enum(["fresh", "stale", "sparse", "unknown"]),
+    cadence: z.enum(["daily", "sparse"]),
+    ageDays: z.number().int().nonnegative().nullable(),
+    staleAfterDays: z.number().int().positive().nullable(),
+  }),
 });
 
 const ingestRunSchema = z.object({

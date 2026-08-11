@@ -13,6 +13,7 @@ export function isTrackedCoverageState(state: IngestState): boolean {
 }
 
 export function historyDaysCovered(state: IngestState): number {
+  if (state.coverage) return state.coverage.daysCovered;
   if (!state.earliestFetchedDate || !state.latestFetchedDate) return 0;
   return Math.max(
     0,
@@ -25,11 +26,18 @@ export function historyDaysCovered(state: IngestState): number {
 }
 
 export function historyDaysRemaining(state: IngestState): number {
+  if (state.coverage) {
+    if (["target_met", "provider_limited"].includes(state.coverage.status)) return 0;
+    return Math.max(0, state.coverage.targetDays - state.coverage.daysCovered);
+  }
   if (state.historyTargetMet) return 0;
   return Math.max(0, HISTORY_TARGET_DAYS - historyDaysCovered(state));
 }
 
 export function isHistoryTargetMet(state: IngestState): boolean {
+  if (state.coverage) {
+    return state.coverage.status === "target_met" || state.coverage.status === "provider_limited";
+  }
   return isTrackedCoverageState(state) && historyDaysRemaining(state) === 0;
 }
 

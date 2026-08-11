@@ -54,7 +54,7 @@ export class IngestHealthMonitor {
   constructor(
     private statusSource: StatusSource,
     private state: Pick<SettingRepository, "get" | "set">,
-    private alerts: Pick<AlertRepository, "insertIfNew">,
+    private alerts: Pick<AlertRepository, "insertIfNew" | "resolveOpenKinds">,
     private clock: () => Date = () => new Date(),
   ) {}
 
@@ -65,7 +65,17 @@ export class IngestHealthMonitor {
     ]);
     const now = this.clock();
     const detected = ingestTransitionAlert(prior?.status ?? null, current, now);
+    if (detected?.kind === "ingest_stale") {
+      await this.alerts.resolveOpenKinds(["ingest_recovered"]);
+    } else if (detected?.kind === "ingest_recovered") {
+      await this.alerts.resolveOpenKinds(["ingest_stale"]);
+    }
     const created = detected ? await this.alerts.insertIfNew(detected, 1) : null;
+    // Recovery is a durable event, not an active incident. It remains unread
+    // until acknowledged but belongs in resolved history immediately.
+    if (detected?.kind === "ingest_recovered") {
+      await this.alerts.resolveOpenKinds(["ingest_recovered"]);
+    }
     await this.state.set(STATE_KEY, {
       status: current.freshness.status,
       observedAtUtc: now.toISOString(),

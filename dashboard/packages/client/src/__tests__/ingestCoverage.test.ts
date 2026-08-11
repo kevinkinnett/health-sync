@@ -50,4 +50,17 @@ describe("Google Health historical coverage", () => {
       daysRemaining: 285,
     });
   });
+
+  it("does not report a provider-limited metric as an ingestion gap", () => {
+    const spo2 = state("spo2", "2026-03-02", "2026-08-11");
+    spo2.coverage = {
+      status: "provider_limited",
+      daysCovered: 162,
+      targetDays: 90,
+      limitation: "Provider history window",
+    };
+
+    expect(isHistoryTargetMet(spo2)).toBe(true);
+    expect(findLargestCoverageGap([spo2])).toBeNull();
+  });
 });
