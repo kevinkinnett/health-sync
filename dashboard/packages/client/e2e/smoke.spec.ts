@@ -320,3 +320,28 @@ test("renders on a mobile viewport", async ({ page }) => {
   expect(overflow).toBeLessThanOrEqual(1);
   expect(significant(errors)).toEqual([]);
 });
+
+test("a dossier opens as a keyboard-contained reference drawer", async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  await page.goto("/supplements");
+  await page.getByRole("button", { name: "Library" }).click();
+
+  const trigger = page.getByRole("button", {
+    name: "View Magnesium glycinate dossier",
+  });
+  await expect(trigger).toBeVisible({ timeout: 15_000 });
+  await trigger.click();
+
+  const dialog = page.getByRole("dialog", { name: "Magnesium glycinate" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText("A well-tolerated form of supplemental magnesium.")).toBeVisible();
+  await expect(dialog.getByRole("link", { name: /Magnesium fact sheet/ })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Close dossier" })).toBeFocused();
+
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(trigger).toBeFocused();
+  expect(significant(errors)).toEqual([]);
+});

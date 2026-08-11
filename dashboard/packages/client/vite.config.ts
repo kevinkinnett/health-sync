@@ -125,7 +125,9 @@ export default defineConfig(({ mode }) => {
   ],
   server: {
     proxy: {
-      "/api": {
+      // Include the trailing slash so the client route `/api-console` is
+      // served by the SPA instead of being mistaken for a backend request.
+      "/api/": {
         target: viteEnv.VITE_API_PROXY_TARGET ?? "http://localhost:3001",
         changeOrigin: true,
       },
