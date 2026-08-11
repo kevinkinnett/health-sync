@@ -165,6 +165,17 @@ The dashboard shell follows a workflow-first information architecture:
   and the status/job components own presentation. `pages/Ingest.tsx` only
   composes those pieces, keeping refresh, trigger, freshness, coverage, and job
   history behavior testable without a page-sized component.
+- Dossiers use an accessible dialog shell that owns focus trapping, focus
+  restoration, escape handling, and scroll locking. Pure content parsing stays
+  in `dossierContentModel.ts`; loading, refresh, error, content, and citation
+  presentation are separate components. Cached dossier content remains visible
+  during background refreshes so a network retry does not erase useful safety
+  information.
+- The API Console follows the same page-composition boundary. `useApiConsole.ts`
+  owns its server state, `apiConsoleModel.ts` owns URL, curl-example, and status
+  presentation rules, and focused cards and tables own rendering. The route
+  module only composes those capabilities, so usage telemetry and onboarding
+  can evolve independently.
 - CI builds the production client and enforces budgets for the initial entry,
   largest lazy chunk, total JavaScript, and stylesheets. Dependency growth must
   therefore be an explicit threshold decision rather than an invisible deploy.

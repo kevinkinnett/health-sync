@@ -8,6 +8,7 @@ import type {
   CorrelationsData,
   DayOfWeekHeatmapData,
   DrivingSummary,
+  DossierEntry,
   FoodLogDay,
   HealthSummary,
   HeartRateDay,
@@ -20,6 +21,8 @@ import type {
   NotificationSettings,
   ReadinessScore,
   RecordsData,
+  SupplementIngredient,
+  SupplementItem,
   WeeklyInsights,
 } from "@health-dashboard/shared";
 
@@ -521,6 +524,79 @@ const API_LOG_STATS: ApiLogStats = {
   byPath: [{ path: "/api/v1/summary", count: 64, avgDurationMs: 38 }],
 };
 
+const SUPPLEMENT_ITEMS: SupplementItem[] = [
+  {
+    id: 7,
+    name: "Magnesium glycinate",
+    brand: "Example Labs",
+    form: "capsule",
+    defaultAmount: 2,
+    defaultUnit: "capsules",
+    notes: "Evening",
+    isActive: true,
+    createdAt: FETCHED,
+    updatedAt: FETCHED,
+    ingredients: [
+      {
+        ingredientId: 1,
+        ingredientName: "Magnesium",
+        amount: 200,
+        unit: "mg",
+        sortOrder: 0,
+      },
+    ],
+  },
+];
+
+const SUPPLEMENT_INGREDIENTS: SupplementIngredient[] = [
+  {
+    id: 1,
+    name: "Magnesium",
+    notes: null,
+    createdAt: FETCHED,
+    updatedAt: FETCHED,
+  },
+];
+
+const SUPPLEMENT_DOSSIER: DossierEntry = {
+  itemType: "supplement",
+  itemId: 7,
+  itemName: "Magnesium glycinate",
+  itemBrand: "Example Labs",
+  itemForm: "capsule",
+  model: "sonnet",
+  inputTokens: 800,
+  outputTokens: 450,
+  fetchedAt: FETCHED,
+  content: {
+    version: 1,
+    headline: "A well-tolerated form of supplemental magnesium.",
+    disclaimer: "Educational reference only; not medical advice.",
+    sections: [
+      {
+        key: "summary",
+        heading: "Summary",
+        body: "Magnesium supports normal muscle and nerve function [1].",
+        sourceIds: [1],
+      },
+      {
+        key: "interactions",
+        heading: "Interactions",
+        body: "Separate it from some oral medicines when directed [1].",
+        sourceIds: [1],
+      },
+    ],
+    sources: [
+      {
+        id: 1,
+        title: "Magnesium fact sheet",
+        url: "https://ods.od.nih.gov/factsheets/Magnesium-HealthProfessional/",
+        publisher: "NIH Office of Dietary Supplements",
+      },
+    ],
+  },
+};
+
 const INGEST_STATUS: IngestStatus = {
   provenance: {
     device: "fitbit",
@@ -579,6 +655,9 @@ const ROUTES: [RegExp, unknown][] = [
   [/\/api\/settings\/llm-models$/, LLM_MODELS],
   [/\/api\/settings\/notifications$/, NOTIFICATIONS],
   [/\/api\/admin\/api-logs\/stats/, API_LOG_STATS],
+  [/\/api\/dossier\/supplement\/7$/, SUPPLEMENT_DOSSIER],
+  [/\/api\/supplements\/items/, SUPPLEMENT_ITEMS],
+  [/\/api\/supplements\/ingredients$/, SUPPLEMENT_INGREDIENTS],
   [/\/api\/ingest\/overview/, INGEST_OVERVIEW],
   [/\/api\/ingest\/status/, INGEST_STATUS],
   [/\/api\/ingest\/state/, []],
