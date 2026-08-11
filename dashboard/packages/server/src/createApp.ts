@@ -58,6 +58,7 @@ import { SupplementService } from "./services/supplementService.js";
 import { MedicationService } from "./services/medicationService.js";
 import { LlmClient } from "./services/llmClient.js";
 import { DossierService } from "./services/dossierService.js";
+import { CatalogDossierItemReader } from "./services/dossierItemReader.js";
 import { AnalyticsService } from "./services/analyticsService.js";
 import { HealthController } from "./controllers/healthController.js";
 import { IngestController } from "./controllers/ingestController.js";
@@ -156,8 +157,7 @@ export async function createApp(pool: Pool, config: Config): Promise<Express> {
 
   const dossierService = new DossierService(
     dossierRepo,
-    supplementService,
-    medicationService,
+    new CatalogDossierItemReader(supplementRepo, medicationRepo),
     llmClient,
     { model: () => settingService.getLlmModelSettings().then((m) => m.dossier) },
   );

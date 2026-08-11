@@ -60,6 +60,14 @@ respective assembly rules; `HealthDataService` remains a stable facade for
 controllers while delegating scoring, summary construction, records, heatmaps,
 weekly insights, and correlations.
 
+The dossier workflow follows the same shape. `DossierService` coordinates item
+lookup, model resolution, generation, usage accounting, and persistence through
+small storage, catalog-reader, and chat-completion capabilities. Pure modules
+own prompt policy and response decoding/normalization, while
+`CatalogDossierItemReader` adapts the supplement and medication repositories at
+the composition root. Prompt changes and malformed model output can therefore
+be tested without HTTP, PostgreSQL, or an LLM proxy.
+
 The Google Health parser is isolated in `google_health_points.py`. API
 pagination and raw persistence live behind separate collaborators in
 `google_health_capture.py`, and validated daily transformations live in

@@ -12,17 +12,10 @@ import {
   DossierService,
   type DossierServiceOptions,
 } from "../services/dossierService.js";
+import { CatalogDossierItemReader } from "../services/dossierItemReader.js";
 import { DossierController } from "../controllers/dossierController.js";
 import { createDossierRoutes } from "../routes/dossier.js";
 import { errorMapper } from "../middleware/errorMapper.js";
-import {
-  SupplementService,
-  NotFoundError as SupplementNotFoundError,
-} from "../services/supplementService.js";
-import {
-  MedicationService,
-  NotFoundError as MedicationNotFoundError,
-} from "../services/medicationService.js";
 import type {
   DossierUsageRow,
   UpsertDossierInput,
@@ -30,7 +23,8 @@ import type {
 import type {
   ChatCompletionRequest,
   ChatCompletionResponse,
-  LlmClient,
+  ChatCompleter,
+  LlmCallOptions,
 } from "../services/llmClient.js";
 import { LlmHttpError } from "../services/llmClient.js";
 
@@ -111,19 +105,23 @@ type LlmHandler =
   | ((req: ChatCompletionRequest) => ChatCompletionResponse)
   | Error;
 
-class FakeLlmClient implements Pick<LlmClient, "chatCompletion"> {
+class FakeLlmClient implements ChatCompleter {
   queue: LlmHandler[] = [];
   calls: ChatCompletionRequest[] = [];
+  options: (LlmCallOptions | undefined)[] = [];
 
   reset() {
     this.queue.length = 0;
     this.calls.length = 0;
+    this.options.length = 0;
   }
 
   async chatCompletion(
     req: ChatCompletionRequest,
+    opts?: LlmCallOptions,
   ): Promise<ChatCompletionResponse> {
     this.calls.push(req);
+    this.options.push(opts);
     const next = this.queue.shift();
     if (!next) throw new Error("FakeLlmClient: no queued response");
     if (next instanceof Error) throw next;
@@ -211,19 +209,14 @@ const supplementRepo = new FakeSupplementRepo();
 const medicationRepo = new FakeMedicationRepo();
 const llm = new FakeLlmClient();
 
-const supplementService = new SupplementService(supplementRepo as any);
-const medicationService = new MedicationService(medicationRepo as any);
-
 const opts: DossierServiceOptions = {
   model: "qwen3-max-2026-01-23",
-  retryDelayMs: 0,
 };
 
 const dossierService = new DossierService(
-  dossierRepo as any,
-  supplementService,
-  medicationService,
-  llm as unknown as LlmClient,
+  dossierRepo,
+  new CatalogDossierItemReader(supplementRepo, medicationRepo),
+  llm,
   opts,
 );
 const controller = new DossierController(dossierService);
@@ -356,6 +349,7 @@ describe("Dossier API", () => {
 
       // Single LLM call, status=ok logged
       expect(llm.calls).toHaveLength(1);
+      expect(llm.options[0]).toEqual({ task: "dossier" });
       expect(dossierRepo.usage).toHaveLength(1);
       expect(dossierRepo.usage[0]).toMatchObject({
         itemType: "supplement",
@@ -378,6 +372,20 @@ describe("Dossier API", () => {
       expect(dossierRepo.usage.map((u) => u.status)).toEqual([
         "parse_error",
         "ok",
+      ]);
+    });
+
+    it("records empty assistant replies as parse failures", async () => {
+      llm.queue.push(makeAssistantResponse(""));
+      llm.queue.push(makeAssistantResponse(""));
+
+      await request(app)
+        .post("/api/dossier/supplement/123/refresh")
+        .expect(502);
+
+      expect(dossierRepo.usage.map((usage) => usage.status)).toEqual([
+        "parse_error",
+        "parse_error",
       ]);
     });
 
@@ -483,7 +491,3 @@ describe("Dossier API", () => {
     });
   });
 });
-
-// Make sure NotFoundError imports aren't dead weight (silence unused).
-void SupplementNotFoundError;
-void MedicationNotFoundError;
