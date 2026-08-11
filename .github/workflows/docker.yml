@@ -46,11 +46,26 @@ jobs:
           cache: pnpm
           cache-dependency-path: dashboard/pnpm-lock.yaml
 
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install Python test dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements-test.txt
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
         working-directory: dashboard
 
-      - name: Run tests
+      - name: Run lint
+        run: pnpm lint
+        working-directory: dashboard
+
+      - name: Run Python ingestion tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Run dashboard tests
         run: pnpm turbo run test
         working-directory: dashboard
 
@@ -61,6 +76,26 @@ jobs:
       - name: Enforce client bundle budgets
         run: pnpm --filter @health-dashboard/client bundle:check
         working-directory: dashboard
+
+      - name: Install Chromium
+        run: pnpm --filter @health-dashboard/client exec playwright install --with-deps chromium
+        working-directory: dashboard
+
+      - name: Run production-bundle browser smoke tests
+        id: browser_smoke
+        run: pnpm --filter @health-dashboard/client e2e:smoke
+        working-directory: dashboard
+
+      - name: Upload browser failure diagnostics
+        if: ${{ failure() && steps.browser_smoke.outcome == 'failure' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            dashboard/packages/client/playwright-report/
+            dashboard/packages/client/test-results/
+          if-no-files-found: error
+          retention-days: 7
 
   build-and-push:
     if: github.event_name != 'pull_request'
