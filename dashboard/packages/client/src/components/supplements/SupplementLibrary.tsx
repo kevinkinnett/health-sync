@@ -1,518 +1,359 @@
 import { useState } from "react";
 import type {
+  SupplementIngredient,
   SupplementItem,
   SupplementItemIngredient,
-  SupplementIngredient,
 } from "@health-dashboard/shared";
 import {
-  useSupplementItems,
-  useCreateSupplementItem,
-  useUpdateSupplementItem,
-  useArchiveSupplementItem,
-  useSupplementIngredients,
-  useSetSupplementItemIngredients,
-} from "../../api/queries";
+  ArchivedItemRow,
+  EditorActions,
+  ItemFormFields,
+  ItemSummaryCard,
+  LibraryScaffold,
+  type ItemFormConfig,
+} from "../intake/ItemLibraryUi";
+import {
+  emptyItemForm,
+  itemFormToPayload,
+  itemToForm,
+  validateItemForm,
+  type IntakeItemFormState,
+  type ItemFormErrors,
+} from "../intake/itemForm";
 import {
   DossierDrawer,
   type DossierDrawerTarget,
 } from "../dossier/DossierDrawer";
 import { formatAmount } from "../../lib/dose";
+import {
+  compositionToForm,
+  newCompositionRow,
+  validateCompositionRows,
+  type CompositionRow,
+} from "./supplementComposition";
+import {
+  useSupplementLibrary,
+  type SupplementLibraryState,
+} from "./useSupplementLibrary";
 
 const inputClass =
-  "w-full rounded-lg bg-surface-container-lowest border border-outline-variant/20 px-3 py-2 text-sm text-on-surface focus:outline-none focus:ring-1 focus:ring-primary";
-const labelClass = "text-[10px] text-outline uppercase tracking-wider font-bold mb-1 block";
+  "w-full rounded-lg bg-surface-container-lowest border border-outline-variant/20 px-3 py-2.5 text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary";
 
-const COMMON_FORMS = ["capsule", "tablet", "powder", "liquid", "softgel", "gummy"];
-const COMMON_UNITS = ["mg", "g", "IU", "mcg", "mL", "capsule", "scoop", "drop"];
+const FORM_CONFIG: ItemFormConfig = {
+  namePlaceholder: "Vitamin D3",
+  brandPlaceholder: "Now Foods",
+  formPlaceholder: "capsule",
+  amountPlaceholder: "1000",
+  unitPlaceholder: "IU",
+  notesPlaceholder: "Optional details or timing guidance",
+  forms: ["capsule", "tablet", "powder", "liquid", "softgel", "gummy"],
+  units: ["mg", "g", "IU", "mcg", "mL", "capsule", "scoop", "drop"],
+};
 
-interface CompositionRow {
-  /** Stable client-side key so React doesn't reorder rows on rerender. */
-  key: string;
-  /** Existing ingredient id, if known. May be undefined for newly-typed names. */
-  ingredientId?: number;
-  ingredientName: string;
-  amount: string;
-  unit: string;
-}
-
-interface ItemFormState {
-  name: string;
-  brand: string;
-  form: string;
-  defaultAmount: string;
-  defaultUnit: string;
-  notes: string;
+interface SupplementFormState extends IntakeItemFormState {
   composition: CompositionRow[];
 }
 
-let rowKeySeq = 0;
-function nextRowKey(): string {
-  rowKeySeq += 1;
-  return `r${rowKeySeq}`;
-}
+export function SupplementLibrary() {
+  const library = useSupplementLibrary();
+  const [adding, setAdding] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
+  const [dossierTarget, setDossierTarget] =
+    useState<DossierDrawerTarget | null>(null);
+  const editingItem =
+    library.active.find((item) => item.id === editingId) ?? null;
 
-function emptyForm(): ItemFormState {
-  return {
-    name: "",
-    brand: "",
-    form: "",
-    defaultAmount: "",
-    defaultUnit: "",
-    notes: "",
-    composition: [],
+  const openDossier = (item: SupplementItem) => {
+    setDossierTarget({
+      type: "supplement",
+      id: item.id,
+      itemName: item.name,
+      itemBrand: item.brand,
+      itemForm: item.form,
+    });
   };
-}
 
-function fromItem(item: SupplementItem): ItemFormState {
-  return {
-    name: item.name,
-    brand: item.brand ?? "",
-    form: item.form ?? "",
-    defaultAmount: item.defaultAmount != null ? String(item.defaultAmount) : "",
-    defaultUnit: item.defaultUnit,
-    notes: item.notes ?? "",
-    composition: item.ingredients.map((ing) => ({
-      key: nextRowKey(),
-      ingredientId: ing.ingredientId,
-      ingredientName: ing.ingredientName,
-      amount: String(ing.amount),
-      unit: ing.unit,
-    })),
-  };
-}
-
-/** Numeric input that allows blank; returns null if empty/invalid. */
-function parseOptionalNumber(s: string): number | null {
-  const t = s.trim();
-  if (t === "") return null;
-  const n = Number(t);
-  return Number.isFinite(n) ? n : null;
-}
-
-function ItemForm({
-  form,
-  onChange,
-}: {
-  form: ItemFormState;
-  onChange: (next: ItemFormState) => void;
-}) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-      <label className="flex flex-col">
-        <span className={labelClass}>Name *</span>
-        <input
-          type="text"
-          value={form.name}
-          onChange={(e) => onChange({ ...form, name: e.target.value })}
-          placeholder="Vitamin D3"
-          className={inputClass}
-        />
-      </label>
-      <label className="flex flex-col">
-        <span className={labelClass}>Brand</span>
-        <input
-          type="text"
-          value={form.brand}
-          onChange={(e) => onChange({ ...form, brand: e.target.value })}
-          placeholder="Now Foods"
-          className={inputClass}
-        />
-      </label>
-      <label className="flex flex-col">
-        <span className={labelClass}>Form</span>
-        <input
-          type="text"
-          list="supplement-forms"
-          value={form.form}
-          onChange={(e) => onChange({ ...form, form: e.target.value })}
-          placeholder="capsule"
-          className={inputClass}
-        />
-        <datalist id="supplement-forms">
-          {COMMON_FORMS.map((f) => (
-            <option key={f} value={f} />
-          ))}
-        </datalist>
-      </label>
-      <div className="grid grid-cols-2 gap-3">
-        <label className="flex flex-col">
-          <span className={labelClass}>Default amount</span>
-          <input
-            type="number"
-            step="0.001"
-            value={form.defaultAmount}
-            onChange={(e) =>
-              onChange({ ...form, defaultAmount: e.target.value })
-            }
-            placeholder="1000"
-            className={`${inputClass} tabular-nums`}
-          />
-        </label>
-        <label className="flex flex-col">
-          <span className={labelClass}>Default unit *</span>
-          <input
-            type="text"
-            list="supplement-units"
-            value={form.defaultUnit}
-            onChange={(e) =>
-              onChange({ ...form, defaultUnit: e.target.value })
-            }
-            placeholder="IU"
-            className={inputClass}
-          />
-          <datalist id="supplement-units">
-            {COMMON_UNITS.map((u) => (
-              <option key={u} value={u} />
+    <>
+      <LibraryScaffold
+        noun="supplement"
+        icon="medication"
+        activeCount={library.active.length}
+        archivedCount={library.archived.length}
+        adding={adding}
+        showArchived={showArchived}
+        isLoading={library.isLoading}
+        error={library.loadError ?? library.mutationError}
+        onAdd={() => {
+          setEditingId(null);
+          setAdding(true);
+        }}
+        onRetry={library.retry}
+        onToggleArchived={() => setShowArchived((current) => !current)}
+        editor={
+          adding ? (
+            <SupplementEditor
+              library={library}
+              onClose={() => setAdding(false)}
+            />
+          ) : editingItem ? (
+            <SupplementEditor
+              item={editingItem}
+              library={library}
+              onClose={() => setEditingId(null)}
+              onOpenDossier={() => openDossier(editingItem)}
+            />
+          ) : undefined
+        }
+        activeItems={
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {library.active.map((item) => (
+              <ItemSummaryCard
+                key={item.id}
+                item={item}
+                icon="medication"
+                iconClass="text-primary"
+                onEdit={() => {
+                  setAdding(false);
+                  setEditingId(item.id);
+                }}
+                onOpenDossier={() => openDossier(item)}
+              >
+                <CompositionPreview ingredients={item.ingredients} />
+              </ItemSummaryCard>
             ))}
-          </datalist>
-        </label>
+          </div>
+        }
+        archivedItems={library.archived.map((item) => (
+          <ArchivedItemRow
+            key={item.id}
+            item={item}
+            icon="medication"
+            restoring={library.updating}
+            onRestore={() => {
+              void library.restoreItem(item.id).catch(() => undefined);
+            }}
+          />
+        ))}
+      />
+
+      <DossierDrawer
+        target={dossierTarget}
+        onClose={() => setDossierTarget(null)}
+      />
+    </>
+  );
+}
+
+function SupplementEditor({
+  item,
+  library,
+  onClose,
+  onOpenDossier,
+}: {
+  item?: SupplementItem;
+  library: SupplementLibraryState;
+  onClose: () => void;
+  onOpenDossier?: () => void;
+}) {
+  const [form, setForm] = useState<SupplementFormState>(() => ({
+    ...(item ? itemToForm(item) : emptyItemForm()),
+    composition: item ? compositionToForm(item.ingredients) : [],
+  }));
+  const [errors, setErrors] = useState<ItemFormErrors>({});
+  const [compositionError, setCompositionError] = useState<string | null>(null);
+
+  const save = async () => {
+    const nextErrors = validateItemForm(form);
+    const nextCompositionError = validateCompositionRows(form.composition);
+    setErrors(nextErrors);
+    setCompositionError(nextCompositionError);
+    if (Object.keys(nextErrors).length > 0 || nextCompositionError) return;
+
+    try {
+      const body = itemFormToPayload(form);
+      if (item) {
+        await library.updateItem(item.id, body, form.composition);
+      } else {
+        await library.createItem(body, form.composition);
+      }
+      onClose();
+    } catch {
+      // React Query exposes the mutation error through the library scaffold.
+    }
+  };
+
+  const archive = async () => {
+    if (!item) return;
+    try {
+      await library.archiveItem(item.id);
+      onClose();
+    } catch {
+      // React Query exposes the mutation error through the library scaffold.
+    }
+  };
+
+  const setBaseForm = (next: IntakeItemFormState) => {
+    setForm({ ...next, composition: form.composition });
+    setErrors({});
+  };
+
+  return (
+    <section
+      aria-label={item ? `Edit ${item.name}` : "Add supplement"}
+      className="bg-surface-container-high rounded-xl p-5 border border-primary/25 space-y-5"
+    >
+      <div>
+        <h3 className="font-headline font-bold text-on-surface">
+          {item ? `Edit ${item.name}` : "Add supplement"}
+        </h3>
+        <p className="text-xs text-on-surface-variant mt-1">
+          Define the default dose and, for blends, the ingredients delivered by
+          that dose.
+        </p>
       </div>
-      <label className="flex flex-col md:col-span-2">
-        <span className={labelClass}>Notes</span>
-        <input
-          type="text"
-          value={form.notes}
-          onChange={(e) => onChange({ ...form, notes: e.target.value })}
-          placeholder="Optional"
-          className={inputClass}
-        />
-      </label>
-    </div>
+      <ItemFormFields
+        form={form}
+        errors={errors}
+        config={FORM_CONFIG}
+        onChange={setBaseForm}
+      />
+      <CompositionEditor
+        rows={form.composition}
+        catalog={library.ingredientCatalog}
+        error={compositionError}
+        onChange={(composition) => {
+          setForm({ ...form, composition });
+          setCompositionError(null);
+        }}
+      />
+      <EditorActions
+        itemName={item?.name}
+        saving={item ? library.updating : library.creating}
+        archiving={library.archiving}
+        onCancel={onClose}
+        onSave={() => void save()}
+        onArchive={item ? () => void archive() : undefined}
+        onOpenDossier={onOpenDossier}
+      />
+    </section>
   );
 }
 
 function CompositionEditor({
   rows,
-  onChange,
   catalog,
+  error,
+  onChange,
 }: {
   rows: CompositionRow[];
-  onChange: (next: CompositionRow[]) => void;
   catalog: SupplementIngredient[];
+  error: string | null;
+  onChange: (next: CompositionRow[]) => void;
 }) {
-  function update(idx: number, patch: Partial<CompositionRow>) {
-    const next = rows.slice();
-    next[idx] = { ...next[idx], ...patch };
+  const update = (index: number, patch: Partial<CompositionRow>) => {
+    const next = [...rows];
+    next[index] = { ...next[index], ...patch };
     onChange(next);
-  }
-  function remove(idx: number) {
-    const next = rows.slice();
-    next.splice(idx, 1);
-    onChange(next);
-  }
-  function add() {
-    onChange([
-      ...rows,
-      {
-        key: nextRowKey(),
-        ingredientName: "",
-        amount: "",
-        unit: rows[rows.length - 1]?.unit ?? "mg",
-      },
-    ]);
-  }
+  };
 
-  // When the user types an ingredient name, snap to the existing id if it
-  // matches the catalog by case-insensitive name. Otherwise leave id blank
-  // and let the server find-or-create on save.
-  function syncIngredientId(idx: number, name: string) {
-    const lower = name.trim().toLowerCase();
-    const match = catalog.find((c) => c.name.toLowerCase() === lower);
-    update(idx, { ingredientName: name, ingredientId: match?.id });
-  }
+  const syncIngredient = (index: number, name: string) => {
+    const match = catalog.find(
+      (ingredient) =>
+        ingredient.name.toLowerCase() === name.trim().toLowerCase(),
+    );
+    update(index, { ingredientName: name, ingredientId: match?.id });
+  };
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-2">
-        <span className={labelClass}>
-          Ingredients ({rows.length}) — per default dose
-        </span>
+    <fieldset className="border-t border-outline-variant/15 pt-4">
+      <legend className="sr-only">Ingredients per default dose</legend>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
+        <p className="text-xs text-on-surface font-bold">
+          Ingredients per default dose ({rows.length})
+        </p>
         <button
           type="button"
-          onClick={add}
-          className="text-xs text-primary hover:text-on-primary-fixed hover:bg-primary px-3 py-1 rounded-lg transition-colors flex items-center gap-1 font-bold"
+          onClick={() =>
+            onChange([
+              ...rows,
+              newCompositionRow(rows[rows.length - 1]?.unit ?? "mg"),
+            ])
+          }
+          className="text-xs text-primary hover:bg-primary/10 px-3 py-1.5 rounded-lg flex items-center gap-1 font-bold self-start"
         >
-          <span className="material-symbols-outlined text-sm">add</span>
+          <span className="material-symbols-outlined text-sm" aria-hidden="true">add</span>
           Add ingredient
         </button>
       </div>
       {rows.length === 0 ? (
         <p className="text-xs text-outline italic">
-          No ingredients defined. Single-substance supplements can leave this
-          empty; for multi-ingredient blends, list each substance with its
-          per-dose amount.
+          Leave this empty for a single-substance item, or list every
+          ingredient in a blend.
         </p>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-3">
           <datalist id="supplement-ingredient-catalog">
-            {catalog.map((c) => (
-              <option key={c.id} value={c.name} />
+            {catalog.map((ingredient) => (
+              <option key={ingredient.id} value={ingredient.name} />
             ))}
           </datalist>
-          {rows.map((row, idx) => (
+          {rows.map((row, index) => (
             <div
               key={row.key}
-              className="grid grid-cols-[1fr_5rem_4rem_auto] gap-2 items-end"
+              className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_7rem_6rem_auto] gap-2 items-end bg-surface-container/60 sm:bg-transparent rounded-lg p-3 sm:p-0"
             >
               <label className="flex flex-col">
-                <span className="sr-only">Ingredient name</span>
+                <span className="text-[10px] text-outline sm:sr-only">Ingredient</span>
                 <input
                   type="text"
                   list="supplement-ingredient-catalog"
                   value={row.ingredientName}
-                  onChange={(e) => syncIngredientId(idx, e.target.value)}
+                  onChange={(event) => syncIngredient(index, event.target.value)}
                   placeholder="Ashwagandha"
+                  aria-label={`Ingredient ${index + 1} name`}
                   className={inputClass}
                 />
               </label>
               <label className="flex flex-col">
-                <span className="sr-only">Amount</span>
+                <span className="text-[10px] text-outline sm:sr-only">Amount</span>
                 <input
                   type="number"
+                  min="0"
                   step="0.001"
                   value={row.amount}
-                  onChange={(e) => update(idx, { amount: e.target.value })}
+                  onChange={(event) => update(index, { amount: event.target.value })}
                   placeholder="300"
+                  aria-label={`Ingredient ${index + 1} amount`}
                   className={`${inputClass} tabular-nums`}
                 />
               </label>
               <label className="flex flex-col">
-                <span className="sr-only">Unit</span>
+                <span className="text-[10px] text-outline sm:sr-only">Unit</span>
                 <input
                   type="text"
-                  list="supplement-units"
                   value={row.unit}
-                  onChange={(e) => update(idx, { unit: e.target.value })}
+                  onChange={(event) => update(index, { unit: event.target.value })}
                   placeholder="mg"
+                  aria-label={`Ingredient ${index + 1} unit`}
                   className={inputClass}
                 />
               </label>
               <button
                 type="button"
-                onClick={() => remove(idx)}
-                aria-label="Remove ingredient"
-                className="h-9 w-9 flex items-center justify-center rounded-lg text-outline hover:text-error hover:bg-error/10 transition-colors"
+                onClick={() => onChange(rows.filter((_, rowIndex) => rowIndex !== index))}
+                aria-label={`Remove ingredient ${index + 1}`}
+                className="h-10 w-10 rounded-lg text-outline hover:text-error hover:bg-error/10 flex items-center justify-center"
               >
-                <span className="material-symbols-outlined text-base">close</span>
+                <span className="material-symbols-outlined text-base" aria-hidden="true">delete</span>
               </button>
             </div>
           ))}
         </div>
       )}
-    </div>
-  );
-}
-
-/** Build the API body. Drops blank rows. */
-function buildCompositionBody(rows: CompositionRow[]): {
-  ingredients: Array<{
-    ingredientId?: number;
-    ingredientName?: string;
-    amount: number;
-    unit: string;
-    sortOrder: number;
-  }>;
-} {
-  const out: Array<{
-    ingredientId?: number;
-    ingredientName?: string;
-    amount: number;
-    unit: string;
-    sortOrder: number;
-  }> = [];
-  for (let i = 0; i < rows.length; i++) {
-    const r = rows[i];
-    const name = r.ingredientName.trim();
-    if (!name && r.ingredientId == null) continue;
-    const amount = parseOptionalNumber(r.amount);
-    if (amount == null) continue;
-    if (!r.unit.trim()) continue;
-    out.push({
-      ...(r.ingredientId != null
-        ? { ingredientId: r.ingredientId }
-        : { ingredientName: name }),
-      amount,
-      unit: r.unit.trim(),
-      sortOrder: i,
-    });
-  }
-  return { ingredients: out };
-}
-
-function ItemEditCard({
-  item,
-  onCancel,
-  onOpenDossier,
-}: {
-  item: SupplementItem;
-  onCancel: () => void;
-  onOpenDossier: () => void;
-}) {
-  const [form, setForm] = useState<ItemFormState>(() => fromItem(item));
-  const update = useUpdateSupplementItem();
-  const setComposition = useSetSupplementItemIngredients();
-  const archive = useArchiveSupplementItem();
-  const ingredients = useSupplementIngredients();
-  const [confirming, setConfirming] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function handleSave() {
-    if (!form.name.trim() || !form.defaultUnit.trim()) return;
-    setError(null);
-    const amount = form.defaultAmount.trim();
-    try {
-      await update.mutateAsync({
-        id: item.id,
-        body: {
-          name: form.name.trim(),
-          brand: form.brand.trim() || null,
-          form: form.form.trim() || null,
-          defaultAmount: amount === "" ? null : Number(amount),
-          defaultUnit: form.defaultUnit.trim(),
-          notes: form.notes.trim() || null,
-        },
-      });
-      await setComposition.mutateAsync({
-        itemId: item.id,
-        body: buildCompositionBody(form.composition),
-      });
-      onCancel();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save");
-    }
-  }
-
-  const saving = update.isPending || setComposition.isPending;
-
-  return (
-    <div className="bg-surface-container-high rounded-xl p-5 border border-primary/20 space-y-4">
-      <ItemForm form={form} onChange={setForm} />
-      <CompositionEditor
-        rows={form.composition}
-        onChange={(rows) => setForm({ ...form, composition: rows })}
-        catalog={ingredients.data ?? []}
-      />
-      {error && <p className="text-xs text-error">{error}</p>}
-      <div className="flex items-center justify-between gap-2">
-        {confirming ? (
-          <div className="flex items-center gap-2 text-xs text-on-surface-variant">
-            <span>Archive {item.name}?</span>
-            <button
-              onClick={() => {
-                archive.mutate(item.id, { onSuccess: onCancel });
-              }}
-              className="px-3 py-1 text-xs font-bold rounded-lg bg-error/10 text-error hover:bg-error/20 transition-colors"
-            >
-              Archive
-            </button>
-            <button
-              onClick={() => setConfirming(false)}
-              className="px-3 py-1 text-xs font-bold rounded-lg text-outline hover:text-on-surface transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-        ) : (
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setConfirming(true)}
-              className="text-xs text-outline hover:text-error transition-colors flex items-center gap-1"
-            >
-              <span className="material-symbols-outlined text-sm">archive</span>
-              Archive
-            </button>
-            <button
-              onClick={onOpenDossier}
-              className="text-xs text-outline hover:text-primary transition-colors flex items-center gap-1"
-            >
-              <span className="material-symbols-outlined text-sm">menu_book</span>
-              View dossier
-            </button>
-          </div>
-        )}
-        <div className="flex gap-2">
-          <button
-            onClick={onCancel}
-            className="px-4 py-2 text-xs font-bold rounded-lg text-outline hover:bg-surface-container-high transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={
-              saving || !form.name.trim() || !form.defaultUnit.trim()
-            }
-            className="px-5 py-2 text-xs font-bold rounded-lg bg-linear-to-br from-primary to-primary-container text-on-primary-fixed shadow-lg shadow-primary/10 active:scale-95 transition-transform disabled:opacity-50"
-          >
-            {saving ? "Saving…" : "Save"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function NewItemCard({ onClose }: { onClose: () => void }) {
-  const [form, setForm] = useState<ItemFormState>(emptyForm());
-  const create = useCreateSupplementItem();
-  const setComposition = useSetSupplementItemIngredients();
-  const ingredients = useSupplementIngredients();
-  const [error, setError] = useState<string | null>(null);
-
-  async function handleSave() {
-    if (!form.name.trim() || !form.defaultUnit.trim()) return;
-    setError(null);
-    const amount = form.defaultAmount.trim();
-    try {
-      const created = await create.mutateAsync({
-        name: form.name.trim(),
-        brand: form.brand.trim() || null,
-        form: form.form.trim() || null,
-        defaultAmount: amount === "" ? null : Number(amount),
-        defaultUnit: form.defaultUnit.trim(),
-        notes: form.notes.trim() || null,
-      });
-      const compBody = buildCompositionBody(form.composition);
-      if (compBody.ingredients.length > 0) {
-        await setComposition.mutateAsync({
-          itemId: created.id,
-          body: compBody,
-        });
-      }
-      onClose();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save");
-    }
-  }
-
-  const saving = create.isPending || setComposition.isPending;
-
-  return (
-    <div className="bg-surface-container-high rounded-xl p-5 border border-primary/30 space-y-4">
-      <h3 className="font-headline font-bold text-on-surface">Add supplement</h3>
-      <ItemForm form={form} onChange={setForm} />
-      <CompositionEditor
-        rows={form.composition}
-        onChange={(rows) => setForm({ ...form, composition: rows })}
-        catalog={ingredients.data ?? []}
-      />
-      {error && <p className="text-xs text-error">{error}</p>}
-      <div className="flex justify-end gap-2">
-        <button
-          onClick={onClose}
-          className="px-4 py-2 text-xs font-bold rounded-lg text-outline hover:bg-surface-container-high transition-colors"
-        >
-          Cancel
-        </button>
-        <button
-          onClick={handleSave}
-          disabled={saving || !form.name.trim() || !form.defaultUnit.trim()}
-          className="px-5 py-2 text-xs font-bold rounded-lg bg-linear-to-br from-primary to-primary-container text-on-primary-fixed shadow-lg shadow-primary/10 active:scale-95 transition-transform disabled:opacity-50"
-        >
-          {saving ? "Saving…" : "Save"}
-        </button>
-      </div>
-    </div>
+      {error && <p role="alert" className="text-xs text-error mt-2">{error}</p>}
+    </fieldset>
   );
 }
 
@@ -521,220 +362,25 @@ function CompositionPreview({
 }: {
   ingredients: SupplementItemIngredient[];
 }) {
-  if (ingredients.length === 0) return null;
+  if (ingredients.length === 0) return <div className="flex-1" />;
   return (
-    <div className="mt-3 pt-3 border-t border-outline-variant/15">
+    <div className="mt-3 pt-3 border-t border-outline-variant/15 flex-1">
       <p className="text-[10px] text-outline uppercase tracking-wider font-bold mb-1">
         Contains
       </p>
       <ul className="space-y-0.5">
-        {ingredients.map((ing) => (
+        {ingredients.map((ingredient) => (
           <li
-            key={ing.ingredientId}
+            key={ingredient.ingredientId}
             className="text-xs text-on-surface-variant tabular-nums flex items-baseline justify-between gap-2"
           >
-            <span className="truncate">{ing.ingredientName}</span>
+            <span className="truncate">{ingredient.ingredientName}</span>
             <span className="text-outline whitespace-nowrap">
-              {formatAmount(ing.amount)} {ing.unit}
+              {formatAmount(ingredient.amount)} {ingredient.unit}
             </span>
           </li>
         ))}
       </ul>
-    </div>
-  );
-}
-
-function ItemCard({
-  item,
-  onOpenDossier,
-}: {
-  item: SupplementItem;
-  onOpenDossier: () => void;
-}) {
-  const [editing, setEditing] = useState(false);
-  if (editing) {
-    return (
-      <ItemEditCard
-        item={item}
-        onCancel={() => setEditing(false)}
-        onOpenDossier={onOpenDossier}
-      />
-    );
-  }
-  return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={() => setEditing(true)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          setEditing(true);
-        }
-      }}
-      className="bg-surface-container-high hover:bg-surface-container-highest rounded-xl p-5 text-left transition-colors group cursor-pointer relative"
-    >
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          onOpenDossier();
-        }}
-        aria-label="View dossier"
-        title="View dossier"
-        className="absolute top-3 right-3 h-8 w-8 flex items-center justify-center rounded-lg text-outline hover:text-primary hover:bg-primary/10 transition-colors"
-      >
-        <span className="material-symbols-outlined text-base">menu_book</span>
-      </button>
-      <div className="flex items-start justify-between mb-2 pr-9">
-        <span
-          className="material-symbols-outlined text-primary"
-          style={{ fontVariationSettings: "'FILL' 1", fontSize: 28 }}
-        >
-          medication
-        </span>
-        <span className="material-symbols-outlined text-outline group-hover:text-on-surface transition-colors text-sm opacity-0 group-hover:opacity-100">
-          edit
-        </span>
-      </div>
-      <p className="font-headline font-semibold text-on-surface">{item.name}</p>
-      <p className="text-xs text-on-surface-variant tabular-nums mt-0.5">
-        {item.defaultAmount != null
-          ? `${formatAmount(item.defaultAmount)} ${item.defaultUnit}`
-          : `Variable · ${item.defaultUnit}`}
-      </p>
-      {item.brand && (
-        <p className="text-[10px] text-outline uppercase tracking-wider mt-2">
-          {item.brand}
-          {item.form ? ` · ${item.form}` : ""}
-        </p>
-      )}
-      {item.notes && (
-        <p className="text-xs text-on-surface-variant mt-2 italic line-clamp-2">
-          {item.notes}
-        </p>
-      )}
-      <CompositionPreview ingredients={item.ingredients} />
-    </div>
-  );
-}
-
-function ArchivedRow({ item }: { item: SupplementItem }) {
-  const update = useUpdateSupplementItem();
-  return (
-    <div className="bg-surface-container-low rounded-xl p-3 flex items-center gap-3">
-      <span className="material-symbols-outlined text-outline">medication</span>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm text-on-surface-variant truncate">{item.name}</p>
-        <p className="text-xs text-outline">
-          {item.defaultAmount ?? "—"} {item.defaultUnit}
-        </p>
-      </div>
-      <button
-        onClick={() =>
-          update.mutate({ id: item.id, body: { isActive: true } })
-        }
-        disabled={update.isPending}
-        className="text-xs font-bold text-primary hover:text-on-primary-fixed hover:bg-primary px-3 py-1 rounded-lg transition-colors"
-      >
-        Restore
-      </button>
-    </div>
-  );
-}
-
-export function SupplementLibrary() {
-  const items = useSupplementItems(true);
-  const [adding, setAdding] = useState(false);
-  const [showArchived, setShowArchived] = useState(false);
-  const [dossierTarget, setDossierTarget] =
-    useState<DossierDrawerTarget | null>(null);
-
-  const active = items.data?.filter((i) => i.isActive) ?? [];
-  const archived = items.data?.filter((i) => !i.isActive) ?? [];
-
-  function openDossier(item: SupplementItem) {
-    setDossierTarget({
-      type: "supplement",
-      id: item.id,
-      itemName: item.name,
-      itemBrand: item.brand,
-      itemForm: item.form,
-    });
-  }
-
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <p className="text-on-surface-variant text-sm">
-          {active.length} active · {archived.length} archived
-        </p>
-        {!adding && (
-          <button
-            onClick={() => setAdding(true)}
-            className="px-5 py-2 text-xs font-bold rounded-lg bg-linear-to-br from-primary to-primary-container text-on-primary-fixed shadow-lg shadow-primary/10 active:scale-95 transition-transform flex items-center gap-2"
-          >
-            <span className="material-symbols-outlined text-sm">add</span>
-            Add supplement
-          </button>
-        )}
-      </div>
-
-      {adding && <NewItemCard onClose={() => setAdding(false)} />}
-
-      {items.isLoading ? (
-        <p className="text-on-surface-variant">Loading…</p>
-      ) : active.length === 0 && !adding ? (
-        <div className="bg-surface-container rounded-xl p-8 text-center">
-          <span
-            className="material-symbols-outlined text-outline mb-2 block"
-            style={{ fontSize: 40 }}
-          >
-            medication
-          </span>
-          <p className="text-on-surface-variant">
-            No supplements yet. Click &ldquo;Add supplement&rdquo; to get started.
-          </p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {active.map((item) => (
-            <ItemCard
-              key={item.id}
-              item={item}
-              onOpenDossier={() => openDossier(item)}
-            />
-          ))}
-        </div>
-      )}
-
-      {archived.length > 0 && (
-        <div className="bg-surface-container rounded-xl p-5">
-          <button
-            onClick={() => setShowArchived(!showArchived)}
-            className="flex items-center gap-2 text-on-surface-variant hover:text-on-surface transition-colors w-full text-left"
-          >
-            <span className="material-symbols-outlined text-sm">
-              {showArchived ? "expand_less" : "expand_more"}
-            </span>
-            <span className="font-headline font-semibold text-sm">
-              Archived ({archived.length})
-            </span>
-          </button>
-          {showArchived && (
-            <div className="mt-4 space-y-2">
-              {archived.map((item) => (
-                <ArchivedRow key={item.id} item={item} />
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      <DossierDrawer
-        target={dossierTarget}
-        onClose={() => setDossierTarget(null)}
-      />
     </div>
   );
 }
