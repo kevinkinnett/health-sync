@@ -24,7 +24,7 @@ export interface Config {
     workspace: string;
   };
   llm: {
-    /** Base URL for the OpenAI-compatible proxy (no trailing slash). */
+    /** Base URL for the Anthropic Messages-compatible proxy (no trailing slash). */
     baseUrl: string;
     apiKey: string;
     /** Model name to request from the proxy for dossier generation. */
