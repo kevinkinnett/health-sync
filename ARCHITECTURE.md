@@ -83,6 +83,14 @@ Health rollup writer continues writing the `fitbit_*` physical tables during a
 compatibility window; a later physical rename can therefore land behind the
 stable views without changing repository queries.
 
+The rollup writer's physical storage contract is centralized in the validated
+`RollupStorageTables` value. Every raw-point read and compatibility-table upsert
+is rendered through that mapping; identifiers must be schema-qualified and
+cannot contain arbitrary SQL. The default mapping preserves the current
+`fitbit_*` targets, while exhaustive tests exercise an alternate mapping for
+every generated upsert. Food-log schema ownership has also moved out of the
+runtime writer and into an immutable database migration.
+
 Provenance separates the physical sensor from the transport. Readiness still
 compares the Fitbit wrist device with the Eight Sleep mattress, but API
 responses identify that Fitbit-device measurements arrived through Google
@@ -201,19 +209,19 @@ The dashboard shell follows a workflow-first information architecture:
 
 ## Prioritized technical debt
 
-The remaining provider-specific physical storage rename is deliberately
-deferred. Dashboard readers already depend only on stable `health_*` views, so
-the remaining coupling is confined to the Google Health rollup writer.
+The provider-specific physical storage rename is deliberately deferred.
+Dashboard readers already depend only on stable `health_*` views, and the
+writer's physical relations are now isolated behind `RollupStorageTables`.
 
-When the rename is justified, use a coordinated maintenance cutover:
+The behavior-preserving preparation is complete: physical targets are
+centralized and tested, and runtime schema mutation has been removed. When the
+rename is justified, the remaining work is a coordinated maintenance cutover:
 
-1. Centralize the rollup writer's physical table mapping without changing its
-   current `fitbit_*` targets, and test every generated upsert target.
-2. Pause the Windmill schedule and wait for any active import to finish.
-3. Apply one database migration that replaces the `health_*` read views with
+1. Pause the Windmill schedule and wait for any active import to finish.
+2. Apply one database migration that replaces the `health_*` read views with
    provider-neutral physical tables and creates read-only legacy views where
    possible.
-4. Deploy the writer mapping to the new physical targets, run a canary import,
+3. Deploy the writer mapping to the new physical targets, run a canary import,
    compare row counts and current dashboard responses, then re-enable the
    schedule.
 

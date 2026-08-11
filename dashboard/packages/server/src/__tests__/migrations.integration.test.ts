@@ -26,7 +26,6 @@ describeWithPostgres("database migrations against PostgreSQL", () => {
       "fitbit_breathing_rate_daily",
       "fitbit_cardio_score_daily",
       "fitbit_exercise_log",
-      "fitbit_food_log_daily",
       "fitbit_heart_rate_daily",
       "fitbit_hrv_daily",
       "fitbit_skin_temp_daily",
@@ -51,6 +50,22 @@ describeWithPostgres("database migrations against PostgreSQL", () => {
       .resolves.toMatchObject({ rows: [{ id: 1 }] });
     await expect(pool.query("SELECT id FROM universe.health_activity_daily"))
       .resolves.toMatchObject({ rows: [{ id: 42 }] });
+    const foodColumns = await pool.query<{ column_name: string }>(`
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'universe' AND table_name = 'fitbit_food_log_daily'
+    `);
+    expect(foodColumns.rows.map((row) => row.column_name)).toEqual(
+      expect.arrayContaining([
+        "date",
+        "protein",
+        "fiber",
+        "sugar",
+        "saturated_fat",
+        "cholesterol",
+        "potassium",
+      ]),
+    );
     const alertColumns = await pool.query<{ column_name: string }>(`
       SELECT column_name
       FROM information_schema.columns

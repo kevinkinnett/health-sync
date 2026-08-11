@@ -7,6 +7,8 @@ resources, and ingest-run coordination belong to ``ingest_google_health``.
 
 import hashlib
 import json
+import re
+from dataclasses import dataclass, fields
 from datetime import date, datetime, timedelta, timezone
 
 import requests
@@ -14,25 +16,80 @@ BASE = "https://health.googleapis.com/v4"
 
 
 # ---------------------------------------------------------------------------
-# Daily rollups  →  existing fitbit_* tables  (FITBIT-routed). Gated.
+# Physical storage contract
 # ---------------------------------------------------------------------------
 
-GH = "universe.google_health_data_point"
+
+_IDENTIFIER = re.compile(r"^[a-z_][a-z0-9_]*$")
+
+
+@dataclass(frozen=True)
+class RollupStorageTables:
+    """Validated physical relations used by the Google Health rollup writer.
+
+    Dashboard readers already use provider-neutral ``health_*`` views. Keeping
+    every source and write relation here gives the later physical-table cutover
+    one explicit composition boundary without allowing arbitrary SQL fragments.
+    """
+
+    raw_points: str = "universe.google_health_data_point"
+    activity_daily: str = "universe.fitbit_activity_daily"
+    body_weight: str = "universe.fitbit_body_weight"
+    breathing_rate_daily: str = "universe.fitbit_breathing_rate_daily"
+    exercise_log: str = "universe.fitbit_exercise_log"
+    food_log_daily: str = "universe.fitbit_food_log_daily"
+    heart_rate_daily: str = "universe.fitbit_heart_rate_daily"
+    hrv_daily: str = "universe.fitbit_hrv_daily"
+    skin_temp_daily: str = "universe.fitbit_skin_temp_daily"
+    sleep_daily: str = "universe.fitbit_sleep_daily"
+    spo2_daily: str = "universe.fitbit_spo2_daily"
+
+    def __post_init__(self) -> None:
+        for field in fields(self):
+            value = getattr(self, field.name)
+            parts = value.split(".")
+            if len(parts) != 2 or not all(_IDENTIFIER.fullmatch(part) for part in parts):
+                raise ValueError(
+                    f"{field.name} must be a schema-qualified PostgreSQL identifier"
+                )
+
+    def render(self, statement: str) -> str:
+        """Substitute only validated relation identifiers into a SQL template."""
+
+        identifiers = {}
+        for field in fields(self):
+            qualified = getattr(self, field.name)
+            identifiers[field.name] = qualified
+            identifiers[f"{field.name}_ref"] = qualified.split(".", 1)[1]
+        return statement.format_map(identifiers)
+
+
+LEGACY_ROLLUP_TABLES = RollupStorageTables()
+
+
+# ---------------------------------------------------------------------------
+# Daily rollups  →  compatibility tables  (FITBIT-device routed). Gated.
+# ---------------------------------------------------------------------------
+
 MARK = json.dumps({"_src": "google_health"})
 # Must match the dashboard server's USER_TIMEZONE so rollup day buckets
 # line up with the legacy tables they replace.
 USER_TZ = "America/New_York"
 
 
-def _sql_rollups(cur, since: str) -> None:
+def _sql_rollups(
+    cur,
+    since: str,
+    tables: RollupStorageTables = LEGACY_ROLLUP_TABLES,
+) -> None:
     # Resting HR (daily) → exact match to legacy.
-    cur.execute(f"""
-        INSERT INTO universe.fitbit_heart_rate_daily (date, resting_heart_rate, raw_jsonb)
+    cur.execute(tables.render("""
+        INSERT INTO {heart_rate_daily} (date, resting_heart_rate, raw_jsonb)
         SELECT point_date, max((value_jsonb->'dailyRestingHeartRate'->>'beatsPerMinute')::numeric)::int, %s::jsonb
-        FROM {GH} WHERE data_type='daily-resting-heart-rate' AND source_platform='FITBIT' AND point_date >= %s
+        FROM {raw_points} WHERE data_type='daily-resting-heart-rate' AND source_platform='FITBIT' AND point_date >= %s
         GROUP BY point_date
         ON CONFLICT (date) DO UPDATE SET resting_heart_rate=EXCLUDED.resting_heart_rate, raw_jsonb=EXCLUDED.raw_jsonb, fetched_at=NOW()
-    """, (MARK, since))
+    """), (MARK, since))
 
     # HR zones — minutes per zone, from the per-minute active-zone-minutes
     # points. Each point IS one wall-clock minute carrying its zone, so
@@ -55,8 +112,8 @@ def _sql_rollups(cur, since: str) -> None:
     #
     # zone_*_cal and zone_out_of_range_min have no Google equivalent (AZM only
     # records minutes that EARNED a zone) and stay NULL after the cutover.
-    cur.execute(f"""
-        INSERT INTO universe.fitbit_heart_rate_daily
+    cur.execute(tables.render("""
+        INSERT INTO {heart_rate_daily}
             (date, zone_fat_burn_min, zone_cardio_min, zone_peak_min, raw_jsonb)
         SELECT make_date(
                  (value_jsonb->'activeZoneMinutes'->'interval'->'civilStartTime'->'date'->>'year')::int,
@@ -66,46 +123,46 @@ def _sql_rollups(cur, since: str) -> None:
                count(*) FILTER (WHERE value_jsonb->'activeZoneMinutes'->>'heartRateZone'='CARDIO'),
                count(*) FILTER (WHERE value_jsonb->'activeZoneMinutes'->>'heartRateZone'='PEAK'),
                %s::jsonb
-        FROM {GH} WHERE data_type='active-zone-minutes' AND source_platform='FITBIT'
+        FROM {raw_points} WHERE data_type='active-zone-minutes' AND source_platform='FITBIT'
               AND value_jsonb->'activeZoneMinutes'->'interval'->'civilStartTime'->'date'->>'year' IS NOT NULL
         GROUP BY 1
         ON CONFLICT (date) DO UPDATE SET
-            zone_fat_burn_min=GREATEST(EXCLUDED.zone_fat_burn_min, fitbit_heart_rate_daily.zone_fat_burn_min),
-            zone_cardio_min=GREATEST(EXCLUDED.zone_cardio_min, fitbit_heart_rate_daily.zone_cardio_min),
-            zone_peak_min=GREATEST(EXCLUDED.zone_peak_min, fitbit_heart_rate_daily.zone_peak_min),
+            zone_fat_burn_min=GREATEST(EXCLUDED.zone_fat_burn_min, {heart_rate_daily_ref}.zone_fat_burn_min),
+            zone_cardio_min=GREATEST(EXCLUDED.zone_cardio_min, {heart_rate_daily_ref}.zone_cardio_min),
+            zone_peak_min=GREATEST(EXCLUDED.zone_peak_min, {heart_rate_daily_ref}.zone_peak_min),
             fetched_at=NOW()
-    """, (MARK,))
+    """), (MARK,))
 
     # Respiratory rate (daily) → exact.
-    cur.execute(f"""
-        INSERT INTO universe.fitbit_breathing_rate_daily (date, breathing_rate, raw_jsonb)
+    cur.execute(tables.render("""
+        INSERT INTO {breathing_rate_daily} (date, breathing_rate, raw_jsonb)
         SELECT point_date, max((value_jsonb->'dailyRespiratoryRate'->>'breathsPerMinute')::numeric), %s::jsonb
-        FROM {GH} WHERE data_type='daily-respiratory-rate' AND source_platform='FITBIT' AND point_date >= %s
+        FROM {raw_points} WHERE data_type='daily-respiratory-rate' AND source_platform='FITBIT' AND point_date >= %s
         GROUP BY point_date
         ON CONFLICT (date) DO UPDATE SET breathing_rate=EXCLUDED.breathing_rate, raw_jsonb=EXCLUDED.raw_jsonb, fetched_at=NOW()
-    """, (MARK, since))
+    """), (MARK, since))
 
     # Skin-temp deviation (nightly − baseline) → exact.
-    cur.execute(f"""
-        INSERT INTO universe.fitbit_skin_temp_daily (date, nightly_relative, log_type, raw_jsonb)
+    cur.execute(tables.render("""
+        INSERT INTO {skin_temp_daily} (date, nightly_relative, log_type, raw_jsonb)
         SELECT point_date,
                round(max((value_jsonb->'dailySleepTemperatureDerivations'->>'nightlyTemperatureCelsius')::numeric
                        - (value_jsonb->'dailySleepTemperatureDerivations'->>'baselineTemperatureCelsius')::numeric), 2),
                'google_health', %s::jsonb
-        FROM {GH} WHERE data_type='daily-sleep-temperature-derivations' AND source_platform='FITBIT' AND point_date >= %s
+        FROM {raw_points} WHERE data_type='daily-sleep-temperature-derivations' AND source_platform='FITBIT' AND point_date >= %s
         GROUP BY point_date
         ON CONFLICT (date) DO UPDATE SET nightly_relative=EXCLUDED.nightly_relative, raw_jsonb=EXCLUDED.raw_jsonb, fetched_at=NOW()
-    """, (MARK, since))
+    """), (MARK, since))
 
     # HRV — mean of overnight per-5-min RMSSD samples (Fitbit-only are sleep-only).
-    cur.execute(f"""
-        INSERT INTO universe.fitbit_hrv_daily (date, daily_rmssd, raw_jsonb)
+    cur.execute(tables.render("""
+        INSERT INTO {hrv_daily} (date, daily_rmssd, raw_jsonb)
         SELECT point_date,
                round(avg((value_jsonb->'heartRateVariability'->>'rootMeanSquareOfSuccessiveDifferencesMilliseconds')::numeric), 3), %s::jsonb
-        FROM {GH} WHERE data_type='heart-rate-variability' AND source_platform='FITBIT' AND point_date >= %s
+        FROM {raw_points} WHERE data_type='heart-rate-variability' AND source_platform='FITBIT' AND point_date >= %s
         GROUP BY point_date
         ON CONFLICT (date) DO UPDATE SET daily_rmssd=EXCLUDED.daily_rmssd, raw_jsonb=EXCLUDED.raw_jsonb, fetched_at=NOW()
-    """, (MARK, since))
+    """), (MARK, since))
 
     # Deep-sleep RMSSD — the second line on the HRV chart, dead since the
     # cutover because Google publishes no equivalent of Fitbit's deepRmssd.
@@ -129,14 +186,14 @@ def _sql_rollups(cur, since: str) -> None:
     # NOT use GREATEST, because an average is not monotone under incomplete
     # evidence the way a sum or a count is; more samples can move a mean either
     # way. The >= 5 sample floor keeps a barely-captured night from landing.
-    cur.execute(f"""
-        INSERT INTO universe.fitbit_hrv_daily (date, deep_rmssd, raw_jsonb)
+    cur.execute(tables.render("""
+        INSERT INTO {hrv_daily} (date, deep_rmssd, raw_jsonb)
         SELECT d.point_date, round(avg(h.rmssd), 3), %s::jsonb
         FROM (
             SELECT p.point_date,
                    (st->>'startTime')::timestamptz AS s,
                    (st->>'endTime')::timestamptz   AS e
-            FROM {GH} p,
+            FROM {raw_points} p,
                  LATERAL jsonb_array_elements(p.value_jsonb->'sleep'->'stages') st
             WHERE p.data_type='sleep' AND p.source_platform='FITBIT'
                   AND st->>'type'='DEEP'
@@ -144,26 +201,26 @@ def _sql_rollups(cur, since: str) -> None:
         JOIN (
             SELECT start_time AS t,
                    (value_jsonb->'heartRateVariability'->>'rootMeanSquareOfSuccessiveDifferencesMilliseconds')::numeric AS rmssd
-            FROM {GH}
+            FROM {raw_points}
             WHERE data_type='heart-rate-variability' AND source_platform='FITBIT'
                   AND start_time IS NOT NULL
         ) h ON h.t >= d.s AND h.t < d.e
         GROUP BY d.point_date
         HAVING count(*) >= 5
         ON CONFLICT (date) DO UPDATE SET deep_rmssd=EXCLUDED.deep_rmssd
-            WHERE fitbit_hrv_daily.deep_rmssd IS NULL
-    """, (MARK,))
+            WHERE {hrv_daily_ref}.deep_rmssd IS NULL
+    """), (MARK,))
 
     # SpO2 — overnight avg/min/max, artifacts (<80%) filtered out.
-    cur.execute(f"""
-        INSERT INTO universe.fitbit_spo2_daily (date, avg_value, min_value, max_value, raw_jsonb)
+    cur.execute(tables.render("""
+        INSERT INTO {spo2_daily} (date, avg_value, min_value, max_value, raw_jsonb)
         SELECT point_date, round(avg(p),2), round(min(p),2), round(max(p),2), %s::jsonb FROM (
             SELECT point_date, (value_jsonb->'oxygenSaturation'->>'percentage')::numeric p
-            FROM {GH} WHERE data_type='oxygen-saturation' AND source_platform='FITBIT' AND point_date >= %s
+            FROM {raw_points} WHERE data_type='oxygen-saturation' AND source_platform='FITBIT' AND point_date >= %s
         ) s WHERE p BETWEEN 80 AND 100
         GROUP BY point_date
         ON CONFLICT (date) DO UPDATE SET avg_value=EXCLUDED.avg_value, min_value=EXCLUDED.min_value, max_value=EXCLUDED.max_value, raw_jsonb=EXCLUDED.raw_jsonb, fetched_at=NOW()
-    """, (MARK, since))
+    """), (MARK, since))
 
     # Steps — daily sum of intraday intervals, bucketed by the USER'S calendar
     # day. Deliberately WINDOWLESS and monotone, unlike every other rollup here.
@@ -182,28 +239,32 @@ def _sql_rollups(cur, since: str) -> None:
     # partial day climbs as it fills, a raw backfill that lands after a day has
     # aged out still corrects it, and no run can lower a day already summed
     # whole. Verified 2026-07-26 — recomputing every day from raw lowered none.
-    cur.execute(f"""
-        INSERT INTO universe.fitbit_activity_daily (date, steps, raw_jsonb)
+    cur.execute(tables.render("""
+        INSERT INTO {activity_daily} (date, steps, raw_jsonb)
         SELECT (start_time AT TIME ZONE %s)::date, sum((value_jsonb->'steps'->>'count')::int), %s::jsonb
-        FROM {GH} WHERE data_type='steps' AND source_platform='FITBIT'
+        FROM {raw_points} WHERE data_type='steps' AND source_platform='FITBIT'
               AND start_time IS NOT NULL
         GROUP BY 1
         ON CONFLICT (date) DO UPDATE SET
-            steps=GREATEST(EXCLUDED.steps, fitbit_activity_daily.steps),
+            steps=GREATEST(EXCLUDED.steps, {activity_daily_ref}.steps),
             raw_jsonb=EXCLUDED.raw_jsonb, fetched_at=NOW()
-    """, (USER_TZ, MARK))
+    """), (USER_TZ, MARK))
 
 
-def _rollup_sleep(cur, since: str) -> int:
+def _rollup_sleep(
+    cur,
+    since: str,
+    tables: RollupStorageTables = LEGACY_ROLLUP_TABLES,
+) -> int:
     # Legacy semantics: total_minutes_asleep/in_bed sum ALL sessions that
     # day (naps included); stage minutes + start/end come from the MAIN
     # (longest) session. Efficiency isn't in Google's summary — computed
     # as asleep/in-period of the main session (Fitbit's own formula is
     # near-identical; readiness only uses it via z-scores anyway).
-    cur.execute(f"""
-        SELECT point_date, value_jsonb FROM {GH}
+    cur.execute(tables.render("""
+        SELECT point_date, value_jsonb FROM {raw_points}
         WHERE data_type='sleep' AND source_platform='FITBIT' AND point_date >= %s
-    """, (since,))
+    """), (since,))
     days = {}  # date -> {"sessions": [...], "best": {...}}
     for pdate, vj in cur.fetchall():
         s = (vj or {}).get("sleep", {})
@@ -227,8 +288,8 @@ def _rollup_sleep(cur, since: str) -> int:
     for d, day in days.items():
         b = day["best"]
         efficiency = round(b["asleep"] * 100 / b["inbed"]) if b["inbed"] else None
-        cur.execute("""
-            INSERT INTO universe.fitbit_sleep_daily
+        cur.execute(tables.render("""
+            INSERT INTO {sleep_daily}
                 (date, total_minutes_asleep, total_minutes_in_bed, total_sleep_records,
                  minutes_deep, minutes_light, minutes_rem, minutes_wake,
                  efficiency, main_sleep_start_time, main_sleep_end_time, raw_jsonb)
@@ -241,22 +302,26 @@ def _rollup_sleep(cur, since: str) -> int:
                 efficiency=EXCLUDED.efficiency,
                 main_sleep_start_time=EXCLUDED.main_sleep_start_time, main_sleep_end_time=EXCLUDED.main_sleep_end_time,
                 raw_jsonb=EXCLUDED.raw_jsonb, fetched_at=NOW()
-        """, (d, day["asleep"], day["inbed"], day["records"],
+        """), (d, day["asleep"], day["inbed"], day["records"],
               b["deep"], b["light"], b["rem"], b["wake"], efficiency,
               b["start"], b["end"], MARK))
         n += 1
     return n
 
 
-def _rollup_weight(cur, since: str) -> int:
+def _rollup_weight(
+    cur,
+    since: str,
+    tables: RollupStorageTables = LEGACY_ROLLUP_TABLES,
+) -> int:
     # fitbit_body_weight PK is Fitbit's log_id; Google points carry a
     # resource name instead. Derive a NEGATIVE synthetic id from the name
     # hash — real Fitbit log ids are positive, so the two can't collide.
-    cur.execute(f"""
-        SELECT point_date, name, value_jsonb FROM {GH}
+    cur.execute(tables.render("""
+        SELECT point_date, name, value_jsonb FROM {raw_points}
         WHERE data_type='weight' AND source_platform='FITBIT'
               AND point_date >= %s AND name IS NOT NULL
-    """, (since,))
+    """), (since,))
     n = 0
     for pdate, name, vj in cur.fetchall():
         w = (vj or {}).get("weight", {})
@@ -264,12 +329,12 @@ def _rollup_weight(cur, since: str) -> int:
         if not grams:
             continue
         log_id = -(int(hashlib.md5(name.encode()).hexdigest()[:12], 16))
-        cur.execute("""
-            INSERT INTO universe.fitbit_body_weight (log_id, date, weight_kg, source, raw_jsonb)
+        cur.execute(tables.render("""
+            INSERT INTO {body_weight} (log_id, date, weight_kg, source, raw_jsonb)
             VALUES (%s,%s,%s,'google_health',%s)
             ON CONFLICT (log_id) DO UPDATE SET
                 date=EXCLUDED.date, weight_kg=EXCLUDED.weight_kg, raw_jsonb=EXCLUDED.raw_jsonb, fetched_at=NOW()
-        """, (log_id, pdate, round(grams / 1000.0, 2), MARK))
+        """), (log_id, pdate, round(grams / 1000.0, 2), MARK))
         n += 1
     return n
 
@@ -291,38 +356,20 @@ _FOOD_NUTRIENTS = {
 }
 
 
-def _ensure_food_table(cur) -> None:
-    # Legacy ingest_fitbit_food used to own this table; it is now retired, so the
-    # Google rollup ensures its own schema. Idempotent: creates the table on a
-    # clean install and adds the richer-nutrient columns to an existing one.
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS universe.fitbit_food_log_daily (
-            date DATE PRIMARY KEY, calories_in INTEGER, carbs NUMERIC(8,2),
-            fat NUMERIC(8,2), fiber NUMERIC(8,2), protein NUMERIC(8,2),
-            sodium NUMERIC(10,2), water NUMERIC(10,2), calorie_goal INTEGER,
-            food_count INTEGER, raw_jsonb JSONB NOT NULL,
-            fetched_at TIMESTAMPTZ DEFAULT NOW())
-    """)
-    cur.execute("""
-        ALTER TABLE universe.fitbit_food_log_daily
-            ADD COLUMN IF NOT EXISTS sugar         NUMERIC(8,2),
-            ADD COLUMN IF NOT EXISTS saturated_fat NUMERIC(8,2),
-            ADD COLUMN IF NOT EXISTS cholesterol   NUMERIC(10,2),
-            ADD COLUMN IF NOT EXISTS potassium     NUMERIC(10,2)
-    """)
-
-
-def _rollup_food(cur, since: str) -> int:
+def _rollup_food(
+    cur,
+    since: str,
+    tables: RollupStorageTables = LEGACY_ROLLUP_TABLES,
+) -> int:
     # Google's nutrition-log is PER-FOOD-ENTRY; sum each day's entries. Calories
     # and total carbs/fat are top-level; everything else lives in nutrients[]
     # (the legacy rollup only pulled PROTEIN and dropped fiber/sodium/etc — they
     # were in the payload all along). Water + calorie_goal are genuinely absent
     # from Google's payload, so those columns stay NULL post-cutover.
-    _ensure_food_table(cur)
-    cur.execute(f"""
-        SELECT point_date, value_jsonb FROM {GH}
+    cur.execute(tables.render("""
+        SELECT point_date, value_jsonb FROM {raw_points}
         WHERE data_type='nutrition-log' AND source_platform='FITBIT' AND point_date >= %s
-    """, (since,))
+    """), (since,))
     agg = {}
     for pdate, vj in cur.fetchall():
         nl = (vj or {}).get("nutritionLog", {})
@@ -341,8 +388,8 @@ def _rollup_food(cur, since: str) -> int:
         a["n"] += 1
     n = 0
     for d, a in agg.items():
-        cur.execute("""
-            INSERT INTO universe.fitbit_food_log_daily
+        cur.execute(tables.render("""
+            INSERT INTO {food_log_daily}
                 (date, calories_in, carbs, fat, protein, fiber, sugar,
                  saturated_fat, sodium, cholesterol, potassium, food_count, raw_jsonb)
             VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
@@ -352,7 +399,7 @@ def _rollup_food(cur, since: str) -> int:
                 saturated_fat=EXCLUDED.saturated_fat, sodium=EXCLUDED.sodium,
                 cholesterol=EXCLUDED.cholesterol, potassium=EXCLUDED.potassium,
                 food_count=EXCLUDED.food_count, raw_jsonb=EXCLUDED.raw_jsonb, fetched_at=NOW()
-        """, (d, round(a["cal"]), round(a["carbs"], 2), round(a["fat"], 2),
+        """), (d, round(a["cal"]), round(a["carbs"], 2), round(a["fat"], 2),
               round(a["protein"], 2), round(a["fiber"], 2), round(a["sugar"], 2),
               round(a["saturated_fat"], 2), round(a["sodium"], 2),
               round(a["cholesterol"], 2), round(a["potassium"], 2), a["n"], MARK))
@@ -360,7 +407,11 @@ def _rollup_food(cur, since: str) -> int:
     return n
 
 
-def _rollup_exercise(cur, since: str) -> int:
+def _rollup_exercise(
+    cur,
+    since: str,
+    tables: RollupStorageTables = LEGACY_ROLLUP_TABLES,
+) -> int:
     """Exercise sessions → fitbit_exercise_log. Google's exercise point id IS
     the legacy Fitbit logId (validated 2026-06-11: 79/79 overlap rows joined
     exactly; dates/durations/avg-HR identical, calories slightly revised), so
@@ -369,11 +420,11 @@ def _rollup_exercise(cur, since: str) -> int:
     payload, so they're preserved on legacy rows and derived/NULL on new ones.
     Units matched to legacy: distance km (4dp), elevation meters (2dp).
     """
-    cur.execute(f"""
-        SELECT name, value_jsonb FROM {GH}
+    cur.execute(tables.render("""
+        SELECT name, value_jsonb FROM {raw_points}
         WHERE data_type='exercise' AND source_platform='FITBIT'
               AND point_date >= %s AND name IS NOT NULL
-    """, (since,))
+    """), (since,))
     n = 0
     for name, vj in cur.fetchall():
         ex = (vj or {}).get("exercise", {})
@@ -391,8 +442,8 @@ def _rollup_exercise(cur, since: str) -> int:
         mm = ms.get("distanceMillimeters")
         elev = ms.get("elevationGainMillimeters")
         rec = (vj.get("dataSource", {}) or {}).get("recordingMethod", "")
-        cur.execute("""
-            INSERT INTO universe.fitbit_exercise_log
+        cur.execute(tables.render("""
+            INSERT INTO {exercise_log}
                 (log_id, date, start_time, activity_name, log_type, calories,
                  duration_ms, distance, distance_unit, steps, average_heart_rate,
                  elevation_gain, has_active_zone_minutes, raw_jsonb)
@@ -402,7 +453,7 @@ def _rollup_exercise(cur, since: str) -> int:
                 distance=EXCLUDED.distance, steps=EXCLUDED.steps,
                 average_heart_rate=EXCLUDED.average_heart_rate,
                 raw_jsonb=EXCLUDED.raw_jsonb, fetched_at=NOW()
-        """, (log_id, local_date, start,
+        """), (log_id, local_date, start,
               ex.get("displayName") or ex.get("exerciseType") or "Unknown",
               "auto_detected" if rec == "PASSIVELY_MEASURED" else (rec.lower() or None),
               round(ms["caloriesKcal"]) if ms.get("caloriesKcal") is not None else None,
@@ -422,7 +473,12 @@ def _civil(d: date) -> dict:
     return {"date": {"year": d.year, "month": d.month, "day": d.day}}
 
 
-def _rollup_activity_daily(token: str, cur, rollup_days: int) -> int:
+def _rollup_activity_daily(
+    token: str,
+    cur,
+    rollup_days: int,
+    tables: RollupStorageTables = LEGACY_ROLLUP_TABLES,
+) -> int:
     """Daily activity columns Google only exposes via the dailyRollUp endpoint
     (civil-day buckets), written into the EXISTING fitbit_activity_daily columns
     the dashboard already reads — all validated EXACT vs legacy (2026-06-11):
@@ -487,8 +543,8 @@ def _rollup_activity_daily(token: str, cur, rollup_days: int) -> int:
                            .get("activeMinutesRollupByActivityLevel", [])}
         mm = ((dist.get(d, {}) or {}).get("distance") or {}).get("millimetersSum")
         cnt = ((flr.get(d, {}) or {}).get("floors") or {}).get("countSum")
-        cur.execute("""
-            INSERT INTO universe.fitbit_activity_daily
+        cur.execute(tables.render("""
+            INSERT INTO {activity_daily}
                 (date, calories_out, distance_km, floors,
                  minutes_lightly_active, minutes_fairly_active, minutes_very_active, raw_jsonb)
             VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
@@ -499,7 +555,7 @@ def _rollup_activity_daily(token: str, cur, rollup_days: int) -> int:
                 minutes_fairly_active=EXCLUDED.minutes_fairly_active,
                 minutes_very_active=EXCLUDED.minutes_very_active,
                 raw_jsonb=EXCLUDED.raw_jsonb, fetched_at=NOW()
-        """, (d, round(kcal),
+        """), (d, round(kcal),
               round(int(mm) / 1_000_000, 3) if mm is not None else 0,
               int(cnt) if cnt is not None else 0,
               levels.get("LIGHT", 0), levels.get("MODERATE", 0), levels.get("VIGOROUS", 0), MARK))
@@ -507,18 +563,25 @@ def _rollup_activity_daily(token: str, cur, rollup_days: int) -> int:
     return n
 
 
-def run_rollups(conn, token: str, rollup_days: int) -> dict:
+def run_rollups(
+    conn,
+    token: str,
+    rollup_days: int,
+    tables: RollupStorageTables = LEGACY_ROLLUP_TABLES,
+) -> dict:
     since = (datetime.now(timezone.utc).date() - timedelta(days=rollup_days)).isoformat()
     cur = conn.cursor()
-    _sql_rollups(cur, since)
-    sleep_n = _rollup_sleep(cur, since)
-    food_n = _rollup_food(cur, since)
-    weight_n = _rollup_weight(cur, since)
-    exercise_n = _rollup_exercise(cur, since)
+    _sql_rollups(cur, since, tables)
+    sleep_n = _rollup_sleep(cur, since, tables)
+    food_n = _rollup_food(cur, since, tables)
+    weight_n = _rollup_weight(cur, since, tables)
+    exercise_n = _rollup_exercise(cur, since, tables)
     conn.commit()  # lock in the SQL-sourced rollups before the network rollup
     activity: dict = {}
     try:
-        activity["activity_days"] = _rollup_activity_daily(token, cur, rollup_days)
+        activity["activity_days"] = _rollup_activity_daily(
+            token, cur, rollup_days, tables
+        )
         conn.commit()
     except Exception as exc:  # noqa: BLE001 — network rollup must not drop the committed SQL rollups
         conn.rollback()
@@ -530,12 +593,23 @@ def run_rollups(conn, token: str, rollup_days: int) -> dict:
 class GoogleHealthRollupWriter:
     """Rollup boundary kept separate from raw capture and run coordination."""
 
-    def __init__(self, connection, access_token: str):
+    def __init__(
+        self,
+        connection,
+        access_token: str,
+        tables: RollupStorageTables = LEGACY_ROLLUP_TABLES,
+    ):
         self._connection = connection
         self._access_token = access_token
+        self._tables = tables
 
     def write(self, rollup_days: int) -> dict:
-        return run_rollups(self._connection, self._access_token, rollup_days)
+        return run_rollups(
+            self._connection,
+            self._access_token,
+            rollup_days,
+            self._tables,
+        )
 
 
 # NOTE — rollup coverage status:
