@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 interface DateTimePickerProps {
   value: Date;
   onChange: (date: Date) => void;
+  disabled?: boolean;
 }
 
 const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
@@ -29,7 +30,11 @@ function timeStr(d: Date): string {
   return `${h}:${m}`;
 }
 
-export function DateTimePicker({ value, onChange }: DateTimePickerProps) {
+export function DateTimePicker({
+  value,
+  onChange,
+  disabled = false,
+}: DateTimePickerProps) {
   const [viewMonth, setViewMonth] = useState(
     () => new Date(value.getFullYear(), value.getMonth(), 1),
   );
@@ -130,8 +135,10 @@ export function DateTimePicker({ value, onChange }: DateTimePickerProps) {
         {QUICK_PRESETS.map((p) => (
           <button
             key={p.label}
+            type="button"
             onClick={() => applyPreset(p.minutes, new Date())}
-            className="px-2.5 py-1 text-[11px] font-semibold rounded-full bg-surface-container-high text-on-surface-variant hover:bg-secondary/20 hover:text-on-surface transition-colors"
+            disabled={disabled}
+            className="px-2.5 py-1 text-[11px] font-semibold rounded-full bg-surface-container-high text-on-surface-variant hover:bg-secondary/20 hover:text-on-surface transition-colors disabled:opacity-50"
           >
             {p.label}
           </button>
@@ -143,6 +150,7 @@ export function DateTimePicker({ value, onChange }: DateTimePickerProps) {
         <button
           type="button"
           onClick={prevMonth}
+          disabled={disabled}
           aria-label="Previous month"
           className="p-1 text-outline hover:text-on-surface rounded-lg hover:bg-surface-container-high transition-colors"
         >
@@ -154,6 +162,7 @@ export function DateTimePicker({ value, onChange }: DateTimePickerProps) {
         <button
           type="button"
           onClick={nextMonth}
+          disabled={disabled}
           aria-label="Next month"
           className="p-1 text-outline hover:text-on-surface rounded-lg hover:bg-surface-container-high transition-colors"
         >
@@ -185,6 +194,7 @@ export function DateTimePicker({ value, onChange }: DateTimePickerProps) {
               type="button"
               key={i}
               onClick={() => selectDate(d)}
+              disabled={disabled}
               className={`text-xs h-8 rounded-lg tabular-nums transition-colors ${
                 isSelected
                   ? "bg-primary text-on-primary-fixed font-bold"
@@ -211,6 +221,7 @@ export function DateTimePicker({ value, onChange }: DateTimePickerProps) {
             type="time"
             value={timeStr(value)}
             onChange={(e) => selectTime(e.target.value)}
+            disabled={disabled}
             className="flex-1 rounded-lg bg-surface-container-lowest border border-outline-variant/20 px-3 py-1.5 text-sm text-on-surface focus:outline-none focus:ring-1 focus:ring-primary tabular-nums"
           />
         </label>

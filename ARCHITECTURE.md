@@ -145,6 +145,13 @@ The dashboard shell follows a workflow-first information architecture:
   remains a supplement-specific rule. Cards expose separate Edit and Dossier
   actions so mouse, keyboard, and assistive-technology users get the same
   interaction model.
+- Intake logging follows the same boundary. `components/intake/logModel.ts`
+  owns pure history-window, day-partitioning, validation, and payload rules.
+  Focused shared components separately own quick selection, dose confirmation,
+  timeline/history, retry, and deletion interactions; `IntakeLogUi.ts` is only
+  their public export boundary. Medication and supplement hooks adapt their own
+  queries and mutations. The medication calendar and supplement composition
+  preview remain domain-specific extensions rather than flags in the shared UI.
 - Pipeline Status is also a composition boundary. `useIngestPage.ts` owns
   server and interaction state, `ingestModel.ts` normalizes display-ready data,
   and the status/job components own presentation. `pages/Ingest.tsx` only
