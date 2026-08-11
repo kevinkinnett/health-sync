@@ -94,6 +94,7 @@ describe("IngestRepository Google Health cutover", () => {
 
     await expect(repo.hasRunningJob()).resolves.toBe(true);
     expect(sqlCalls[0]).toContain("provider = 'google_health'");
+    expect(sqlCalls[0]).toContain("started_at_utc >= NOW() - INTERVAL '2 hours'");
     expect(sqlCalls[0]).not.toContain("provider = 'fitbit'");
   });
 });

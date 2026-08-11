@@ -51,6 +51,23 @@ describeWithPostgres("database migrations against PostgreSQL", () => {
       .resolves.toMatchObject({ rows: [{ id: 1 }] });
     await expect(pool.query("SELECT id FROM universe.health_activity_daily"))
       .resolves.toMatchObject({ rows: [{ id: 42 }] });
+    const alertColumns = await pool.query<{ column_name: string }>(`
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'universe' AND table_name = 'health_alert'
+    `);
+    expect(alertColumns.rows.map((row) => row.column_name)).toEqual(
+      expect.arrayContaining(["last_observed_at", "resolved_at", "occurrence_count"]),
+    );
+
+    await pool.query(`
+      INSERT INTO universe.health_alert (kind, severity, title, detail, metric, date)
+      VALUES ('readiness_drop', 'warn', 'First episode', 'detail', 'readiness', CURRENT_DATE)
+    `);
+    await expect(pool.query(`
+      INSERT INTO universe.health_alert (kind, severity, title, detail, metric, date)
+      VALUES ('readiness_drop', 'warn', 'Duplicate open episode', 'detail', 'readiness', CURRENT_DATE)
+    `)).rejects.toMatchObject({ code: "23505" });
 
     const migrationRows = await pool.query<{ name: string; checksum: string }>(
       "SELECT name, checksum FROM universe.schema_migration ORDER BY name",

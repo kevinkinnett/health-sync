@@ -12,6 +12,7 @@ import type {
 } from "@health-dashboard/shared";
 import type { IngestRepository } from "../repositories/ingestRepo.js";
 import { logger } from "../logger.js";
+import { applyIngestPolicies } from "./ingestPolicies.js";
 
 interface WindmillConfig {
   baseUrl: string;
@@ -95,7 +96,7 @@ export class IngestService {
   }
 
   async getState(): Promise<IngestState[]> {
-    return this.ingestRepo.getState();
+    return applyIngestPolicies(await this.ingestRepo.getState());
   }
 
   async getRuns(limit: number): Promise<IngestRun[]> {

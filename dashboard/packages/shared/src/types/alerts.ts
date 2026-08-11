@@ -37,6 +37,12 @@ export interface HealthAlert {
   /** The day the alert concerns (YYYY-MM-DD). */
   date: string;
   createdAt: string;
+  /** Most recent evaluation where this condition was still present. */
+  lastObservedAt: string;
+  /** Null while the episode is active; set when a later evaluation recovers. */
+  resolvedAt: string | null;
+  /** Number of evaluations that observed this episode. */
+  occurrenceCount: number;
   /** Null until the user dismisses/acknowledges it. */
   readAt: string | null;
 }
@@ -45,6 +51,7 @@ export interface HealthAlert {
 export interface AlertsResponse {
   alerts: HealthAlert[];
   unreadCount: number;
+  openCount: number;
 }
 
 /**

@@ -133,12 +133,16 @@ function CoverageSummaryCard({ state }: { state: IngestState[] }) {
   const trackedState = state.filter(isTrackedCoverageState);
   if (trackedState.length === 0) return null;
   if (trackedState.every(isHistoryTargetMet)) {
+    const providerLimited = trackedState.filter((item) => item.coverage?.status === "provider_limited");
     return (
       <div className="p-4 bg-secondary/10 border-l-4 border-secondary rounded-r-xl flex items-center gap-3">
         <span className="material-symbols-outlined text-secondary" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
         <div>
           <span className="text-sm font-bold text-secondary">Historical coverage target met</span>
-          <span className="text-xs text-on-surface-variant ml-2">All tracked Google Health metrics have at least {HISTORY_TARGET_DAYS} days of history.</span>
+          <span className="text-xs text-on-surface-variant ml-2">
+            All tracked metrics meet their provider-aware target.
+            {providerLimited.length > 0 ? ` ${providerLimited.map((item) => item.dataType.replace(/_/g, " ")).join(", ")} uses the available Google Health window.` : ""}
+          </span>
         </div>
       </div>
     );
@@ -156,6 +160,42 @@ function CoverageSummaryCard({ state }: { state: IngestState[] }) {
         </div>
         <p className="text-on-surface-variant text-sm mt-1">
           <span className="capitalize">{gap.dataType.replace(/_/g, " ")}</span> currently has <span className="text-on-surface font-bold tabular-nums">{gap.daysCovered} days</span> of the {HISTORY_TARGET_DAYS}-day target. Google Health may expose different history depths by metric.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function MetricFreshnessSummary({ state }: { state: IngestState[] }) {
+  if (!state.some((item) => item.metricFreshness != null)) return null;
+  const stale = state.filter((item) => item.metricFreshness?.status === "stale");
+  const unknown = state.filter((item) => item.metricFreshness?.status === "unknown");
+  const sparse = state.filter((item) => item.metricFreshness?.status === "sparse");
+  const needsAttention = [...stale, ...unknown];
+
+  if (needsAttention.length === 0) {
+    return (
+      <div className="p-4 bg-secondary/10 border-l-4 border-secondary rounded-r-xl flex items-center gap-3">
+        <span className="material-symbols-outlined text-secondary">update</span>
+        <div>
+          <span className="text-sm font-bold text-secondary">Daily metric feeds are current</span>
+          {sparse.length > 0 && (
+            <span className="text-xs text-on-surface-variant ml-2">
+              {sparse.map((item) => item.dataType.replace(/_/g, " ")).join(" and ")} are checked only when recorded.
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div role="alert" className="p-4 bg-tertiary/10 border-l-4 border-tertiary rounded-r-xl flex items-start gap-4">
+      <span className="material-symbols-outlined text-tertiary mt-0.5">data_alert</span>
+      <div>
+        <h4 className="text-sm font-bold text-tertiary uppercase tracking-wider">Metric data needs attention</h4>
+        <p className="text-on-surface-variant text-sm mt-1">
+          {needsAttention.map((item) => item.dataType.replace(/_/g, " ")).join(", ")} {needsAttention.length === 1 ? "is" : "are"} missing recent daily measurements. The pipeline heartbeat can remain healthy even when a single metric stops updating.
         </p>
       </div>
     </div>
@@ -307,6 +347,7 @@ export function Ingest() {
 
       {/* Historical coverage summary */}
       <FreshnessWarning status={data?.status ?? null} />
+      <MetricFreshnessSummary state={state} />
       <CoverageSummaryCard state={state} />
 
       {/* Schedule Cards */}
@@ -385,24 +426,32 @@ export function Ingest() {
               const s = stateByType[t];
               if (!s) return null;
               const daysFetched = historyDaysCovered(s);
-              const pct = Math.min(100, Math.round((daysFetched / HISTORY_TARGET_DAYS) * 100));
               const targetMet = isHistoryTargetMet(s);
+              const targetDays = s.coverage?.targetDays ?? HISTORY_TARGET_DAYS;
+              const coveragePct = Math.min(100, Math.round((daysFetched / targetDays) * 100));
               const barColor = targetMet ? "bg-secondary" : colors[i % colors.length];
               return (
                 <div key={t} className="space-y-2">
                   <div className="flex justify-between text-xs font-bold uppercase tracking-wider">
                     <span className="text-on-surface-variant capitalize">{t.replace(/_/g, " ")}</span>
-                    <span className="text-on-surface tabular-nums">{targetMet ? "100%" : `${pct}%`}</span>
+                    <span className="text-on-surface tabular-nums">{targetMet ? "100%" : `${coveragePct}%`}</span>
                   </div>
                   <div className="h-2 w-full bg-surface-container-high rounded-full overflow-hidden">
-                    <div className={`h-full rounded-full ${barColor}`} style={{ width: `${targetMet ? 100 : pct}%` }} />
+                    <div className={`h-full rounded-full ${barColor}`} style={{ width: `${targetMet ? 100 : coveragePct}%` }} />
                   </div>
                   <p className="text-[10px] text-outline tabular-nums">
-                    {s.historyTargetMet
+                    {s.coverage?.status === "provider_limited"
+                      ? `Available Google Health history captured · ${daysFetched} days`
+                      : s.historyTargetMet
                       ? `${HISTORY_TARGET_DAYS}-day history target met`
                       : targetMet
                         ? `${HISTORY_TARGET_DAYS}-day history target met`
                         : `${s.earliestFetchedDate ?? "—"} to ${s.latestFetchedDate ?? "—"}`}
+                    {s.metricFreshness?.status === "stale"
+                      ? ` · stale (${s.metricFreshness.ageDays}d old)`
+                      : s.metricFreshness?.status === "sparse"
+                        ? " · recorded as available"
+                        : ""}
                   </p>
                 </div>
               );

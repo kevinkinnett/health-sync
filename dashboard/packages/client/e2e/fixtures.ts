@@ -456,7 +456,7 @@ const EXPERIMENT_SUMMARIES: ExperimentSummary[] = [
   },
 ];
 
-const ALERTS: AlertsResponse = { alerts: [], unreadCount: 0 };
+const ALERTS: AlertsResponse = { alerts: [], unreadCount: 0, openCount: 0 };
 const LLM_MODELS: LlmModelSettings = { dossier: "sonnet", insights: "sonnet", chat: "sonnet" };
 
 const NOTIFICATIONS: NotificationSettings = {

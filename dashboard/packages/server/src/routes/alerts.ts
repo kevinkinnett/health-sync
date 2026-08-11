@@ -9,6 +9,7 @@ import { asyncHandler } from "../middleware/asyncHandler.js";
  *   POST /evaluate    → run detection now, return newly-created alerts
  *                       (called on a schedule by the Windmill job)
  *   POST /read-all    → mark every alert read (the bell "mark all read")
+ *   POST /:id/read    → acknowledge one alert episode
  */
 export function createAlertRoutes(controller: AlertController): Router {
   const router = Router();
@@ -17,6 +18,7 @@ export function createAlertRoutes(controller: AlertController): Router {
   router.get("/", wrap((req, res) => controller.list(req, res)));
   router.post("/evaluate", wrap((req, res) => controller.evaluate(req, res)));
   router.post("/read-all", wrap((req, res) => controller.markAllRead(req, res)));
+  router.post("/:id/read", wrap((req, res) => controller.markRead(req, res)));
 
   return router;
 }

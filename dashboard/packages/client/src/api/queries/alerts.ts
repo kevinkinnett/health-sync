@@ -25,3 +25,13 @@ export function useMarkAlertsRead() {
     },
   });
 }
+
+export function useMarkAlertRead() {
+  const queryClient = useQueryClient();
+  return useMutation<{ updated: number }, Error, number>({
+    mutationFn: (id) => apiFetch(`/alerts/${id}/read`, { method: "POST" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["alerts"] });
+    },
+  });
+}

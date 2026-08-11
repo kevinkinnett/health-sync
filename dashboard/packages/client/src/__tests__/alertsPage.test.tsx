@@ -27,6 +27,7 @@ describe("Alert history", () => {
     apiFetchMock.mockReset();
     apiFetchMock.mockResolvedValue({
       unreadCount: 2,
+      openCount: 1,
       alerts: [
         {
           id: 2,
@@ -37,6 +38,9 @@ describe("Alert history", () => {
           metric: "ingestion",
           date: "2026-08-11",
           createdAt: "2026-08-11T12:00:00Z",
+          lastObservedAt: "2026-08-11T12:00:00Z",
+          resolvedAt: null,
+          occurrenceCount: 3,
           readAt: null,
         },
         {
@@ -48,6 +52,9 @@ describe("Alert history", () => {
           metric: "readiness",
           date: "2026-08-10",
           createdAt: "2026-08-10T12:00:00Z",
+          lastObservedAt: "2026-08-10T12:00:00Z",
+          resolvedAt: "2026-08-11T08:00:00Z",
+          occurrenceCount: 2,
           readAt: null,
         },
       ],
@@ -58,6 +65,7 @@ describe("Alert history", () => {
     renderPage();
 
     expect(await screen.findByRole("heading", { name: "Alert history" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^all$/i }));
     expect(screen.getByRole("link", { name: /open data pipeline/i })).toHaveAttribute("href", "/ingest");
     expect(screen.getByRole("link", { name: /review readiness/i })).toHaveAttribute("href", "/readiness");
     expect(apiFetchMock).toHaveBeenCalledWith("/alerts?limit=200", undefined);
@@ -67,10 +75,23 @@ describe("Alert history", () => {
     renderPage();
     await screen.findByText("Google Health sync is late");
 
+    fireEvent.click(screen.getByRole("button", { name: /^all$/i }));
     fireEvent.click(screen.getByRole("button", { name: /pipeline/i }));
     await waitFor(() => {
       expect(screen.getByText("Google Health sync is late")).toBeInTheDocument();
       expect(screen.queryByText("Readiness has dropped")).not.toBeInTheDocument();
+    });
+  });
+
+  it("separates current episodes from resolved history", async () => {
+    renderPage();
+    await screen.findByText("Google Health sync is late");
+
+    expect(screen.queryByText("Readiness has dropped")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^history$/i }));
+    await waitFor(() => {
+      expect(screen.getByText("Readiness has dropped")).toBeInTheDocument();
+      expect(screen.queryByText("Google Health sync is late")).not.toBeInTheDocument();
     });
   });
 });
