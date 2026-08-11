@@ -139,6 +139,17 @@ The dashboard shell follows a workflow-first information architecture:
   and browser interactions, while `pages/Insights.tsx` only owns page-level tab
   selection. This keeps server-state rules independently testable without
   hiding them inside a page-sized component.
+- Supplement and medication libraries share the intake-library shell, item
+  fields, validation, and payload mapping in `components/intake/`. Focused
+  domain hooks own each library's queries and mutations; supplement composition
+  remains a supplement-specific rule. Cards expose separate Edit and Dossier
+  actions so mouse, keyboard, and assistive-technology users get the same
+  interaction model.
+- Pipeline Status is also a composition boundary. `useIngestPage.ts` owns
+  server and interaction state, `ingestModel.ts` normalizes display-ready data,
+  and the status/job components own presentation. `pages/Ingest.tsx` only
+  composes those pieces, keeping refresh, trigger, freshness, coverage, and job
+  history behavior testable without a page-sized component.
 - CI builds the production client and enforces budgets for the initial entry,
   largest lazy chunk, total JavaScript, and stylesheets. Dependency growth must
   therefore be an explicit threshold decision rather than an invisible deploy.
