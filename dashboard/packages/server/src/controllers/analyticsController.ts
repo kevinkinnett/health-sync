@@ -1,9 +1,9 @@
 import type { Request, Response } from "express";
-import type { AnalyticsService } from "../services/analyticsService.js";
+import type { AnalyticsUseCases } from "../services/analytics/contracts.js";
 import { parseDateRange, parseId, parseOptionalId, parseLagDays } from "./_params.js";
 
 /**
- * Thin HTTP layer over {@link AnalyticsService}. Handlers throw on
+ * Thin HTTP layer over the analytics application capabilities. Handlers throw on
  * failure; `middleware/errorMapper` translates `BadRequestError` →
  * 400, `AnalyticsNotFoundError` → 404, etc. No per-method try/catch
  * boilerplate.
@@ -17,7 +17,7 @@ export class AnalyticsController {
   private readonly tz: string;
 
   constructor(
-    private service: AnalyticsService,
+    private service: AnalyticsUseCases,
     opts: { userTimezone: string } = { userTimezone: "UTC" },
   ) {
     this.tz = opts.userTimezone;

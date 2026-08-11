@@ -46,6 +46,14 @@ Concrete repositories still satisfy those interfaces structurally. This makes
 the service's actual needs explicit and gives tests small seams without adding
 runtime machinery.
 
+`AnalyticsService` is also a stable facade rather than the owner of every
+analytics rule. Focused collaborators under `services/analytics/` own pure
+intake calendar calculations, canonical daily metric joins, shared intake use
+cases, and the supplement- and medication-specific workflows. Controllers and
+the v1 tool API depend on the `AnalyticsUseCases` capability contract, while
+the concrete facade is wired only at the composition boundary. Each rule set
+can therefore be tested and changed independently.
+
 The summary and readiness paths are now focused use cases under
 `services/health/`. They consume small `findLatest` capabilities and own their
 respective assembly rules; `HealthDataService` remains a stable facade for
