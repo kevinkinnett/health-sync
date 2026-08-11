@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import type { AlertSeverity, HealthAlert } from "@health-dashboard/shared";
 import { useAlerts, useMarkAlertsRead } from "../api/queries";
 import { formatRelativeAgo } from "../lib/relativeTime";
+import { Link } from "react-router-dom";
+import { alertAction } from "../lib/alertActions";
 
 /**
  * The notification bell in the top bar: an unread badge + a dropdown
@@ -18,7 +20,7 @@ const SEVERITY_DOT: Record<AlertSeverity, string> = {
 };
 
 export function AlertBell() {
-  const { data } = useAlerts();
+  const { data } = useAlerts(8);
   const markRead = useMarkAlertsRead();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -78,7 +80,16 @@ export function AlertBell() {
           className="absolute right-0 top-10 w-80 max-h-96 overflow-y-auto bg-surface-container-high rounded-xl border border-outline-variant/15 shadow-xl z-50"
         >
           <div className="px-4 py-3 border-b border-outline-variant/10">
-            <span className="text-sm font-bold text-on-surface">Alerts</span>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-sm font-bold text-on-surface">Alerts</span>
+              <Link
+                to="/alerts"
+                onClick={() => setOpen(false)}
+                className="text-xs font-semibold text-primary hover:underline"
+              >
+                View history
+              </Link>
+            </div>
           </div>
           {alerts.length === 0 ? (
             <div className="px-4 py-8 text-center text-sm text-outline">
@@ -98,6 +109,7 @@ export function AlertBell() {
 }
 
 function AlertRow({ alert }: { alert: HealthAlert }) {
+  const action = alertAction(alert.kind);
   return (
     <li className="px-4 py-3 border-b border-outline-variant/5 last:border-0">
       <div className="flex items-start gap-2">
@@ -113,6 +125,13 @@ function AlertRow({ alert }: { alert: HealthAlert }) {
           <div className="text-[10px] text-outline mt-1 tabular-nums">
             {formatRelativeAgo(alert.createdAt)}
           </div>
+          <Link
+            to={action.to}
+            className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
+          >
+            {action.label}
+            <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
+          </Link>
         </div>
       </div>
     </li>

@@ -10,7 +10,7 @@ export class SleepRepository {
               total_sleep_records, minutes_deep, minutes_light,
               minutes_rem, minutes_wake, efficiency,
               main_sleep_start_time, main_sleep_end_time, fetched_at
-       FROM universe.fitbit_sleep_daily
+       FROM universe.health_sleep_daily
        WHERE date >= $1 AND date <= $2
        ORDER BY date`,
       [start, end],
@@ -24,7 +24,7 @@ export class SleepRepository {
               total_sleep_records, minutes_deep, minutes_light,
               minutes_rem, minutes_wake, efficiency,
               main_sleep_start_time, main_sleep_end_time, fetched_at
-       FROM universe.fitbit_sleep_daily
+       FROM universe.health_sleep_daily
        ORDER BY date DESC
        LIMIT $1`,
       [limit],

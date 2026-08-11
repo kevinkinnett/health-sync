@@ -137,7 +137,7 @@
     "snore_duration_sec",
     "tnt"
   ],
-  "universe.fitbit_activity_daily": [
+  "universe.health_activity_daily": [
     "active_calories",
     "calories_bmr",
     "calories_out",
@@ -152,7 +152,7 @@
     "raw_jsonb",
     "steps"
   ],
-  "universe.fitbit_body_weight": [
+  "universe.health_body_weight": [
     "bmi",
     "date",
     "fat_pct",
@@ -163,19 +163,19 @@
     "time",
     "weight_kg"
   ],
-  "universe.fitbit_breathing_rate_daily": [
+  "universe.health_breathing_rate_daily": [
     "breathing_rate",
     "date",
     "fetched_at",
     "raw_jsonb"
   ],
-  "universe.fitbit_cardio_score_daily": [
+  "universe.health_cardio_score_daily": [
     "date",
     "fetched_at",
     "raw_jsonb",
     "vo2_max"
   ],
-  "universe.fitbit_exercise_log": [
+  "universe.health_exercise_log": [
     "activity_name",
     "activity_type_id",
     "average_heart_rate",
@@ -193,7 +193,7 @@
     "start_time",
     "steps"
   ],
-  "universe.fitbit_food_log_daily": [
+  "universe.health_food_log_daily": [
     "calorie_goal",
     "calories_in",
     "carbs",
@@ -211,7 +211,7 @@
     "sugar",
     "water"
   ],
-  "universe.fitbit_heart_rate_daily": [
+  "universe.health_heart_rate_daily": [
     "date",
     "fetched_at",
     "raw_jsonb",
@@ -225,21 +225,21 @@
     "zone_peak_cal",
     "zone_peak_min"
   ],
-  "universe.fitbit_hrv_daily": [
+  "universe.health_hrv_daily": [
     "daily_rmssd",
     "date",
     "deep_rmssd",
     "fetched_at",
     "raw_jsonb"
   ],
-  "universe.fitbit_skin_temp_daily": [
+  "universe.health_skin_temp_daily": [
     "date",
     "fetched_at",
     "log_type",
     "nightly_relative",
     "raw_jsonb"
   ],
-  "universe.fitbit_sleep_daily": [
+  "universe.health_sleep_daily": [
     "date",
     "efficiency",
     "fetched_at",
@@ -254,7 +254,7 @@
     "total_minutes_in_bed",
     "total_sleep_records"
   ],
-  "universe.fitbit_spo2_daily": [
+  "universe.health_spo2_daily": [
     "avg_value",
     "date",
     "fetched_at",

@@ -7,7 +7,7 @@ export class WeightRepository {
   async findByDateRange(start: string, end: string): Promise<WeightEntry[]> {
     const { rows } = await this.pool.query(
       `SELECT log_id, date, time, weight_kg, bmi, fat_pct, source, fetched_at
-       FROM universe.fitbit_body_weight
+       FROM universe.health_body_weight
        WHERE date >= $1 AND date <= $2
        ORDER BY date, time`,
       [start, end],
@@ -18,7 +18,7 @@ export class WeightRepository {
   async findLatest(limit: number): Promise<WeightEntry[]> {
     const { rows } = await this.pool.query(
       `SELECT log_id, date, time, weight_kg, bmi, fat_pct, source, fetched_at
-       FROM universe.fitbit_body_weight
+       FROM universe.health_body_weight
        ORDER BY date DESC, time DESC
        LIMIT $1`,
       [limit],

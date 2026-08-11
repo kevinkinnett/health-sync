@@ -6,10 +6,10 @@ import { apiFetch } from "../client";
 // Proactive health alerts (the notification bell)
 // ---------------------------------------------------------------------------
 
-export function useAlerts() {
+export function useAlerts(limit = 8) {
   return useQuery<AlertsResponse>({
-    queryKey: ["alerts"],
-    queryFn: () => apiFetch(`/alerts`),
+    queryKey: ["alerts", limit],
+    queryFn: () => apiFetch(`/alerts?limit=${limit}`),
     // Poll every few minutes so a freshly-evaluated alert shows up
     // without a manual refresh.
     refetchInterval: 5 * 60 * 1000,

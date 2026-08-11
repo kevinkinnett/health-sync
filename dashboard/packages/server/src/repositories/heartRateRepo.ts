@@ -11,7 +11,7 @@ export class HeartRateRepository {
               zone_cardio_min, zone_peak_min,
               zone_out_of_range_cal, zone_fat_burn_cal,
               zone_cardio_cal, zone_peak_cal, fetched_at
-       FROM universe.fitbit_heart_rate_daily
+       FROM universe.health_heart_rate_daily
        WHERE date >= $1 AND date <= $2
        ORDER BY date`,
       [start, end],
@@ -26,7 +26,7 @@ export class HeartRateRepository {
               zone_cardio_min, zone_peak_min,
               zone_out_of_range_cal, zone_fat_burn_cal,
               zone_cardio_cal, zone_peak_cal, fetched_at
-       FROM universe.fitbit_heart_rate_daily
+       FROM universe.health_heart_rate_daily
        ORDER BY date DESC
        LIMIT $1`,
       [limit],

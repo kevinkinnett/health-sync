@@ -16,7 +16,7 @@ export class CardioScoreRepository {
   async findByDateRange(start: string, end: string): Promise<CardioScoreDay[]> {
     const { rows } = await this.pool.query(
       `SELECT date, vo2_max, fetched_at
-       FROM universe.fitbit_cardio_score_daily
+       FROM universe.health_cardio_score_daily
        WHERE date >= $1 AND date <= $2
        ORDER BY date`,
       [start, end],
@@ -27,7 +27,7 @@ export class CardioScoreRepository {
   async findLatest(limit: number): Promise<CardioScoreDay[]> {
     const { rows } = await this.pool.query(
       `SELECT date, vo2_max, fetched_at
-       FROM universe.fitbit_cardio_score_daily
+       FROM universe.health_cardio_score_daily
        ORDER BY date DESC
        LIMIT $1`,
       [limit],

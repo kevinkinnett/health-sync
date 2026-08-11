@@ -14,7 +14,7 @@ export class SkinTempRepository {
   async findByDateRange(start: string, end: string): Promise<SkinTempDay[]> {
     const { rows } = await this.pool.query(
       `SELECT date, nightly_relative, log_type, fetched_at
-       FROM universe.fitbit_skin_temp_daily
+       FROM universe.health_skin_temp_daily
        WHERE date >= $1 AND date <= $2
        ORDER BY date`,
       [start, end],
@@ -25,7 +25,7 @@ export class SkinTempRepository {
   async findLatest(limit: number): Promise<SkinTempDay[]> {
     const { rows } = await this.pool.query(
       `SELECT date, nightly_relative, log_type, fetched_at
-       FROM universe.fitbit_skin_temp_daily
+       FROM universe.health_skin_temp_daily
        ORDER BY date DESC
        LIMIT $1`,
       [limit],

@@ -14,7 +14,7 @@ export class Spo2Repository {
   async findByDateRange(start: string, end: string): Promise<Spo2Day[]> {
     const { rows } = await this.pool.query(
       `SELECT date, avg_value, min_value, max_value, fetched_at
-       FROM universe.fitbit_spo2_daily
+       FROM universe.health_spo2_daily
        WHERE date >= $1 AND date <= $2
        ORDER BY date`,
       [start, end],
@@ -25,7 +25,7 @@ export class Spo2Repository {
   async findLatest(limit: number): Promise<Spo2Day[]> {
     const { rows } = await this.pool.query(
       `SELECT date, avg_value, min_value, max_value, fetched_at
-       FROM universe.fitbit_spo2_daily
+       FROM universe.health_spo2_daily
        ORDER BY date DESC
        LIMIT $1`,
       [limit],

@@ -105,9 +105,9 @@ describe("sqlContract extractor", () => {
 
   it("would catch a misspelled column (the bug this exists for)", () => {
     const cols = extractColumnRefs(
-      "SELECT date, saturated_fatt FROM universe.fitbit_food_log_daily",
+      "SELECT date, saturated_fatt FROM universe.health_food_log_daily",
     );
-    const allowed = allowedColumns(["universe.fitbit_food_log_daily"], schema);
+    const allowed = allowedColumns(["universe.health_food_log_daily"], schema);
     expect(cols.filter((c) => !allowed.has(c))).toEqual(["saturated_fatt"]);
   });
 
