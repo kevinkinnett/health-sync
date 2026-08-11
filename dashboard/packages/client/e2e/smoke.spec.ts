@@ -345,3 +345,25 @@ test("a dossier opens as a keyboard-contained reference drawer", async ({
   await expect(trigger).toBeFocused();
   expect(significant(errors)).toEqual([]);
 });
+
+test("notification settings protect unsaved delivery changes", async ({ page }) => {
+  const errors = collectErrors(page);
+  await page.goto("/settings");
+
+  const push = page.getByRole("switch", { name: "Enable push notifications" });
+  await expect(push).toBeVisible({ timeout: 15_000 });
+  await push.click();
+
+  await expect(page.getByTestId("notif-sev-warn")).toBeDisabled();
+  await expect(page.getByTestId("notif-test")).toBeDisabled();
+
+  const endpoint = page.getByLabel("Apprise endpoint");
+  await endpoint.fill("not-a-url");
+  await expect(page.getByText("Enter a complete Apprise URL.")).toBeVisible();
+  await expect(page.getByTestId("notif-save")).toBeDisabled();
+
+  await page.getByRole("button", { name: "Discard changes" }).click();
+  await expect(push).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByTestId("notif-sev-warn")).toBeEnabled();
+  expect(significant(errors)).toEqual([]);
+});

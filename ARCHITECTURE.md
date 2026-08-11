@@ -176,6 +176,12 @@ The dashboard shell follows a workflow-first information architecture:
   presentation rules, and focused cards and tables own rendering. The route
   module only composes those capabilities, so usage telemetry and onboarding
   can evolve independently.
+- Notification settings separate canonical server state from an editable form
+  draft in `useNotificationSettingsForm.ts`. Background refetches replace a
+  clean draft but preserve unsaved edits; the server's normalized save response
+  becomes the next canonical value. Pure comparison, validation, and update
+  rules live in `notificationSettingsModel.ts`, while focused delivery,
+  detection, sensitivity, and weekly-report sections own presentation.
 - CI builds the production client and enforces budgets for the initial entry,
   largest lazy chunk, total JavaScript, and stylesheets. Dependency growth must
   therefore be an explicit threshold decision rather than an invisible deploy.

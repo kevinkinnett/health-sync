@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NotificationSettingsCard } from "../components/NotificationSettingsCard";
 import type { NotificationSettings } from "@health-dashboard/shared";
@@ -28,11 +28,12 @@ function renderCard() {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   });
-  return render(
+  const rendered = render(
     <QueryClientProvider client={qc}>
       <NotificationSettingsCard />
     </QueryClientProvider>,
   );
+  return { ...rendered, queryClient: qc };
 }
 
 describe("NotificationSettingsCard", () => {
@@ -104,5 +105,80 @@ describe("NotificationSettingsCard", () => {
     expect(await screen.findByTestId("notif-test-result")).toHaveTextContent(
       /delivered/i,
     );
+  });
+
+  it("shows a load failure instead of leaving the card in its loading state", async () => {
+    apiFetchMock.mockRejectedValueOnce(new Error("settings offline"));
+    renderCard();
+
+    expect(
+      await screen.findByText("Could not load notification settings."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("settings offline")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeEnabled();
+  });
+
+  it("preserves unsaved edits when canonical data refreshes in the background", async () => {
+    apiFetchMock.mockResolvedValue(DEFAULTS);
+    const { queryClient } = renderCard();
+
+    const push = await screen.findByTestId("notif-push-toggle");
+    fireEvent.click(push);
+    expect(push).toHaveAttribute("aria-checked", "false");
+
+    act(() => {
+      queryClient.setQueryData(["settings", "notifications"], {
+        ...DEFAULTS,
+        weeklyReportEnabled: false,
+      });
+    });
+
+    expect(push).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByTestId("notif-weekly-toggle")).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(screen.getByTestId("notif-save")).toBeEnabled();
+  });
+
+  it("semantically disables severity controls when phone delivery is off", async () => {
+    apiFetchMock.mockResolvedValue(DEFAULTS);
+    renderCard();
+
+    fireEvent.click(await screen.findByTestId("notif-push-toggle"));
+    const warnings = screen.getByTestId("notif-sev-warn");
+    expect(warnings).toBeDisabled();
+    expect(warnings).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("validates the endpoint and blocks both Save and Send test for a dirty URL", async () => {
+    apiFetchMock.mockResolvedValue(DEFAULTS);
+    renderCard();
+
+    fireEvent.change(await screen.findByLabelText("Apprise endpoint"), {
+      target: { value: "not-a-url" },
+    });
+
+    expect(screen.getByText("Enter a complete Apprise URL.")).toBeInTheDocument();
+    expect(screen.getByTestId("notif-save")).toBeDisabled();
+    expect(screen.getByTestId("notif-test")).toBeDisabled();
+  });
+
+  it("surfaces save and delivery-test request failures", async () => {
+    apiFetchMock.mockImplementation((path: string, opts?: RequestInit) => {
+      if (opts?.method === "PUT") return Promise.reject(new Error("save offline"));
+      if (path === "/settings/notifications/test") {
+        return Promise.reject(new Error("test offline"));
+      }
+      return Promise.resolve(DEFAULTS);
+    });
+    renderCard();
+
+    fireEvent.click(await screen.findByTestId("notif-test"));
+    expect(await screen.findByText(/Test failed: test offline/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("notif-weekly-toggle"));
+    fireEvent.click(screen.getByTestId("notif-save"));
+    expect(await screen.findByText(/Save failed: save offline/)).toBeInTheDocument();
   });
 });
