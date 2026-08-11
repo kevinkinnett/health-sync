@@ -71,6 +71,7 @@ defaults to `America/New_York`.
 Run the ingestion normalization tests from the repository root:
 
 ```bash
+python -m pip install -r requirements-test.txt
 python -m unittest discover -s tests -v
 ```
 
