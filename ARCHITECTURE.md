@@ -132,6 +132,13 @@ The dashboard shell follows a workflow-first information architecture:
   Google Fonts being reachable.
 - Page modules are lazy-loaded so charting and insight code are downloaded only
   when those routes are opened.
+- The AI Insights page is a composition boundary. Report-generation polling,
+  persistence, and selection live in `components/insights/useInsightReports.ts`;
+  chat conversation and optimistic-message state live in
+  `components/insights/useInsightChat.ts`. Their tab components own rendering
+  and browser interactions, while `pages/Insights.tsx` only owns page-level tab
+  selection. This keeps server-state rules independently testable without
+  hiding them inside a page-sized component.
 - CI builds the production client and enforces budgets for the initial entry,
   largest lazy chunk, total JavaScript, and stylesheets. Dependency growth must
   therefore be an explicit threshold decision rather than an invisible deploy.
