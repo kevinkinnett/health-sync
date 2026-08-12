@@ -84,24 +84,53 @@ export class CorrelationsService {
     private readinessProvider: ReadinessProvider,
   ) {}
 
-  async getCorrelations(): Promise<CorrelationsData> {
+  async getCorrelations(today?: string): Promise<CorrelationsData> {
     // Pull every signal that participates in cross-metric correlations.
     // Readiness (the composite score) is included as a series too —
     // pairing it with signals that are NOT among its inputs (steps,
     // driving, food) answers "does X affect my recovery?" directly,
     // without the circularity of correlating readiness with its own
     // ingredients (sleep, RHR, HRV, ...).
-    const [activity, sleep, heartRate, hrv, food, eightSleep, driving, readiness] =
+    const [rawActivity, rawSleep, rawHeartRate, rawHrv, rawFood, rawEightSleep, rawDriving, readiness] =
       await Promise.all([
-        this.activityRepo.findLatest(200),
-        this.sleepRepo.findLatest(200),
-        this.heartRateRepo.findLatest(200),
-        this.hrvRepo.findLatest(200),
-        this.foodRepo.findLatest(200),
-        this.eightSleepRepo.findLatest(200),
-        this.teslaDriveRepo.findLatest(200),
+        this.activityRepo.findLatest(201),
+        this.sleepRepo.findLatest(201),
+        this.heartRateRepo.findLatest(201),
+        this.hrvRepo.findLatest(201),
+        this.foodRepo.findLatest(201),
+        this.eightSleepRepo.findLatest(201),
+        this.teslaDriveRepo.findLatest(201),
         this.readinessProvider(60),
       ]);
+
+    // A correlation should not move during the day just because today's
+    // activity is half-observed while its overnight signals are complete.
+    // The controller supplies `today` in the user's IANA timezone.
+    const completed = <T extends { date: string }>(rows: T[]) =>
+      (today == null ? rows : rows.filter((row) => row.date < today)).slice(0, 200);
+    const activity = completed(rawActivity);
+    const heartRate = completed(rawHeartRate);
+    const food = completed(rawFood);
+    const eightSleep = completed(rawEightSleep);
+    const driving = completed(rawDriving);
+
+    // Sleep and HRV algorithms changed at the Google Health cutover. Mixing
+    // regimes in a single Pearson coefficient can turn the cutover itself
+    // into a relationship, so comparisons use only the latest completed
+    // regime for each signal.
+    const latestRegime = <T extends { date: string; measurementMethod: string }>(rows: T[]) =>
+      [...rows].sort((a, b) => b.date.localeCompare(a.date))[0]?.measurementMethod ?? null;
+    const completedSleep = completed(rawSleep);
+    const completedHrv = completed(rawHrv);
+    const sleepRegime = latestRegime(completedSleep);
+    const hrvRegime = latestRegime(completedHrv);
+    const sleep = sleepRegime == null
+      ? completedSleep
+      : completedSleep.filter((row) => row.measurementMethod === sleepRegime);
+    const hrv = hrvRegime == null
+      ? completedHrv
+      : completedHrv.filter((row) => row.measurementMethod === hrvRegime);
+    const readinessHistory = completed(readiness.history);
 
     // Register each signal once (date → value); the comparisons live in
     // HEALTH_PAIR_SPECS. Activity-derived series only count "wear days"
@@ -137,7 +166,7 @@ export class CorrelationsService {
       ),
       // Note: readiness history spans ~60 days vs ~200 for the rest, so
       // readiness pairs are computed over a shorter, recent-only window.
-      seriesFrom("readiness", "Readiness", "readiness", readiness.history, (d) => d.score),
+      seriesFrom("readiness", "Readiness", "readiness", readinessHistory, (d) => d.score),
     ]) {
       series.set(def.key, def);
     }
@@ -181,6 +210,14 @@ export class CorrelationsService {
       for (const d of def.values.keys()) allDates.add(d);
     }
 
-    return { pairs, activitySleepBuckets, dataPoints: allDates.size };
+    const dates = [...allDates].sort();
+    return {
+      pairs,
+      activitySleepBuckets,
+      dataPoints: allDates.size,
+      window: { start: dates[0] ?? null, end: dates.at(-1) ?? null },
+      ...(today == null ? {} : { excludedCurrentDate: today }),
+      measurementRegimes: { sleep: sleepRegime, hrv: hrvRegime },
+    };
   }
 }

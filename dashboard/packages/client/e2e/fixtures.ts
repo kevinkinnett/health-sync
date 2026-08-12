@@ -21,6 +21,7 @@ import type {
   NotificationSettings,
   ReadinessScore,
   RecordsData,
+  SensorAgreementData,
   SupplementIngredient,
   SupplementItem,
   WeeklyInsights,
@@ -138,8 +139,8 @@ const SUMMARY: HealthSummary = {
 };
 
 const WEEKLY: WeeklyInsights = {
-  currentPeriod: { start: "2026-07-20", end: TODAY },
-  previousPeriod: { start: "2026-07-13", end: "2026-07-19" },
+  currentPeriod: { start: "2026-07-19", end: "2026-07-25" },
+  previousPeriod: { start: "2026-07-12", end: "2026-07-18" },
   steps: comparison(6200, 5400),
   activeMinutes: comparison(34, 26),
   distance: comparison(4.2, 3.7),
@@ -152,7 +153,9 @@ const WEEKLY: WeeklyInsights = {
     dayName,
     avgSteps: 5000 + i * 300,
     avgActiveMinutes: 20 + i * 2,
+    samples: 4,
   })),
+  dayOfWeekDays: 28,
   highlights: [
     { kind: "positive", text: "Steps up 15% vs last week" },
     { kind: "neutral", text: "Fridays are your most active day" },
@@ -160,8 +163,8 @@ const WEEKLY: WeeklyInsights = {
 };
 
 const HEATMAP: DayOfWeekHeatmapData = {
-  dayNames: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
-  dayDates: ["2026-07-20", "2026-07-21", "2026-07-22", "2026-07-23", "2026-07-24", "2026-07-25", TODAY],
+  dayNames: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+  dayDates: [],
   rows: [
     {
       metric: "steps",
@@ -199,6 +202,37 @@ const CORRELATIONS: CorrelationsData = {
     { label: "High (6k+)", days: 9, avgSleepMin: 446, avgDeepMin: 93, avgEfficiency: 92 },
   ],
   dataPoints: 25,
+};
+
+const SENSOR_AGREEMENT: SensorAgreementData = {
+  start: "2026-07-20",
+  end: TODAY,
+  timezone: "America/New_York",
+  dateSemantics: "local_wake_date",
+  series: [
+    {
+      metric: "sleep",
+      label: "Main sleep duration",
+      unit: "min",
+      measurementComparable: true,
+      fitbitMeasurement: "Fitbit main-session sleep",
+      eightSleepMeasurement: "Eight Sleep main-session sleep",
+      fitbitRegimes: ["main_sleep_v2"],
+      eightSleepRegime: "eight_sleep_main_session_v1",
+      joinedDays: 3,
+      correlation: null,
+      meanDifference: 8.3,
+      meanAbsoluteDifference: 11.7,
+      points: [
+        { date: "2026-07-23", fitbit: 420, eightSleep: 430, difference: 10, fitbitZ: -1, eightSleepZ: -0.8 },
+        { date: "2026-07-24", fitbit: 440, eightSleep: 435, difference: -5, fitbitZ: 0, eightSleepZ: -0.2 },
+        { date: "2026-07-25", fitbit: 460, eightSleep: 480, difference: 20, fitbitZ: 1, eightSleepZ: 1 },
+      ],
+      largestDivergences: [
+        { date: "2026-07-25", absoluteDifference: 20, fitbit: 460, eightSleep: 480 },
+      ],
+    },
+  ],
 };
 
 const RECORDS: RecordsData = {
@@ -650,6 +684,7 @@ const ROUTES: [RegExp, unknown][] = [
   [/\/api\/health\/insights\/weekly$/, WEEKLY],
   [/\/api\/health\/heatmap\/day-of-week$/, HEATMAP],
   [/\/api\/health\/correlations$/, CORRELATIONS],
+  [/\/api\/health\/sensor-agreement/, SENSOR_AGREEMENT],
   [/\/api\/health\/records$/, RECORDS],
   [/\/api\/health\/driving$/, DRIVING],
   [/\/api\/health\/food/, FOOD],

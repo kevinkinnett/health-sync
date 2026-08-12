@@ -98,6 +98,12 @@ export const METRIC_COLOR: Record<string, string> = {
 /** Fallback for a metric with no assigned identity. */
 export const DEFAULT_SERIES = SERIES[0];
 
+/** Physical-source identity for paired sensor charts. */
+export const SOURCE_COLOR = {
+  fitbit: SERIES[0],
+  eightSleep: SERIES[2],
+} as const;
+
 export function metricColor(metric: string): string {
   return METRIC_COLOR[metric] ?? DEFAULT_SERIES;
 }

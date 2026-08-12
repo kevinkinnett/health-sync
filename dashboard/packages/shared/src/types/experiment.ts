@@ -29,6 +29,15 @@ export type EffectDirection = "up" | "down" | "flat";
 /** Which way is an improvement for this metric — RHR down, sleep up. */
 export type BetterDirection = "up" | "down";
 
+/** Where and how an experiment outcome was measured. */
+export interface MetricProvenance {
+  deviceLabel: string;
+  providerLabel: string;
+  measurement: string;
+  /** Every algorithm/source regime represented in the comparison window. */
+  regimes: string[];
+}
+
 export interface MetricEffect {
   metric: string;
   label: string;
@@ -51,6 +60,7 @@ export interface MetricEffect {
   improved: boolean;
   /** Whether the shift is large relative to the metric's own variability. */
   meaningful: boolean;
+  provenance?: MetricProvenance;
 }
 
 export type ConfoundKind =
@@ -118,6 +128,7 @@ export interface MetricSeries {
    * claim the rest of the report is careful not to make.
    */
   meaningful: boolean;
+  provenance?: MetricProvenance;
 }
 
 /**

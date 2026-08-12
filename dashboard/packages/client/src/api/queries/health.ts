@@ -20,6 +20,7 @@ import type {
   FoodLogDay,
   DrivingSummary,
   ReadinessScore,
+  SensorAgreementData,
 } from "@health-dashboard/shared";
 import { apiFetch } from "../client";
 import { useDateRangeStore } from "../../stores/dateRangeStore";
@@ -140,6 +141,14 @@ export function useEightSleep() {
   return useQuery<EightSleepDay[]>({
     queryKey: ["health", "eight-sleep", start, end],
     queryFn: () => apiFetch(`/health/eight-sleep?start=${start}&end=${end}`),
+  });
+}
+
+export function useSensorAgreement() {
+  const { start, end } = useDateRangeStore();
+  return useQuery<SensorAgreementData>({
+    queryKey: ["health", "sensor-agreement", start, end],
+    queryFn: () => apiFetch(`/health/sensor-agreement?start=${start}&end=${end}`),
   });
 }
 

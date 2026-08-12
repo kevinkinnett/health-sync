@@ -89,12 +89,17 @@ describe("App routing and layout", () => {
   });
 
   it("renders date range presets in the nav", () => {
-    renderWithProviders("/analytics/overview");
+    renderWithProviders("/analytics/activity");
     const mobileRange = screen.getByLabelText("Analytics date range");
     expect(within(mobileRange).getByText("7D")).toBeInTheDocument();
     expect(within(mobileRange).getByText("30D")).toBeInTheDocument();
     expect(within(mobileRange).getByText("90D")).toBeInTheDocument();
     expect(within(mobileRange).getByText("All")).toBeInTheDocument();
+  });
+
+  it("hides date range controls on aggregate views that do not use them", () => {
+    renderWithProviders("/analytics/overview");
+    expect(screen.queryByLabelText("Analytics date range")).not.toBeInTheDocument();
   });
 
   it("uses detailed analytics metadata for the top-bar title", () => {

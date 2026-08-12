@@ -133,7 +133,7 @@ export function Correlations({
           Cross-Metric Correlations
         </h2>
         <span className="text-xs text-outline tabular-nums">
-          Based on {data.dataPoints} days of data
+          Based on {data.dataPoints} completed days
         </span>
       </div>
 

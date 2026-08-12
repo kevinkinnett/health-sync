@@ -4,15 +4,13 @@ import { DayOfWeekHeatmap } from "../components/DayOfWeekHeatmap";
 import type { DayOfWeekHeatmapData } from "@health-dashboard/shared";
 
 /**
- * Day-of-week columns are 90-day averages but are rotated to align with the
- * current rolling week, so each column maps to a real calendar date. These
- * pin that the actual date is surfaced on hover (the `title` tooltip) on the
- * column header and the cells.
+ * Day-of-week columns are multi-week aggregates, not a synthetic current
+ * week. These tests pin the honest sample-count and average semantics.
  */
 
 const DATA: DayOfWeekHeatmapData = {
-  dayNames: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
-  dayDates: ["2026-05-24", "2026-05-25", "2026-05-26", "2026-05-27", "2026-05-28", "2026-05-29", "2026-05-30"],
+  dayNames: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+  dayDates: [],
   rows: [
     { metric: "steps", label: "Steps", unit: "", values: [100, 200, 300, 400, 500, 600, 700], min: 100, max: 700 },
   ],
@@ -20,18 +18,16 @@ const DATA: DayOfWeekHeatmapData = {
   dayCounts: [1, 1, 1, 1, 1, 1, 1],
 };
 
-describe("DayOfWeekHeatmap date-on-hover", () => {
-  it("shows the actual date in the column header tooltip", () => {
+describe("DayOfWeekHeatmap aggregate tooltips", () => {
+  it("shows the completed sample count in each weekday header", () => {
     render(<DayOfWeekHeatmap data={DATA} />);
-    // "Mon" column → 2026-05-25 → "Monday, May 25".
-    expect(screen.getByTitle("Monday, May 25")).toBeInTheDocument();
-    expect(screen.getByTitle("Saturday, May 30")).toBeInTheDocument();
+    expect(screen.getByTitle("1 completed Mon samples")).toBeInTheDocument();
+    expect(screen.getByTitle("1 completed Sat samples")).toBeInTheDocument();
   });
 
-  it("includes the date in each cell's tooltip", () => {
+  it("labels each cell as a weekday average rather than a dated reading", () => {
     render(<DayOfWeekHeatmap data={DATA} />);
-    // Steps cell for Monday carries the metric, the date, and the value.
-    const cell = screen.getByTitle(/Steps · May 25: 200/);
+    const cell = screen.getByTitle(/Steps weekday average: 200/);
     expect(cell).toBeInTheDocument();
   });
 });

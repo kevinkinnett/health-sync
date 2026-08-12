@@ -263,4 +263,29 @@ describe("ExperimentService — daily series for plotting", () => {
     expect(summary).toBeDefined();
     expect(JSON.stringify(summary)).not.toContain("points");
   });
+
+  it("carries outcome source and measurement regimes into the report", async () => {
+    const base = steppedSource("sleepMin", 392, 435);
+    const sourced: DailySeriesSource = {
+      fetch: async (...args) => (await base.fetch(...args)).map((point) => ({
+        ...point,
+        provenance: {
+          deviceLabel: "Fitbit wearable",
+          providerLabel: "Fitbit history / Google Health API",
+          measurement: "Main overnight sleep duration",
+          regimes: [point.date < "2026-06-12" ? "fitbit_legacy_main_v1" : "main_sleep_v2"],
+        },
+      })),
+    };
+    const report = await new ExperimentService(
+      lookup([intervention()]),
+      sourced,
+    ).report(1, TODAY);
+
+    expect(report.metrics[0]?.provenance?.deviceLabel).toBe("Fitbit wearable");
+    expect(report.series[0]?.provenance?.regimes).toEqual([
+      "fitbit_legacy_main_v1",
+      "main_sleep_v2",
+    ]);
+  });
 });

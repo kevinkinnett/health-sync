@@ -15,25 +15,27 @@ type Family = "sleep" | "heartRate" | "hrv" | "activity";
 interface Extractor {
   family: Family;
   pick: (row: Record<string, unknown>) => number | null;
+  measurement: string;
 }
 
 const num = (v: unknown): number | null =>
   typeof v === "number" && Number.isFinite(v) ? v : null;
 
 const EXTRACTORS: Record<string, Extractor> = {
-  sleepMin: { family: "sleep", pick: (r) => num(r.totalMinutesAsleep) },
-  inBedMin: { family: "sleep", pick: (r) => num(r.totalMinutesInBed) },
-  efficiency: { family: "sleep", pick: (r) => num(r.efficiency) },
-  wakeMin: { family: "sleep", pick: (r) => num(r.minutesWake) },
-  deepMin: { family: "sleep", pick: (r) => num(r.minutesDeep) },
-  remMin: { family: "sleep", pick: (r) => num(r.minutesRem) },
-  restingHr: { family: "heartRate", pick: (r) => num(r.restingHeartRate) },
-  dailyRmssd: { family: "hrv", pick: (r) => num(r.dailyRmssd) },
-  steps: { family: "activity", pick: (r) => num(r.steps) },
+  sleepMin: { family: "sleep", pick: (r) => num(r.totalMinutesAsleep), measurement: "Main overnight sleep duration" },
+  inBedMin: { family: "sleep", pick: (r) => num(r.totalMinutesInBed), measurement: "Main overnight time in bed" },
+  efficiency: { family: "sleep", pick: (r) => num(r.efficiency), measurement: "Main overnight sleep efficiency" },
+  wakeMin: { family: "sleep", pick: (r) => num(r.minutesWake), measurement: "Main overnight awake time" },
+  deepMin: { family: "sleep", pick: (r) => num(r.minutesDeep), measurement: "Main overnight deep sleep" },
+  remMin: { family: "sleep", pick: (r) => num(r.minutesRem), measurement: "Main overnight REM sleep" },
+  restingHr: { family: "heartRate", pick: (r) => num(r.restingHeartRate), measurement: "Daily resting heart rate" },
+  dailyRmssd: { family: "hrv", pick: (r) => num(r.dailyRmssd), measurement: "Overnight HRV (RMSSD)" },
+  steps: { family: "activity", pick: (r) => num(r.steps), measurement: "Daily steps" },
   activeMinutes: {
     family: "activity",
     pick: (r) =>
       (num(r.minutesFairlyActive) ?? 0) + (num(r.minutesVeryActive) ?? 0),
+    measurement: "Daily fairly + very active minutes",
   },
 };
 
@@ -50,7 +52,17 @@ export class HealthSeriesSource implements DailySeriesSource {
       const value = extractor.pick(row as Record<string, unknown>);
       const date = (row as { date?: unknown }).date;
       if (value != null && typeof date === "string") {
-        points.push({ date, value });
+        const method = (row as { measurementMethod?: unknown }).measurementMethod;
+        points.push({
+          date,
+          value,
+          provenance: {
+            deviceLabel: "Fitbit wearable",
+            providerLabel: "Fitbit history / Google Health API",
+            measurement: extractor.measurement,
+            regimes: [typeof method === "string" ? method : `${extractor.family}_daily_rollup_v1`],
+          },
+        });
       }
     }
     return points;

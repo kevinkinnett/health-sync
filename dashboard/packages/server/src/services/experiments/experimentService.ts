@@ -60,7 +60,8 @@ export class ExperimentService {
 
       const beforeValues = beforePoints.map((p) => p.value);
       const afterValues = afterPoints.map((p) => p.value);
-      const effect = effectFor(spec, beforeValues, afterValues);
+      const provenance = combineProvenance([...beforePoints, ...afterPoints]);
+      const effect = effectFor(spec, beforeValues, afterValues, provenance);
       metrics.push(effect);
 
       // The points were fetched to compute the means and then discarded.
@@ -79,6 +80,7 @@ export class ExperimentService {
         beforeMean: effect.before.mean,
         afterMean: effect.after.mean,
         meaningful: effect.meaningful,
+        provenance,
       });
     }
 
@@ -88,7 +90,13 @@ export class ExperimentService {
     };
 
     const others = await this.interventions.findAll();
-    const confounds = scanConfounds(intervention, others, windows, coverage);
+    const confounds = scanConfounds(
+      intervention,
+      others,
+      windows,
+      coverage,
+      metrics.map((metric) => metric.metric),
+    );
     const confidence = gradeConfidence(metrics, confounds, windows);
 
     return {
@@ -150,6 +158,7 @@ function effectFor(
   spec: MetricSpec,
   before: number[],
   after: number[],
+  provenance?: MetricEffect["provenance"],
 ): MetricEffect {
   const beforeMean = mean(before);
   const afterMean = mean(after);
@@ -183,6 +192,21 @@ function effectFor(
     effectSize: effectSize == null ? null : round(effectSize, 2),
     improved,
     meaningful,
+    provenance,
+  };
+}
+
+function combineProvenance(
+  points: Awaited<ReturnType<DailySeriesSource["fetch"]>>,
+): MetricEffect["provenance"] {
+  const entries = points.flatMap((point) => point.provenance ? [point.provenance] : []);
+  const first = entries[0];
+  if (!first) return undefined;
+  return {
+    deviceLabel: first.deviceLabel,
+    providerLabel: first.providerLabel,
+    measurement: first.measurement,
+    regimes: [...new Set(entries.flatMap((entry) => entry.regimes))].sort(),
   };
 }
 

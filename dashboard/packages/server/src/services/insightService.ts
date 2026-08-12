@@ -55,24 +55,26 @@ const HEALTH_CATEGORIES: CategoryDef[] = [
       "query_records",
       "query_heatmap_day_of_week",
       "query_exercise_logs",
+      "query_training_load",
       "query_summary",
     ],
     prompt:
       "You are a personal health coach analysing the user's daily activity " +
       "(steps, distance, active minutes, exercise sessions). Cover: trend " +
       "vs the prior period, day-of-week patterns, distance from the user's " +
-      "personal records, and a single concrete suggestion. Use markdown " +
-      "with bold figures and a short bullet list. 200-300 words.",
+      "personal records, and a single concrete suggestion. Use training load " +
+      "to account for resistance work that steps miss. Use markdown with bold " +
+      "figures and a short bullet list. 200-300 words.",
   },
   {
     key: "sleep",
     title: "Sleep & Recovery",
     color: "#4edea3",
-    requiredTools: ["query_sleep", "query_hrv", "query_records"],
+    requiredTools: ["query_sleep", "query_hrv", "query_sensor_agreement"],
     relevantTools: [
       "query_sleep",
       "query_hrv",
-      "query_records",
+      "query_sensor_agreement",
       "query_correlations",
       "query_eight_sleep",
       "query_skin_temp",
@@ -83,8 +85,10 @@ const HEALTH_CATEGORIES: CategoryDef[] = [
       "light), efficiency, bedtime consistency, and HRV as a recovery " +
       "indicator. The user also has an Eight Sleep mattress " +
       "(query_eight_sleep) — a contact sensor that measures overnight HR, " +
-      "HRV, respiratory rate, sleep stages and bed temperature; prefer it " +
-      "for sleep-time vitals and note where it diverges from the Fitbit device. Fold " +
+      "HRV, respiratory rate, sleep stages and bed temperature. Use " +
+      "query_sensor_agreement to compare it with the Fitbit wearable on the same " +
+      "Eastern local wake date. Treat the sensors as complementary; do not prefer " +
+      "one automatically, and distinguish daily resting HR from sleeping HR. Fold " +
       "in skin-temperature deviation (query_skin_temp) and blood-oxygen " +
       "(query_spo2) — call out any multi-night skin-temp rise or SpO2 dips, " +
       "which can flag illness. Note any nights below 7 hours and deep-sleep " +
@@ -94,12 +98,12 @@ const HEALTH_CATEGORIES: CategoryDef[] = [
     key: "cardiovascular",
     title: "Cardiovascular",
     color: "#ffb2b7",
-    requiredTools: ["query_heart_rate", "query_hrv", "query_summary"],
+    requiredTools: ["query_heart_rate", "query_hrv", "query_summary", "query_sensor_agreement"],
     relevantTools: [
       "query_heart_rate",
       "query_hrv",
       "query_summary",
-      "query_eight_sleep",
+      "query_sensor_agreement",
       "query_breathing_rate",
       "query_spo2",
       "query_cardio_score",
@@ -108,12 +112,12 @@ const HEALTH_CATEGORIES: CategoryDef[] = [
       "Analyse resting heart rate, heart-rate-zone minutes, and HRV. Call " +
       "out the recent RHR trend (rising / falling / stable) and how much " +
       "time the user spent in fat-burn / cardio / peak zones. The Eight " +
-      "Sleep mattress (query_eight_sleep) measures overnight HR + HRV + " +
-      "respiratory rate from a contact sensor — more sensitive to nightly " +
-      "change than the Fitbit wrist device; use it and flag where the two sensors " +
-      "diverge. Bring in breathing rate (query_breathing_rate), blood-" +
-      "oxygen (query_spo2), and cardio fitness / VO2 max (query_cardio_score, " +
-      "a slow-moving range string). Flag the classic under-recovery / " +
+      "Sleep mattress contributes sleeping HR + HRV + respiratory rate. " +
+      "Use query_sensor_agreement to " +
+      "compare standardized trends without treating daily resting HR and sleeping " +
+      "HR as interchangeable or calling their raw gap an error. Bring in breathing " +
+      "rate (query_breathing_rate), blood oxygen (query_spo2), and the slow-moving " +
+      "cardio-fitness range (query_cardio_score). Flag the classic under-recovery / " +
       "illness triad if present — elevated RHR + elevated breathing rate " +
       "together. 200-300 words, markdown.",
   },

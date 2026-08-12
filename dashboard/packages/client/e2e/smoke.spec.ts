@@ -52,6 +52,7 @@ test("every primary route renders without a crash", async ({ page }) => {
     "/analytics/activity",
     "/analytics/heart-rate",
     "/analytics/hrv",
+    "/analytics/sensors",
     "/analytics/nutrition",
     "/analytics/correlations",
     "/supplements",

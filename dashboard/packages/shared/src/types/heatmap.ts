@@ -11,18 +11,19 @@ export interface DayOfWeekHeatmapMetric {
   label: string;
   unit: string;
   values: (number | null)[];
+  /** Observation count behind each weekday value (same order as values). */
+  samples?: number[];
   min: number;
   max: number;
 }
 
 export interface DayOfWeekHeatmapData {
   dayNames: string[];
-  /** The actual calendar date (YYYY-MM-DD) each column maps to in the
-   *  current rolling week — columns are rotated so the rightmost is the
-   *  latest day. Used to show the real date on hover. */
+  /** @deprecated Weekday aggregates do not map to a single calendar date. */
   dayDates: string[];
   /** One entry per metric — rendered as one table row each. */
   rows: DayOfWeekHeatmapMetric[];
   totalDays: number;
   dayCounts: number[];
+  measurementRegimes?: { sleep: string | null };
 }

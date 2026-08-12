@@ -1,5 +1,5 @@
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
-import { analyzeNavItems } from "./navigation";
+import { analyticsUsesDateRange, analyzeNavItems } from "./navigation";
 import { DateRangePresets } from "./ui/DateRangePresets";
 import { PageHeader } from "./ui/PageHeader";
 
@@ -30,7 +30,9 @@ export function AnalyticsLayout() {
           </select>
         </label>}
       />
-      <DateRangePresets className="sm:hidden" label="Analytics date range" />
+      {analyticsUsesDateRange(location.pathname) && (
+        <DateRangePresets className="sm:hidden" label="Analytics date range" />
+      )}
       <Outlet />
     </div>
   );

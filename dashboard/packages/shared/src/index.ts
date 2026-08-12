@@ -14,6 +14,13 @@ export type { EightSleepDay } from "./types/eightSleep.js";
 export type { FoodLogDay } from "./types/food.js";
 export type { DrivingDay, DrivingSummary } from "./types/driving.js";
 export type {
+  SensorAgreementMetric,
+  SensorAgreementPoint,
+  SensorAgreementDivergence,
+  SensorAgreementSeries,
+  SensorAgreementData,
+} from "./types/sensorAgreement.js";
+export type {
   HealthDataProvenance,
   IngestFreshnessStatus,
   IngestFreshness,
@@ -165,6 +172,7 @@ export type {
   ExperimentWindow,
   ExperimentConfidence,
   MetricEffect,
+  MetricProvenance,
   MetricSeries,
   MetricSeriesPoint,
   EffectDirection,

@@ -12,21 +12,8 @@ function formatDateRange(start: string, end: string): string {
   return `${s.toLocaleDateString("en-US", opts).toUpperCase()} - ${e.toLocaleDateString("en-US", opts).toUpperCase()}`;
 }
 
-/** "Monday, May 25" — the actual date a day-of-week column maps to. */
-function formatDayDate(dateStr: string): string {
-  return new Date(dateStr + "T00:00:00Z").toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC",
-  });
-}
-
-function addDaysStr(dateStr: string, n: number): string {
-  const d = new Date(dateStr + "T00:00:00Z");
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
-}
+/** Full labels for the multi-week weekday aggregates. */
+const FULL_DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 function ChangeArrow({ value }: { value: number }) {
   if (value === 0) return <span className="text-outline text-xs">--</span>;
@@ -70,22 +57,20 @@ function MetricCard({
 
 function DayOfWeekChart({
   data,
-  periodStart,
+  sampleDays,
 }: {
   data: DayOfWeekAvg[];
-  periodStart: string;
+  sampleDays: number;
 }) {
   const max = Math.max(...data.map((d) => d.avgSteps), 1);
 
   return (
     <div className="flex items-end gap-2 h-24 px-2 mt-4">
-      {data.map((d, i) => {
+      {data.map((d) => {
         const pct = (d.avgSteps / max) * 100;
         const isTop = pct > 80;
-        // Columns are aligned to the current rolling week, so column i is
-        // periodStart + i — the real date behind this weekday.
-        const dateLabel = formatDayDate(addDaysStr(periodStart, i));
-        const tip = `${dateLabel} · ${d.avgSteps.toLocaleString()} avg steps`;
+        const dayLabel = FULL_DAY_NAMES[d.dow];
+        const tip = `${dayLabel} · ${d.avgSteps.toLocaleString()} average steps · ${d.samples} days sampled`;
         return (
           <div key={d.dow} className="flex-1 flex flex-col items-center gap-2">
             <div className="w-full relative" style={{ height: "80px" }} title={tip}>
@@ -97,7 +82,7 @@ function DayOfWeekChart({
               />
             </div>
             <span
-              title={dateLabel}
+              title={`${dayLabel} average across ${sampleDays} completed days`}
               className={`text-[10px] font-bold uppercase tracking-widest cursor-help ${isTop ? "text-primary" : "text-outline"}`}
             >
               {d.dayName}
@@ -167,8 +152,11 @@ export function WeeklyInsights({ data }: { data: WeeklyInsightsData }) {
         {/* Day-of-week activity bars */}
         <DayOfWeekChart
           data={data.dayOfWeek}
-          periodStart={data.currentPeriod.start}
+          sampleDays={data.dayOfWeekDays}
         />
+        <p className="mt-4 text-[10px] text-outline">
+          Weekday pattern across {data.dayOfWeekDays} completed days; today’s running total is excluded.
+        </p>
 
         {/* Highlights */}
         {data.highlights.length > 0 && (

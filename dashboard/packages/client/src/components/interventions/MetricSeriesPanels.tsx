@@ -133,6 +133,11 @@ function SeriesPanel({
           {s.beforeMean} → {s.afterMean} {s.unit}
         </span>
       </div>
+      {s.provenance && (
+        <p className="text-[9px] text-outline mt-0.5 truncate" title={`${s.provenance.providerLabel}; ${s.provenance.regimes.join(", ")}`}>
+          {s.provenance.deviceLabel} · {s.provenance.measurement}
+        </p>
+      )}
       <PlotFigure options={options} className="mt-1" />
     </div>
   );

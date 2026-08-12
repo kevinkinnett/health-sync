@@ -137,7 +137,7 @@ export function buildV1Endpoints(): V1EndpointDef[] {
       path: "/sleep",
       summary: "Daily sleep series",
       description:
-        "Per-day sleep totals, stages (deep / REM / light / awake), efficiency, and bedtime / wake-time instants.",
+        "Per-day MAIN overnight sleep totals, stages (deep / REM / light / awake), efficiency, and bedtime / wake-time instants. `date` is the America/New_York local wake date. Naps are excluded from the main totals and reported separately in `napMinutesAsleep`; `measurementMethod` identifies source/algorithm regimes.",
       parameters: dateRangeParams,
       handler: async (args, ctx) => {
         const { start, end } = resolveDateRange(args, ctx.userTimezone);
@@ -159,7 +159,7 @@ export function buildV1Endpoints(): V1EndpointDef[] {
       path: "/hrv",
       summary: "Daily HRV series",
       description:
-        "Per-day heart-rate variability (RMSSD) — daily, deep-sleep, and REM-sleep values.",
+        "Per-day heart-rate variability (RMSSD): the daily overnight value, deep-sleep value when available, and Google Health native non-REM heart rate when available. `measurementMethod` distinguishes native/fallback source regimes; do not join absolute baselines across regimes.",
       parameters: dateRangeParams,
       handler: async (args, ctx) => {
         const { start, end } = resolveDateRange(args, ctx.userTimezone);
@@ -240,11 +240,22 @@ export function buildV1Endpoints(): V1EndpointDef[] {
       path: "/eight-sleep",
       summary: "Eight Sleep nightly data",
       description:
-        "Per-night Eight Sleep mattress data: sleep score, time asleep and stage minutes (deep/light/REM), average overnight heart rate, HRV (RMSSD), respiratory rate, bed/room temperature, and toss-and-turn count. A contact-sensor recovery source — generally more sensitive to night-to-night change than the Fitbit wrist device, and fused into the readiness score. Fitbit-device measurements arrive through Google Health; compare the physical sensors when both are present.",
+        "Per-main-session Eight Sleep mattress data: sleep score, time asleep and stage minutes (deep/light/REM), average sleeping heart rate, HRV (RMSSD), respiratory rate, bed/room temperature, and toss-and-turn count. `date` is the America/New_York local wake date. This is a complementary contact-sensor source, not an automatic replacement for the Fitbit wearable; use sensor-agreement for like-date comparisons.",
       parameters: dateRangeParams,
       handler: async (args, ctx) => {
         const { start, end } = resolveDateRange(args, ctx.userTimezone);
         return ctx.healthDataService.getEightSleep(start, end);
+      },
+    },
+    {
+      path: "/sensor-agreement",
+      summary: "Fitbit and Eight Sleep agreement",
+      description:
+        "Pairs Fitbit-device measurements imported through Google Health with Eight Sleep on the same America/New_York local wake date. Reports overlap, correlation, mean absolute difference, measurement definitions, regimes, and largest-divergence nights. Heart-rate values are related but explicitly non-comparable definitions.",
+      parameters: dateRangeParams,
+      handler: async (args, ctx) => {
+        const { start, end } = resolveDateRange(args, ctx.userTimezone);
+        return ctx.healthDataService.getSensorAgreement(start, end, ctx.userTimezone);
       },
     },
     {
@@ -275,7 +286,7 @@ export function buildV1Endpoints(): V1EndpointDef[] {
       path: "/readiness",
       summary: "Readiness / recovery score",
       description:
-        "Personal recovery score (0-100, 50 = your baseline) synthesized from HRV, resting HR, sleep, breathing rate, SpO2, and skin-temp deviation — each scored vs the user's own trailing 30-day baseline. Returns the composite, a per-signal breakdown, and a 14-day trend.",
+        "Versioned personal recovery score (0-100, 50 = personal baseline) synthesized from Fitbit/Google Health and Eight Sleep signals: HRV, resting/sleeping HR, sleep, breathing rate, SpO2, and skin-temperature deviation. Returns definitions, source/regime metadata, per-signal breakdown, and history. Treat the current local date as provisional when still in progress.",
       handler: async (_args, ctx) => ctx.healthDataService.getReadiness(),
     },
 
@@ -286,8 +297,9 @@ export function buildV1Endpoints(): V1EndpointDef[] {
       path: "/insights/weekly",
       summary: "Weekly insights",
       description:
-        "Week-over-week deltas for activity, sleep, and heart rate plus narrative call-outs (e.g. step trend, sleep consistency).",
-      handler: async (_args, ctx) => ctx.healthDataService.getWeeklyInsights(),
+        "Week-over-week deltas for activity, sleep, and heart rate plus weekday patterns and narrative call-outs. Uses completed local days only and excludes the in-progress current date.",
+      handler: async (_args, ctx) =>
+        ctx.healthDataService.getWeeklyInsights(todayInTz(ctx.userTimezone)),
     },
     {
       path: "/records",
@@ -301,8 +313,9 @@ export function buildV1Endpoints(): V1EndpointDef[] {
       path: "/correlations",
       summary: "Cross-metric correlations",
       description:
-        "Pearson r for curated metric pairs over the joined day grain — activity (steps, active minutes), sleep (duration, deep), resting HR, HRV, calorie intake, Eight Sleep restlessness, Tesla time-in-car, and the readiness score. Pairs with lagDays=1 compare X on day D against Y dated D+1; for wake-dated overnight metrics that is THAT night (the night following day D), for readiness it is the next morning. A pair only appears once the two series overlap on 10+ days. Caveats: food pairs are conditioned on days intake was logged (partial logging reads as low intake); no-drive days count as 0 minutes in car within the tracked span.",
-      handler: async (_args, ctx) => ctx.healthDataService.getCorrelations(),
+        "Pearson r for curated metric pairs over completed local days — activity (steps, active minutes), sleep (duration, deep), resting HR, HRV, calorie intake, Eight Sleep restlessness, Tesla time-in-car, and readiness. The current date is excluded; sleep and HRV are restricted to their latest measurementMethod regimes. lagDays=1 compares X on day D with wake-dated overnight Y on D+1 (that night), or readiness the next morning. A pair needs 10+ overlapping days. Associations are hypothesis-generating, not causal. Food pairs include logged days only; no-drive days count as zero within the tracked span.",
+      handler: async (_args, ctx) =>
+        ctx.healthDataService.getCorrelations(todayInTz(ctx.userTimezone)),
     },
     {
       path: "/heatmap/day-of-week",
@@ -310,7 +323,7 @@ export function buildV1Endpoints(): V1EndpointDef[] {
       description:
         "Per-day-of-week averages for each tracked metric — a calendar pattern view of how metrics drift across Mon–Sun.",
       handler: async (_args, ctx) =>
-        ctx.healthDataService.getDayOfWeekHeatmap(),
+        ctx.healthDataService.getDayOfWeekHeatmap(todayInTz(ctx.userTimezone)),
     },
 
     // -----------------------------------------------------------------

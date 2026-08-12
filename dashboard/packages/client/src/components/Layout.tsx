@@ -8,6 +8,7 @@ import { AlertBell } from "./AlertBell";
 import {
   allNavItems,
   analyzeNavItems,
+  analyticsUsesDateRange,
   bottomNavQuickItems,
   navSections,
 } from "./navigation";
@@ -239,8 +240,7 @@ function TopBar() {
         n.end ? location.pathname === n.to : location.pathname.startsWith(n.to),
       )
       .sort((a, b) => b.to.length - a.to.length)[0]?.label ?? "Dashboard";
-  const showDateRange =
-    location.pathname.startsWith("/analytics/");
+  const showDateRange = analyticsUsesDateRange(location.pathname);
 
   return (
     <header className="fixed top-0 z-50 flex w-full items-center justify-between border-b border-outline-variant/20 bg-surface/90 px-4 py-2.5 glass sm:px-6 md:pl-[calc(5rem+1.5rem)] xl:pl-[calc(16rem+1.5rem)]">
