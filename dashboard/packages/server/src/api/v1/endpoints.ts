@@ -289,6 +289,21 @@ export function buildV1Endpoints(): V1EndpointDef[] {
         "Versioned personal recovery score (0-100, 50 = personal baseline) synthesized from Fitbit/Google Health and Eight Sleep signals: HRV, resting/sleeping HR, sleep, breathing rate, SpO2, and skin-temperature deviation. Returns definitions, source/regime metadata, per-signal breakdown, and history. Treat the current local date as provisional when still in progress.",
       handler: async (_args, ctx) => ctx.healthDataService.getReadiness(),
     },
+    {
+      path: "/recovery-anomalies",
+      summary: "Explainable unusual recovery days",
+      description:
+        "Completed local wake dates whose recovery signals differ materially from their own robust, weekday-aware trailing baselines. Every result includes contributing signals, source/regime provenance, coverage, and direction. Scores measure unusualness, not health risk, and are not diagnostic.",
+      parameters: dateRangeParams,
+      handler: async (args, ctx) => {
+        const { start, end } = resolveDateRange(args, ctx.userTimezone);
+        return ctx.healthDataService.getRecoveryAnomalies(
+          start,
+          end,
+          todayInTz(ctx.userTimezone),
+        );
+      },
+    },
 
     // -----------------------------------------------------------------
     // Aggregates / analytics

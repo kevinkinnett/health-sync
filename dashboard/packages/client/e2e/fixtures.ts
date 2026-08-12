@@ -20,6 +20,7 @@ import type {
   LlmModelSettings,
   NotificationSettings,
   ReadinessScore,
+  RecoveryAnomalyReport,
   RecordsData,
   SensorAgreementData,
   SupplementIngredient,
@@ -269,6 +270,46 @@ const RECORDS: RecordsData = {
     { label: "5k+ Steps", current: 3, best: 11, unit: "days" },
     { label: "7+ Hours Sleep", current: 5, best: 14, unit: "days" },
   ],
+};
+
+const RECOVERY_ANOMALIES: RecoveryAnomalyReport = {
+  methodVersion: "recovery-anomaly-v1-robust-weekday",
+  timezone: "America/New_York",
+  baselineWindowDays: 42,
+  minimumBaselineDays: 14,
+  window: { start: "2026-07-01", end: TODAY },
+  excludedCurrentDate: TODAY,
+  daysAnalyzed: 24,
+  caveats: ["Unusual means different from your own recent pattern, not unhealthy or diagnostic."],
+  unusualDays: [{
+    date: "2026-07-25",
+    score: 68,
+    severity: "notable",
+    direction: "worse",
+    summary: "HRV, Resting HR made this a worse-than-usual recovery day.",
+    coveragePct: 86,
+    features: ["hrv", "rhr", "sleep"].map((metric, index) => ({
+      metric: metric as "hrv" | "rhr" | "sleep",
+      label: metric === "hrv" ? "HRV" : metric === "rhr" ? "Resting HR" : "Sleep",
+      unit: metric === "sleep" ? "min" : metric === "rhr" ? "bpm" : "ms",
+      value: 45 + index,
+      expected: 52 + index,
+      recoveryZ: -2.4 + index * 0.2,
+      impact: "worse" as const,
+      sources: [{
+        provenance: {
+          device: "fitbit" as const, deviceLabel: "Fitbit device",
+          provider: "google_health" as const, providerLabel: "Google Health",
+        },
+        value: 45 + index,
+        expected: 52 + index,
+        z: -2.4 + index * 0.2,
+        measurement: "Overnight measurement",
+        regime: "current-v1",
+        baselineDays: 42,
+      }],
+    })),
+  }],
 };
 
 const DRIVING: DrivingSummary = {
@@ -710,6 +751,7 @@ const ROUTES: [RegExp, unknown][] = [
   [/\/api\/health\/heatmap\/day-of-week$/, HEATMAP],
   [/\/api\/health\/correlations$/, CORRELATIONS],
   [/\/api\/health\/sensor-agreement/, SENSOR_AGREEMENT],
+  [/\/api\/health\/recovery-anomalies/, RECOVERY_ANOMALIES],
   [/\/api\/health\/records$/, RECORDS],
   [/\/api\/health\/driving$/, DRIVING],
   [/\/api\/health\/food/, FOOD],

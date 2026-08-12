@@ -44,6 +44,7 @@ const EXEMPT = {
   "Overview.tsx": "composed of other screens' cards",
   "Medications.tsx": "adherence calendar, own date rendering",
   "Supplements.tsx": "adherence calendar, own date rendering",
+  "UnusualDays.tsx": "dated anomaly cards, no continuous chart axis",
 };
 
 describe("intervention annotation coverage", () => {

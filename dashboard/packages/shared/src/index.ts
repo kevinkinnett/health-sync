@@ -104,6 +104,15 @@ export type {
   EvaluateAlertsResponse,
 } from "./types/alerts.js";
 export type {
+  RecoveryFeatureSource,
+  RecoveryFeatureImpact,
+  RecoveryFeature,
+  RecoveryAnomalySeverity,
+  RecoveryAnomalyDirection,
+  RecoveryAnomalyDay,
+  RecoveryAnomalyReport,
+} from "./types/recoveryAnomalies.js";
+export type {
   NotificationThresholds,
   NotificationKindToggles,
   NotificationSettings,

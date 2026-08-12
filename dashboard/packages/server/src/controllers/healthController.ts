@@ -3,7 +3,11 @@ import type { HealthDataService } from "../services/healthDataService.js";
 import type { TrainingService } from "../services/training/trainingService.js";
 import { todayInTz } from "../services/userTz.js";
 import { parseDateRange } from "./_params.js";
-import { healthSummaryResponseSchema, readinessResponseSchema } from "../contracts/dashboardContracts.js";
+import {
+  healthSummaryResponseSchema,
+  readinessResponseSchema,
+  recoveryAnomalyResponseSchema,
+} from "../contracts/dashboardContracts.js";
 
 /**
  * Read-side controllers for the dashboard's primary metric endpoints.
@@ -144,5 +148,12 @@ export class HealthController {
   async getSensorAgreement(req: Request, res: Response): Promise<void> {
     const { start, end } = parseDateRange(req, this.tz);
     res.json(await this.service.getSensorAgreement(start, end, this.tz));
+  }
+
+  async getRecoveryAnomalies(req: Request, res: Response): Promise<void> {
+    const { start, end } = parseDateRange(req, this.tz);
+    res.json(recoveryAnomalyResponseSchema.parse(
+      await this.service.getRecoveryAnomalies(start, end, todayInTz(this.tz)),
+    ));
   }
 }

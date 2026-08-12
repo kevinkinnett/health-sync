@@ -21,6 +21,7 @@ import type {
   DrivingSummary,
   ReadinessScore,
   SensorAgreementData,
+  RecoveryAnomalyReport,
   MedicationIntake,
   SupplementIntake,
 } from "@health-dashboard/shared";
@@ -152,6 +153,15 @@ export function useSensorAgreement() {
   return useQuery<SensorAgreementData>({
     queryKey: ["health", "sensor-agreement", start, end],
     queryFn: () => apiFetch(`/health/sensor-agreement?start=${start}&end=${end}`),
+  });
+}
+
+export function useRecoveryAnomalies() {
+  const { start, end } = useDateRangeStore();
+  return useQuery<RecoveryAnomalyReport>({
+    queryKey: ["health", "recovery-anomalies", start, end],
+    queryFn: () => apiFetch(`/health/recovery-anomalies?start=${start}&end=${end}`),
+    staleTime: 5 * 60 * 1000,
   });
 }
 

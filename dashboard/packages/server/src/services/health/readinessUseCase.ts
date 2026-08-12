@@ -29,8 +29,7 @@ export class ReadinessUseCase {
     private now: () => Date = () => new Date(),
   ) {}
 
-  async inputs(): Promise<ReadinessDayInput[]> {
-    const limit = 90;
+  async inputs(limit = 90): Promise<ReadinessDayInput[]> {
     const [hrv, heartRate, sleep, breathing, spo2, skinTemp, eight] = await Promise.all([
       this.hrv.findLatest(limit),
       this.heartRate.findLatest(limit),

@@ -30,6 +30,7 @@ import { CorrelationsService } from "./health/correlations.js";
 import { SummaryUseCase } from "./health/summaryUseCase.js";
 import { ReadinessUseCase } from "./health/readinessUseCase.js";
 import { SensorAgreementService } from "./health/sensorAgreement.js";
+import { RecoveryAnomalyService } from "./health/recoveryAnomalies.js";
 
 /**
  * Read-side facade over the health repositories.
@@ -55,6 +56,7 @@ export class HealthDataService {
   private readonly summary: SummaryUseCase;
   private readonly readiness: ReadinessUseCase;
   private readonly sensorAgreement: SensorAgreementService;
+  private readonly recoveryAnomalies: RecoveryAnomalyService;
 
   constructor(
     private activityRepo: ActivityRepository,
@@ -78,6 +80,9 @@ export class HealthDataService {
     );
     this.sensorAgreement = new SensorAgreementService(
       sleepRepo, hrvRepo, heartRateRepo, breathingRateRepo, eightSleepRepo,
+    );
+    this.recoveryAnomalies = new RecoveryAnomalyService(
+      (limit) => this.readiness.inputs(limit),
     );
     this.records = new RecordsService(activityRepo, sleepRepo, heartRateRepo);
     this.heatmap = new HeatmapService(activityRepo, sleepRepo, heartRateRepo);
@@ -178,6 +183,10 @@ export class HealthDataService {
     timezone: string,
   ): Promise<SensorAgreementData> {
     return this.sensorAgreement.get(start, end, timezone);
+  }
+
+  async getRecoveryAnomalies(start: string, end: string, currentDate: string) {
+    return this.recoveryAnomalies.get(start, end, currentDate);
   }
 
   // --- Driving ------------------------------------------------------------

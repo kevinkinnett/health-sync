@@ -22,6 +22,7 @@ export const analyzeNavItems: NavLinkDef[] = [
   { to: "/analytics/vitals", label: "Vitals", icon: "vital_signs", description: "Respiratory rate, oxygen saturation, and temperature signals.", dateRange: true },
   { to: "/analytics/eight-sleep", label: "Eight Sleep", icon: "bed", description: "Bed temperature, sleep sessions, and Eight Sleep performance.", dateRange: true },
   { to: "/analytics/sensors", label: "Sensor Comparison", icon: "sensors", description: "Compare Fitbit-device and Eight Sleep measurements on the same local wake date.", dateRange: true },
+  { to: "/analytics/unusual-days", label: "Unusual Days", icon: "notification_important", description: "See completed days when several recovery signals departed from your own recent pattern.", dateRange: true },
   { to: "/analytics/nutrition", label: "Nutrition", icon: "restaurant", description: "Calories and macronutrients recorded through your connected health data.", dateRange: true },
   { to: "/analytics/weight", label: "Weight", icon: "scale", description: "Body-weight changes and longer-term direction.", dateRange: true },
   { to: "/analytics/exercises", label: "Exercises", icon: "exercise", description: "Completed workouts, duration, distance, and training patterns.", dateRange: true },
