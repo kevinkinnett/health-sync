@@ -54,6 +54,9 @@ const overview: IngestOverview = {
   windmillConnected: true,
   activeJobs: [
     {
+      pipelineKey: "google-health",
+      pipelineLabel: "Google Health Sync",
+      pipelineCategory: "source",
       id: "running-job-123",
       scriptPath: "f/u/ingest_google_health",
       createdAt: startedAt,
@@ -65,6 +68,9 @@ const overview: IngestOverview = {
   ],
   completedJobs: [
     {
+      pipelineKey: "google-health",
+      pipelineLabel: "Google Health Sync",
+      pipelineCategory: "source",
       id: "completed-job-123",
       scriptPath: "f/u/ingest_google_health",
       schedulePath: "f/u/ingest_google_health",
@@ -77,13 +83,46 @@ const overview: IngestOverview = {
   ],
   schedules: [
     {
+      pipelineKey: "google-health",
+      pipelineLabel: "Google Health Sync",
+      pipelineCategory: "source",
       path: "f/u/ingest_google_health",
       schedule: "0 0 */4 * * *",
+      timezone: "UTC",
       enabled: true,
       scriptPath: "f/u/ingest_google_health",
       nextExecution: "2026-08-11T20:00:00Z",
       summary: "Google Health import",
       description: null,
+      triggerable: true,
+    },
+    {
+      pipelineKey: "weekly-health-report",
+      pipelineLabel: "Weekly AI Health Report",
+      pipelineCategory: "analysis",
+      path: "u/kevin/weekly_health_report",
+      schedule: "0 0 13 * * 1",
+      timezone: "UTC",
+      enabled: true,
+      scriptPath: "u/kevin/weekly_health_report",
+      nextExecution: "2026-08-17T13:00:00Z",
+      summary: "Weekly AI health report (Mondays)",
+      description: null,
+      triggerable: false,
+    },
+    {
+      pipelineKey: "health-alerts",
+      pipelineLabel: "Health Alert Evaluation",
+      pipelineCategory: "notification",
+      path: "u/kevin/evaluate_health_alerts_daily",
+      schedule: "0 15 */2 * * *",
+      timezone: "UTC",
+      enabled: true,
+      scriptPath: "u/kevin/evaluate_health_alerts",
+      nextExecution: "2026-08-11T18:15:00Z",
+      summary: "Health and ingestion-alert evaluation every 2 hours",
+      description: null,
+      triggerable: false,
     },
   ],
 };
@@ -102,9 +141,14 @@ describe("Ingest operational UI", () => {
     });
     renderPage();
 
-    expect(await screen.findByText("Pipeline Status")).toBeVisible();
+    expect(await screen.findByText("Data & Analysis Pipeline")).toBeVisible();
     expect(screen.getByText(/1 running · 0 scheduled · 0 queued/i)).toBeVisible();
-    expect(screen.getByText("Every 4 hours")).toBeVisible();
+    expect(screen.getByText(/Every 4 hours · UTC/)).toBeVisible();
+    expect(screen.getByText("Derived analytics")).toBeVisible();
+    expect(screen.getByText("Notifications")).toBeVisible();
+    expect(screen.getByText("Weekly AI Health Report")).toBeVisible();
+    expect(screen.getByText("Health Alert Evaluation")).toBeVisible();
+    expect(screen.getAllByText("Managed in Windmill")).toHaveLength(2);
     expect(screen.queryByRole("button", { name: /view full log/i })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Run now" }));
@@ -135,13 +179,13 @@ describe("Ingest operational UI", () => {
     });
     renderPage();
 
-    await screen.findByText("Pipeline Status");
+    await screen.findByText("Data & Analysis Pipeline");
     fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
 
     expect(
       await screen.findByText(/refresh failed\. showing the last pipeline status/i),
     ).toBeVisible();
-    expect(screen.getByText("Google Health Sync")).toBeVisible();
+    expect(screen.getAllByText("Google Health Sync")[0]).toBeVisible();
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Refresh" })).toBeEnabled(),
     );

@@ -13,6 +13,13 @@ import type {
 import type { IngestRepository } from "../repositories/ingestRepo.js";
 import { logger } from "../logger.js";
 import { applyIngestPolicies } from "./ingestPolicies.js";
+import {
+  GOOGLE_HEALTH_PIPELINE,
+  MANAGED_PIPELINES,
+  pipelineIdentity,
+} from "./pipelineRegistry.js";
+
+export { MANAGED_PIPELINES } from "./pipelineRegistry.js";
 
 interface WindmillConfig {
   baseUrl: string;
@@ -20,8 +27,6 @@ interface WindmillConfig {
   workspace: string;
 }
 
-const SCRIPT_PATH = "u/kevin/ingest_google_health";
-const SCHEDULE_PREFIX = "u/kevin/ingest_google_health";
 export const GOOGLE_HEALTH_EXPECTED_INTERVAL_MINUTES = 4 * 60;
 export const GOOGLE_HEALTH_STALE_AFTER_MINUTES = 5 * 60;
 
@@ -139,7 +144,7 @@ export class IngestService {
     try {
       const response = await this.wmFetch(
         "connectivity check",
-        this.wmUrl(`/scripts/list?path_exact=${SCRIPT_PATH}&per_page=1`),
+        this.wmUrl(`/scripts/list?path_exact=${GOOGLE_HEALTH_PIPELINE.scriptPath}&per_page=1`),
       );
       return response.ok;
     } catch (err) {
@@ -149,93 +154,138 @@ export class IngestService {
   }
 
   async getActiveJobs(): Promise<WindmillJob[]> {
-    try {
-      const url = this.wmUrl(
-        `/jobs/list?script_path_exact=${SCRIPT_PATH}&running=true&per_page=10`,
-      );
-      const resp = await this.wmFetch("list active jobs", url);
-      if (!resp.ok) return [];
-      const running = (await resp.json()) as Record<string, unknown>[];
+    const jobs = await Promise.all(
+      MANAGED_PIPELINES.map(async (pipeline): Promise<WindmillJob[]> => {
+        try {
+          const url = this.wmUrl(
+            `/jobs/list?script_path_exact=${pipeline.scriptPath}&running=true&per_page=10`,
+          );
+          const resp = await this.wmFetch(`list active jobs: ${pipeline.key}`, url);
+          if (!resp.ok) return [];
+          const running = (await resp.json()) as Record<string, unknown>[];
 
-      const queuedUrl = this.wmUrl(
-        `/jobs/list?script_path_exact=${SCRIPT_PATH}&per_page=10`,
-      );
-      const queuedResp = await this.wmFetch("list queued jobs", queuedUrl);
-      const allJobs = queuedResp.ok
-        ? ((await queuedResp.json()) as Record<string, unknown>[])
-        : [];
+          const queuedUrl = this.wmUrl(
+            `/jobs/list?script_path_exact=${pipeline.scriptPath}&per_page=10`,
+          );
+          const queuedResp = await this.wmFetch(
+            `list queued jobs: ${pipeline.key}`,
+            queuedUrl,
+          );
+          const allJobs = queuedResp.ok
+            ? ((await queuedResp.json()) as Record<string, unknown>[])
+            : [];
+          const pending = allJobs.filter((job) => job.type === "QueuedJob");
 
-      const pending = allJobs.filter((j) => j.type === "QueuedJob");
-
-      const seen = new Set<string>();
-      const merged: WindmillJob[] = [];
-      for (const j of [...running, ...pending]) {
-        const id = String(j.id);
-        if (seen.has(id)) continue;
-        seen.add(id);
-        merged.push({
-          id,
-          scriptPath: String(j.script_path ?? ""),
-          createdAt: String(j.created_at ?? ""),
-          startedAt: j.started_at ? String(j.started_at) : null,
-          scheduledFor: j.scheduled_for ? String(j.scheduled_for) : null,
-          running: Boolean(j.running),
-          schedulePath: j.schedule_path ? String(j.schedule_path) : null,
-        });
-      }
-      return merged;
-    } catch (err) {
-      logger.error({ err }, "Failed to fetch Windmill active jobs");
-      return [];
-    }
+          const seen = new Set<string>();
+          const merged: WindmillJob[] = [];
+          for (const job of [...running, ...pending]) {
+            const id = String(job.id);
+            if (seen.has(id)) continue;
+            seen.add(id);
+            merged.push({
+              ...pipelineIdentity(pipeline),
+              id,
+              scriptPath: String(job.script_path ?? ""),
+              createdAt: String(job.created_at ?? ""),
+              startedAt: job.started_at ? String(job.started_at) : null,
+              scheduledFor: job.scheduled_for ? String(job.scheduled_for) : null,
+              running: Boolean(job.running),
+              schedulePath: job.schedule_path ? String(job.schedule_path) : null,
+            });
+          }
+          return merged;
+        } catch (err) {
+          logger.error(
+            { err, pipeline: pipeline.key },
+            "Failed to fetch Windmill active jobs",
+          );
+          return [];
+        }
+      }),
+    );
+    return jobs.flat().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 
   async getCompletedJobs(limit: number): Promise<WindmillCompletedJob[]> {
-    try {
-      const url = this.wmUrl(
-        `/jobs/completed/list?script_path_exact=${SCRIPT_PATH}&per_page=${limit}&order_desc=true`,
-      );
-      const resp = await this.wmFetch("list completed jobs", url);
-      if (!resp.ok) return [];
-      const data = (await resp.json()) as Record<string, unknown>[];
+    const jobs = await Promise.all(
+      MANAGED_PIPELINES.map(async (pipeline): Promise<WindmillCompletedJob[]> => {
+        try {
+          const url = this.wmUrl(
+            `/jobs/completed/list?script_path_exact=${pipeline.scriptPath}&per_page=${limit}&order_desc=true`,
+          );
+          const resp = await this.wmFetch(`list completed jobs: ${pipeline.key}`, url);
+          if (!resp.ok) return [];
+          const data = (await resp.json()) as Record<string, unknown>[];
 
-      return data.map((j) => ({
-        id: String(j.id),
-        scriptPath: String(j.script_path ?? ""),
-        schedulePath: j.schedule_path ? String(j.schedule_path) : null,
-        createdAt: String(j.created_at ?? ""),
-        startedAt: j.started_at ? String(j.started_at) : null,
-        durationMs: j.duration_ms != null ? Number(j.duration_ms) : null,
-        success: Boolean(j.success),
-        isSkipped: Boolean(j.is_skipped),
-      }));
-    } catch (err) {
-      logger.error({ err }, "Failed to fetch Windmill completed jobs");
-      return [];
-    }
+          return data.map((job) => ({
+            ...pipelineIdentity(pipeline),
+            id: String(job.id),
+            scriptPath: String(job.script_path ?? ""),
+            schedulePath: job.schedule_path ? String(job.schedule_path) : null,
+            createdAt: String(job.created_at ?? ""),
+            startedAt: job.started_at ? String(job.started_at) : null,
+            durationMs: job.duration_ms != null ? Number(job.duration_ms) : null,
+            success: Boolean(job.success),
+            isSkipped: Boolean(job.is_skipped),
+          }));
+        } catch (err) {
+          logger.error(
+            { err, pipeline: pipeline.key },
+            "Failed to fetch Windmill completed jobs",
+          );
+          return [];
+        }
+      }),
+    );
+    return jobs
+      .flat()
+      .sort((a, b) =>
+        (b.startedAt ?? b.createdAt).localeCompare(a.startedAt ?? a.createdAt),
+      )
+      .slice(0, limit);
   }
 
   async getSchedules(): Promise<WindmillSchedule[]> {
-    try {
-      const url = this.wmUrl(
-        `/schedules/list?path_start=${SCHEDULE_PREFIX}`,
+    const schedules = await Promise.all(
+      MANAGED_PIPELINES.map(async (pipeline): Promise<WindmillSchedule[]> => {
+        try {
+          const url = this.wmUrl(
+            `/schedules/list?path_start=${pipeline.schedulePrefix}`,
+          );
+          const resp = await this.wmFetch(`list schedules: ${pipeline.key}`, url);
+          if (!resp.ok) return [];
+          const data = (await resp.json()) as Record<string, unknown>[];
+          return data.map((schedule) => ({
+            ...pipelineIdentity(pipeline),
+            path: String(schedule.path ?? ""),
+            schedule: String(schedule.schedule ?? ""),
+            timezone: String(schedule.timezone ?? "UTC"),
+            enabled: Boolean(schedule.enabled),
+            scriptPath: String(schedule.script_path ?? ""),
+            nextExecution: schedule.next_execution
+              ? String(schedule.next_execution)
+              : null,
+            summary: schedule.summary ? String(schedule.summary) : null,
+            description: schedule.description ? String(schedule.description) : null,
+            triggerable: pipeline.triggerable,
+          }));
+        } catch (err) {
+          logger.error(
+            { err, pipeline: pipeline.key },
+            "Failed to fetch Windmill schedules",
+          );
+          return [];
+        }
+      }),
+    );
+    return schedules
+      .flat()
+      .sort(
+        (a, b) =>
+          a.pipelineCategory.localeCompare(b.pipelineCategory) ||
+          a.pipelineLabel.localeCompare(b.pipelineLabel) ||
+          a.path.localeCompare(b.path),
       );
-      const resp = await this.wmFetch("list schedules", url);
-      if (!resp.ok) return [];
-      const data = (await resp.json()) as Record<string, unknown>[];
-      return data.map((s) => ({
-        path: String(s.path ?? ""),
-        schedule: String(s.schedule ?? ""),
-        enabled: Boolean(s.enabled),
-        scriptPath: String(s.script_path ?? ""),
-        nextExecution: s.next_execution ? String(s.next_execution) : null,
-        summary: s.summary ? String(s.summary) : null,
-        description: s.description ? String(s.description) : null,
-      }));
-    } catch (err) {
-      logger.error({ err }, "Failed to fetch Windmill schedules");
-      return [];
-    }
   }
 
   async triggerRun(): Promise<TriggerResponse> {
@@ -244,7 +294,7 @@ export class IngestService {
       return { jobId: "", message: "An ingest job is already running." };
     }
 
-    const url = this.wmUrl(`/jobs/run/p/${SCRIPT_PATH}`);
+    const url = this.wmUrl(`/jobs/run/p/${GOOGLE_HEALTH_PIPELINE.scriptPath}`);
 
     const response = await this.wmFetch("trigger ingest", url, {
       method: "POST",

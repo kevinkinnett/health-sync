@@ -6,6 +6,7 @@ import type {
   WindmillCompletedJob,
   WindmillJob,
   WindmillSchedule,
+  PipelineCategory,
 } from "@health-dashboard/shared";
 import { windmillJobPhase } from "../../lib/ingestJobs";
 
@@ -50,11 +51,15 @@ export function normalizeIngestOverview(
   };
 }
 
-export function cronToHuman(cron: string): string {
-  if (cron === "0 0 12 * * *") return "Daily at 12:00 UTC";
-  const everyHours = cron.match(/^0 0 \*\/(\d+) \* \* \*$/);
-  if (everyHours) return `Every ${everyHours[1]} hours`;
-  return cron;
+export function cronToHuman(cron: string, timezone?: string): string {
+  const zone = timezone ? ` · ${timezone}` : "";
+  if (cron === "0 0 12 * * *") return `Daily at 12:00${zone || " UTC"}`;
+  const everyHours = cron.match(/^0 (\d+) \*\/(\d+) \* \* \*$/);
+  if (everyHours) {
+    const offset = everyHours[1] === "0" ? "" : ` at :${everyHours[1].padStart(2, "0")}`;
+    return `Every ${everyHours[2]} hours${offset}${zone}`;
+  }
+  return `${cron}${zone}`;
 }
 
 export function formatJobDuration(ms: number): string {
@@ -64,10 +69,22 @@ export function formatJobDuration(ms: number): string {
   return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
 }
 
-export function scheduleLabel(path: string | null): {
+export function scheduleLabel(
+  path: string | null,
+  pipelineLabel?: string,
+  category: PipelineCategory = "source",
+): {
   label: string;
   color: string;
 } {
+  if (pipelineLabel) {
+    const color = category === "analysis"
+      ? "bg-tertiary/10 text-tertiary"
+      : category === "notification"
+        ? "bg-primary/10 text-primary"
+        : "bg-secondary/10 text-secondary";
+    return { label: pipelineLabel, color };
+  }
   if (!path) return { label: "Manual", color: "bg-primary/10 text-primary" };
   if (path.includes("backfill")) {
     return { label: "Backfill", color: "bg-tertiary/10 text-tertiary" };

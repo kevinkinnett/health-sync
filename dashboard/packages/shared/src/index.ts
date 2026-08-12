@@ -40,6 +40,8 @@ export type {
   IngestRun,
   IngestRunTypeDetail,
   TriggerResponse,
+  PipelineCategory,
+  PipelineIdentity,
   WindmillJob,
   WindmillCompletedJob,
   WindmillSchedule,

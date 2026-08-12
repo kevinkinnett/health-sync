@@ -4,6 +4,9 @@ import { windmillJobPhase } from "../lib/ingestJobs";
 
 function job(overrides: Partial<WindmillJob> = {}): WindmillJob {
   return {
+    pipelineKey: "google-health",
+    pipelineLabel: "Google Health Sync",
+    pipelineCategory: "source",
     id: "job-1",
     scriptPath: "u/kevin/ingest_google_health",
     createdAt: "2026-08-09T21:11:10Z",

@@ -33,6 +33,10 @@ function UnusualDaysReport({ report }: { report: RecoveryAnomalyReport }) {
   return (
     <div className="space-y-5">
       <div className="rounded-2xl border border-outline-variant/15 bg-surface-container p-5">
+        <div className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-secondary/20 bg-secondary/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-secondary">
+          <span className="material-symbols-outlined text-sm" aria-hidden="true">bolt</span>
+          Computed live
+        </div>
         <p className="text-sm text-on-surface-variant max-w-3xl">
           Each completed wake date is compared with its own {report.baselineWindowDays}-day,
           weekday-aware baseline. Sensors retain separate measurement regimes before their

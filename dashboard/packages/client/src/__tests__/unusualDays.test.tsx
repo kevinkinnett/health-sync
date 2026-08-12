@@ -70,6 +70,7 @@ describe("Unusual Days report", () => {
   it("summarizes evidence and reveals source-level explanations", async () => {
     renderPage();
     expect(await screen.findByText("35")).toBeInTheDocument();
+    expect(screen.getByText("Computed live")).toBeVisible();
     expect(screen.getByText("HRV, Resting HR made this a worse-than-usual recovery day.")).toBeInTheDocument();
 
     const disclosure = screen.getByText("2026-08-10").closest("summary");

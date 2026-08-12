@@ -172,17 +172,24 @@ export const ingestOverviewResponseSchema = z.object({
   runs: z.array(ingestRunSchema),
   windmillConnected: z.boolean(),
   activeJobs: z.array(z.object({
+    pipelineKey: z.string(), pipelineLabel: z.string(),
+    pipelineCategory: z.enum(["source", "analysis", "notification"]),
     id: z.string(), scriptPath: z.string(), createdAt: z.string(),
     startedAt: z.string().nullable(), scheduledFor: z.string().nullable(),
     running: z.boolean(), schedulePath: z.string().nullable(),
   })),
   completedJobs: z.array(z.object({
+    pipelineKey: z.string(), pipelineLabel: z.string(),
+    pipelineCategory: z.enum(["source", "analysis", "notification"]),
     id: z.string(), scriptPath: z.string(), schedulePath: z.string().nullable(),
     createdAt: z.string(), startedAt: z.string().nullable(), durationMs: z.number().nullable(),
     success: z.boolean(), isSkipped: z.boolean(),
   })),
   schedules: z.array(z.object({
-    path: z.string(), schedule: z.string(), enabled: z.boolean(), scriptPath: z.string(),
+    pipelineKey: z.string(), pipelineLabel: z.string(),
+    pipelineCategory: z.enum(["source", "analysis", "notification"]),
+    path: z.string(), schedule: z.string(), timezone: z.string(), enabled: z.boolean(), scriptPath: z.string(),
     nextExecution: z.string().nullable(), summary: z.string().nullable(), description: z.string().nullable(),
+    triggerable: z.boolean(),
   })),
 });
