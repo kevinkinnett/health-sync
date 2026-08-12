@@ -20,7 +20,7 @@ export function AnalyticsHrv() {
           <HrvChart data={data} annotations={marks} />
           <DataTable
             title="Daily HRV"
-            headers={["Date", "Daily RMSSD", "Deep Sleep RMSSD"]}
+            headers={["Date", "Daily RMSSD", "Deep Sleep RMSSD", "Method"]}
           >
             {[...data]
               .reverse()
@@ -33,6 +33,11 @@ export function AnalyticsHrv() {
                   </td>
                   <td className={tdRightClass}>
                     {d.deepRmssd != null ? `${d.deepRmssd.toFixed(1)} ms` : "---"}
+                  </td>
+                  <td className={tdClass}>
+                    <span className="text-[11px] text-on-surface-variant">
+                      {d.measurementMethod}
+                    </span>
                   </td>
                 </tr>
               ))}

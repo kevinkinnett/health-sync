@@ -19,6 +19,8 @@ interface StatCardProps {
   betterDirection?: "up" | "down";
   /** Escape hatch for a caller-supplied verdict. Wins over the derived one. */
   badge?: string;
+  /** Plain-language date/freshness context for the headline value. */
+  context?: string;
 }
 
 const TONE_COLOR: Record<BadgeTone, string> = {
@@ -36,6 +38,7 @@ export function StatCard({
   icon,
   betterDirection,
   badge,
+  context,
 }: StatCardProps) {
   const derived = betterDirection ? statBadge(sparkline, betterDirection) : null;
 
@@ -105,6 +108,10 @@ export function StatCard({
           </span>
         )}
       </div>
+
+      {context && (
+        <p className="mb-2 text-[10px] text-outline tabular-nums">{context}</p>
+      )}
 
       {sparkline.length > 0 && (
         <Sparkbars data={sparkline} color={color} className="h-10 w-full" />

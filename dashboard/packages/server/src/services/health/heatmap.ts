@@ -6,7 +6,6 @@ import type { ActivityRepository } from "../../repositories/activityRepo.js";
 import type { SleepRepository } from "../../repositories/sleepRepo.js";
 import type { HeartRateRepository } from "../../repositories/heartRateRepo.js";
 import { avg } from "../stats.js";
-import { addDays } from "../userTz.js";
 import { DAY_NAMES, dowOf, rotateDow } from "./dayOfWeek.js";
 
 type Bucket = {
@@ -44,15 +43,30 @@ export class HeatmapService {
     private heartRateRepo: HeartRateRepository,
   ) {}
 
-  async getDayOfWeekHeatmap(): Promise<DayOfWeekHeatmapData> {
+  async getDayOfWeekHeatmap(today?: string): Promise<DayOfWeekHeatmapData> {
     const [activity, sleep, heartRate] = await Promise.all([
-      this.activityRepo.findLatest(200),
-      this.sleepRepo.findLatest(200),
-      this.heartRateRepo.findLatest(200),
+      this.activityRepo.findLatest(201),
+      this.sleepRepo.findLatest(201),
+      this.heartRateRepo.findLatest(201),
     ]);
+    const completedActivity = today
+      ? activity.filter((day) => day.date < today).slice(0, 200)
+      : activity.slice(0, 200);
 
-    const sleepByDate = new Map(sleep.map((d) => [d.date, d]));
-    const hrByDate = new Map(heartRate.map((d) => [d.date, d]));
+    const completedSleep = today
+      ? sleep.filter((day) => day.date < today).slice(0, 200)
+      : sleep.slice(0, 200);
+    const completedHeartRate = today
+      ? heartRate.filter((day) => day.date < today).slice(0, 200)
+      : heartRate.slice(0, 200);
+    const sleepRegime = [...completedSleep]
+      .sort((a, b) => b.date.localeCompare(a.date))[0]?.measurementMethod ?? null;
+    const sameMethodSleep = sleepRegime == null
+      ? completedSleep
+      : completedSleep.filter((day) => day.measurementMethod === sleepRegime);
+
+    const sleepByDate = new Map(sameMethodSleep.map((d) => [d.date, d]));
+    const hrByDate = new Map(completedHeartRate.map((d) => [d.date, d]));
 
     // Buckets per day-of-week (0=Sun..6=Sat)
     const buckets: Bucket[] = Array.from({ length: 7 }, () => ({
@@ -61,7 +75,7 @@ export class HeatmapService {
     }));
     const dayCounts = new Array(7).fill(0);
 
-    for (const a of activity) {
+    for (const a of completedActivity) {
       if (a.steps == null) continue;
       const dow = dowOf(a.date);
       dayCounts[dow]++;
@@ -94,33 +108,26 @@ export class HeatmapService {
         label,
         unit,
         values,
+        samples: buckets.map((bucket) => bucket[key].length),
         min: Math.min(...valid),
         max: Math.max(...valid),
       });
     }
 
-    // Rotate the columns so today's day-of-week sits in the RIGHTMOST cell.
-    // Without this the table renders in fixed Sun→Sat calendar order, but
-    // the rest of the dashboard treats "today" as the most recent point in
-    // a rolling 7-day window — so the heatmap header and the WeeklyInsights
-    // bars would tell different stories about the same week. Aligning to
-    // the rolling window keeps the right edge as "now" everywhere.
-    const latestDow = activity.length > 0 ? dowOf(activity[0].date) : 0;
-    const startDow = (latestDow + 1) % 7;
-
-    // The actual date behind each (rotated) column: the rightmost column is
-    // the latest day, so column i maps to latestDate − (6 − i).
-    const latestDate = activity.length > 0 ? activity[0].date : null;
-    const dayDates = latestDate
-      ? Array.from({ length: 7 }, (_, i) => addDays(latestDate, i - 6))
-      : [];
+    const startDow = 1; // conventional Monday → Sunday aggregate
 
     return {
       dayNames: rotateDow(DAY_NAMES, startDow),
-      dayDates,
-      rows: rows.map((r) => ({ ...r, values: rotateDow(r.values, startDow) })),
-      totalDays: activity.filter((d) => d.steps != null).length,
+      // Kept for wire compatibility. Aggregates do not map to one recent date.
+      dayDates: [],
+      rows: rows.map((row) => ({
+        ...row,
+        values: rotateDow(row.values, startDow),
+        samples: rotateDow(row.samples ?? [], startDow),
+      })),
+      totalDays: completedActivity.filter((d) => d.steps != null).length,
       dayCounts: rotateDow(dayCounts, startDow),
+      measurementRegimes: { sleep: sleepRegime },
     };
   }
 }

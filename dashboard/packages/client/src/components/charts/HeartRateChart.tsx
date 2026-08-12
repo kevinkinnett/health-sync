@@ -46,7 +46,6 @@ export function HeartRateChart({ data, annotations = [] }: Props) {
             stroke={METRIC_COLOR.restingHr}
             strokeWidth={1.5}
             dot={{ r: 2 }}
-            connectNulls
             name="RHR"
           />
           <Line

@@ -6,6 +6,7 @@ import type {
   RecordsData,
   DrivingSummary,
   ReadinessScore,
+  SensorAgreementData,
 } from "@health-dashboard/shared";
 import type { ActivityRepository } from "../repositories/activityRepo.js";
 import type { SleepRepository } from "../repositories/sleepRepo.js";
@@ -28,6 +29,7 @@ import { WeeklyInsightsService } from "./health/weeklyInsights.js";
 import { CorrelationsService } from "./health/correlations.js";
 import { SummaryUseCase } from "./health/summaryUseCase.js";
 import { ReadinessUseCase } from "./health/readinessUseCase.js";
+import { SensorAgreementService } from "./health/sensorAgreement.js";
 
 /**
  * Read-side facade over the health repositories.
@@ -52,6 +54,7 @@ export class HealthDataService {
   private readonly correlations: CorrelationsService;
   private readonly summary: SummaryUseCase;
   private readonly readiness: ReadinessUseCase;
+  private readonly sensorAgreement: SensorAgreementService;
 
   constructor(
     private activityRepo: ActivityRepository,
@@ -72,6 +75,9 @@ export class HealthDataService {
     this.readiness = new ReadinessUseCase(
       hrvRepo, heartRateRepo, sleepRepo, breathingRateRepo,
       spo2Repo, skinTempRepo, eightSleepRepo,
+    );
+    this.sensorAgreement = new SensorAgreementService(
+      sleepRepo, hrvRepo, heartRateRepo, breathingRateRepo, eightSleepRepo,
     );
     this.records = new RecordsService(activityRepo, sleepRepo, heartRateRepo);
     this.heatmap = new HeatmapService(activityRepo, sleepRepo, heartRateRepo);
@@ -166,6 +172,14 @@ export class HealthDataService {
     return this.readiness.execute(historyDays);
   }
 
+  async getSensorAgreement(
+    start: string,
+    end: string,
+    timezone: string,
+  ): Promise<SensorAgreementData> {
+    return this.sensorAgreement.get(start, end, timezone);
+  }
+
   // --- Driving ------------------------------------------------------------
 
   /**
@@ -193,16 +207,16 @@ export class HealthDataService {
 
   // --- Delegated analytics ------------------------------------------------
 
-  async getWeeklyInsights(): Promise<WeeklyInsights> {
-    return this.weekly.getWeeklyInsights();
+  async getWeeklyInsights(today?: string): Promise<WeeklyInsights> {
+    return this.weekly.getWeeklyInsights(today);
   }
 
-  async getCorrelations(): Promise<CorrelationsData> {
-    return this.correlations.getCorrelations();
+  async getCorrelations(today?: string): Promise<CorrelationsData> {
+    return this.correlations.getCorrelations(today);
   }
 
-  async getDayOfWeekHeatmap(): Promise<DayOfWeekHeatmapData> {
-    return this.heatmap.getDayOfWeekHeatmap();
+  async getDayOfWeekHeatmap(today?: string): Promise<DayOfWeekHeatmapData> {
+    return this.heatmap.getDayOfWeekHeatmap(today);
   }
 
   async getRecords(today?: string): Promise<RecordsData> {

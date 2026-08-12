@@ -27,10 +27,12 @@ export function SleepStagesChart({ data, annotations = [] }: Props) {
   const ma7 = movingAverage(data, (d) => d.totalMinutesAsleep, 7);
   const chartData = data.map((d, i) => ({
     date: d.date,
-    deep: d.minutesDeep ?? 0,
-    light: d.minutesLight ?? 0,
-    rem: d.minutesRem ?? 0,
-    wake: d.minutesWake ?? 0,
+    // Null is unknown, not zero. Leaving the gap visible prevents a missing
+    // stage breakdown from looking like a physiologically impossible night.
+    deep: d.minutesDeep,
+    light: d.minutesLight,
+    rem: d.minutesRem,
+    wake: d.minutesWake,
     sleepMA: ma7[i],
   }));
 
@@ -57,7 +59,7 @@ export function SleepStagesChart({ data, annotations = [] }: Props) {
             dot={false}
             strokeDasharray="5 3"
             connectNulls
-            name="7-day avg"
+            name="7-day avg time asleep"
           />
         </ComposedChart>
       </ResponsiveContainer>

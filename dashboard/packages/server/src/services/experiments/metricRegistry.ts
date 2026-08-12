@@ -1,4 +1,4 @@
-import type { BetterDirection } from "@health-dashboard/shared";
+import type { BetterDirection, MetricProvenance } from "@health-dashboard/shared";
 
 /**
  * The metrics a before/after report compares, and which way is better for
@@ -48,6 +48,7 @@ export function specFor(metric: string): MetricSpec | undefined {
 export interface DailyPoint {
   date: string;
   value: number;
+  provenance?: MetricProvenance;
 }
 
 /**

@@ -131,9 +131,14 @@ export function GoalRings({ summary }: { summary: HealthSummary }) {
      */
     <section className="rounded-2xl bg-surface-container p-6">
       <div className="flex justify-between items-center mb-4">
-        <h2 className="text-lg font-headline font-semibold text-on-surface">
-          Daily Goals
-        </h2>
+        <div>
+          <h2 className="text-lg font-headline font-semibold text-on-surface">
+            Daily Goals
+          </h2>
+          <p className="text-[10px] text-outline">
+            Activity is the running total for {summary.activity.latest?.date ?? "today"}; sleep is the night ending {summary.sleep.latest?.date ?? "—"}.
+          </p>
+        </div>
         <button
           onClick={() => setEditing(!editing)}
           className="text-on-surface-variant hover:text-on-surface transition-colors"

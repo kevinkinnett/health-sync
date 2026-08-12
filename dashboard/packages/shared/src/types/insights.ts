@@ -9,6 +9,8 @@ export interface DayOfWeekAvg {
   dayName: string;
   avgSteps: number;
   avgActiveMinutes: number;
+  /** Completed activity days contributing to this weekday bucket. */
+  samples: number;
 }
 
 export interface Highlight {
@@ -27,5 +29,7 @@ export interface WeeklyInsights {
   sleepEfficiency: MetricComparison | null;
   restingHr: MetricComparison | null;
   dayOfWeek: DayOfWeekAvg[];
+  /** Completed activity days used for the weekday-pattern averages. */
+  dayOfWeekDays: number;
   highlights: Highlight[];
 }

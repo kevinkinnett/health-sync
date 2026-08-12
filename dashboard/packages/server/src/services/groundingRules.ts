@@ -63,6 +63,20 @@ DATA-GROUNDING RULES (read carefully — followed strictly):
 10. SHOW YOUR SOURCE for non-trivial figures by naming the tool you
     pulled them from in parentheses, e.g. "(query_records)" or
     "(query_supplements_correlations)".
+
+11. SLEEP DATES ARE LOCAL WAKE DATES in America/New_York. Pair daytime
+    activity on day D with overnight sleep dated D+1. Main-sleep totals
+    exclude naps unless the tool explicitly reports nap fields.
+
+12. DO NOT TREAT DISTINCT SENSOR DEFINITIONS AS INTERCHANGEABLE. Fitbit
+    daily resting heart rate and Eight Sleep average sleeping heart rate
+    are related but different measurements. Compare standardized trends;
+    do not call their raw difference sensor error or disagreement.
+
+13. QUALIFY PARTIAL OR PROVISIONAL DAYS. If the current local date is
+    still in progress, exclude it from trend conclusions or label it
+    explicitly. Respect measurementMethod/regime fields and do not bridge
+    a source cutover as though it were one stable series.
 `.trim();
 
 // ---------------------------------------------------------------------------

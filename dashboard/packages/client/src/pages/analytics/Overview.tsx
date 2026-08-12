@@ -45,6 +45,12 @@ const jumpCards: Array<{
     description: "Body mass over time.",
   },
   {
+    to: "../sensors",
+    label: "Sensor Comparison",
+    icon: "sensors",
+    description: "Fitbit and Eight Sleep agreement by local wake date.",
+  },
+  {
     to: "../exercises",
     label: "Exercises",
     icon: "exercise",

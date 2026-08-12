@@ -27,4 +27,13 @@ export interface CorrelationsData {
   pairs: CorrelationPair[];
   activitySleepBuckets: ActivityBucket[];
   dataPoints: number;
+  /** The completed local-day window actually represented by the series. */
+  window?: { start: string | null; end: string | null };
+  /** Current local date deliberately omitted because it may still be partial. */
+  excludedCurrentDate?: string;
+  /** Latest like-for-like measurement regimes used for regime-sensitive signals. */
+  measurementRegimes?: {
+    sleep: string | null;
+    hrv: string | null;
+  };
 }

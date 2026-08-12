@@ -31,6 +31,7 @@ const SERIES_SCREENS = [
   "Nutrition.tsx",
   "EightSleep.tsx",
   "Exercises.tsx",
+  "Sensors.tsx",
 ];
 
 /**

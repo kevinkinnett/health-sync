@@ -86,6 +86,7 @@ export function Dashboard() {
               color={METRIC_COLOR.steps}
               icon="footprint"
               betterDirection="up"
+              context={s.activity.latest ? `Running total · ${s.activity.latest.date}` : undefined}
             />
             <StatCard
               title="Rest Duration"
@@ -99,6 +100,7 @@ export function Dashboard() {
               color={METRIC_COLOR.sleepMin}
               icon="bedtime"
               betterDirection="up"
+              context={s.sleep.latest ? `Night ending · ${s.sleep.latest.date}` : undefined}
             />
             <StatCard
               title="Resting HR"
@@ -108,6 +110,7 @@ export function Dashboard() {
               color={METRIC_COLOR.restingHr}
               icon="favorite"
               betterDirection="down"
+              context={s.heartRate.latest ? `Daily value · ${s.heartRate.latest.date}` : undefined}
             />
             <StatCard
               title="Body Mass"
@@ -120,6 +123,7 @@ export function Dashboard() {
               sparkline={s?.weight.sparkline ?? []}
               color={METRIC_COLOR.weight}
               icon="scale"
+              context={s.weight.latest ? `Latest reading · ${s.weight.latest.date}` : undefined}
             />
           </div>
         </div>

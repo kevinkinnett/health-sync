@@ -9,12 +9,13 @@ import { avg } from "../stats.js";
  */
 
 export const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+export const FULL_DAY_NAMES = [
+  "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
+];
 
 /**
  * Rotate a length-7 array so index 0 becomes `startDow` and indices wrap
- * around mod 7. Used to align day-of-week visualisations with the rolling
- * window the rest of the dashboard uses (today on the right, oldest on
- * the left) instead of fixed Sun→Sat calendar order.
+ * around mod 7. Weekday aggregates use this for conventional Mon→Sun order.
  */
 export function rotateDow<T>(arr: readonly T[], startDow: number): T[] {
   const out: T[] = [];
@@ -59,6 +60,7 @@ export function computeDayOfWeek(
       dayName: DAY_NAMES[i],
       avgSteps: Math.round(avg(buckets[i].steps)),
       avgActiveMinutes: Math.round(avg(buckets[i].active)),
+      samples: buckets[i].steps.length,
     });
   }
   return result;

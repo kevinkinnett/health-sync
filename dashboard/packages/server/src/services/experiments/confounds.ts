@@ -26,13 +26,18 @@ import { daysBetween, type WindowPair } from "./windows.js";
  * Kept as a constant rather than data because these are facts about this
  * app's own ingest history. If the list grows, it should become a table.
  */
-const MEASUREMENT_CHANGES: { date: string; detail: string }[] = [
+const MEASUREMENT_CHANGES: { date: string; detail: string; affectedMetrics: string[] }[] = [
   {
     date: "2026-06-12",
     detail:
       "Google Health cutover — sleep efficiency became a derived value " +
       "rather than one Fitbit supplied, and HRV changed to a per-5-minute " +
-      "flavour with a different absolute scale.",
+      "flavour with a different absolute scale. Activity rollups also moved " +
+      "to the Google Health ingest path.",
+    affectedMetrics: [
+      "sleepMin", "inBedMin", "efficiency", "wakeMin", "deepMin", "remMin",
+      "dailyRmssd", "steps", "activeMinutes",
+    ],
   },
 ];
 
@@ -50,6 +55,7 @@ export function scanConfounds(
   others: Intervention[],
   windows: WindowPair,
   coverage: { before: number; after: number },
+  measuredMetrics?: string[],
 ): Confound[] {
   const found: Confound[] = [];
   const pivot = subject.startedOn;
@@ -84,6 +90,10 @@ export function scanConfounds(
 
   // --- Changes in how the metric was measured ---------------------------
   for (const change of MEASUREMENT_CHANGES) {
+    if (
+      measuredMetrics != null &&
+      !change.affectedMetrics.some((metric) => measuredMetrics.includes(metric))
+    ) continue;
     const inWindow =
       change.date >= windows.before.start && change.date <= windows.after.end;
     if (!inWindow) continue;

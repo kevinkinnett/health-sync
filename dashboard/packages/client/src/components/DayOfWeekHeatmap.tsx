@@ -6,23 +6,6 @@ import {
   type UnitSystem,
 } from "../lib/units";
 
-/** "Monday, May 25" — the actual date behind a day-of-week column. */
-function formatDayDate(dateStr: string): string {
-  return new Date(dateStr + "T00:00:00Z").toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC",
-  });
-}
-function formatShortDate(dateStr: string): string {
-  return new Date(dateStr + "T00:00:00Z").toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC",
-  });
-}
-
 // Map metric type to accent color hue for the heatmap
 function getColorForMetric(metric: string): { r0: number; g0: number; b0: number; r1: number; g1: number; b1: number } {
   // Activity metrics -> primary (indigo)
@@ -49,21 +32,18 @@ function interpolateColor(t: number, metric: string): string {
 function CellValue({
   row,
   dayIndex,
-  dayDate,
   units,
 }: {
   row: DayOfWeekHeatmapMetric;
   dayIndex: number;
-  dayDate?: string;
   units: UnitSystem;
 }) {
-  const datePart = dayDate ? ` · ${formatShortDate(dayDate)}` : "";
   const val = row.values[dayIndex];
   if (val == null) {
     return (
       <td
         className="px-4 py-4 text-center text-outline"
-        title={dayDate ? formatDayDate(dayDate) : undefined}
+        title={`No ${row.label.toLowerCase()} readings for this weekday`}
       >
         --
       </td>
@@ -87,12 +67,13 @@ function CellValue({
       : row.unit === "min" && val >= 60
         ? `${Math.floor(val / 60)}h${val % 60}m`
         : val.toLocaleString();
+  const samples = row.samples?.[dayIndex];
 
   return (
     <td
       className={`px-4 py-4 text-center tabular-nums ${isBold ? "font-bold" : ""}`}
       style={{ backgroundColor: bg }}
-      title={`${row.label}${datePart}: ${formatted} ${displayUnit}`}
+      title={`${row.label} weekday average: ${formatted} ${displayUnit}${samples != null ? ` · n=${samples}` : ""}`}
     >
       {formatted}
     </td>
@@ -105,7 +86,7 @@ export function DayOfWeekHeatmap({ data }: { data: DayOfWeekHeatmapData }) {
     <div className="bg-surface-container rounded-xl overflow-hidden">
       <div className="p-6 border-b border-outline-variant/10 flex items-center justify-between">
         <h2 className="font-headline font-semibold text-lg text-on-surface">
-          Weekly Performance Heatmap
+          Weekday Pattern Heatmap
         </h2>
         <div className="flex items-center gap-2">
           <div className="flex gap-1">
@@ -115,7 +96,7 @@ export function DayOfWeekHeatmap({ data }: { data: DayOfWeekHeatmapData }) {
             <div className="w-3 h-3 bg-primary rounded-sm" />
           </div>
           <span className="text-xs text-outline tabular-nums ml-2">
-            {data.totalDays} days
+            {data.totalDays} completed days
           </span>
         </div>
       </div>
@@ -128,7 +109,7 @@ export function DayOfWeekHeatmap({ data }: { data: DayOfWeekHeatmapData }) {
               {data.dayNames.map((name, i) => (
                 <th
                   key={name}
-                  title={data.dayDates?.[i] ? formatDayDate(data.dayDates[i]) : undefined}
+                  title={`${data.dayCounts[i] ?? 0} completed ${name} samples`}
                   className="px-4 py-4 font-semibold text-outline text-center cursor-help"
                 >
                   {name}
@@ -150,7 +131,6 @@ export function DayOfWeekHeatmap({ data }: { data: DayOfWeekHeatmapData }) {
                     key={i}
                     row={row}
                     dayIndex={i}
-                    dayDate={data.dayDates?.[i]}
                     units={units}
                   />
                 ))}
@@ -159,6 +139,11 @@ export function DayOfWeekHeatmap({ data }: { data: DayOfWeekHeatmapData }) {
           </tbody>
         </table>
       </div>
+      {data.measurementRegimes?.sleep && (
+        <p className="px-6 py-3 text-[10px] text-outline border-t border-outline-variant/10">
+          Sleep rows use the latest like-for-like method: {data.measurementRegimes.sleep}.
+        </p>
+      )}
     </div>
   );
 }

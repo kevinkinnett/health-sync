@@ -125,7 +125,6 @@ export function HrvChart({ data, annotations = [] }: Props) {
             stroke={METRIC_COLOR.dailyRmssd}
             strokeWidth={1.5}
             dot={{ r: 1.5 }}
-            connectNulls
             name="Daily RMSSD"
           />
           <Line
@@ -134,7 +133,6 @@ export function HrvChart({ data, annotations = [] }: Props) {
             stroke={METRIC_COLOR.deepMin}
             strokeWidth={1.5}
             dot={{ r: 1.5 }}
-            connectNulls
             name="Deep Sleep RMSSD"
           />
           <Line

@@ -1,8 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { SummaryUseCase } from "../services/health/summaryUseCase.js";
 import { ReadinessUseCase } from "../services/health/readinessUseCase.js";
+import { SensorAgreementService } from "../services/health/sensorAgreement.js";
+import { WeeklyInsightsService } from "../services/health/weeklyInsights.js";
+import { HeatmapService } from "../services/health/heatmap.js";
+import { addDays } from "../services/userTz.js";
 
 const reader = <T>(rows: T[]) => ({ findLatest: async () => rows });
+const rangeReader = <T extends { date: string }>(rows: T[]) => ({
+  findLatest: async (n: number) => [...rows].sort((a, b) => b.date.localeCompare(a.date)).slice(0, n),
+  findByDateRange: async (start: string, end: string) =>
+    rows.filter((row) => row.date >= start && row.date <= end),
+});
 
 describe("focused health use cases", () => {
   it("builds summary sparklines oldest-to-newest and converts sleep to hours", async () => {
@@ -77,5 +86,81 @@ describe("focused health use cases", () => {
       comparisonGroup: "non_rem_sleeping_hr",
       regime: "daily_hrv_v1",
     });
+  });
+
+  it("pairs sensors on local wake date and keeps different heart-rate definitions separate", async () => {
+    const useCase = new SensorAgreementService(
+      rangeReader([
+        { date: "2026-08-09", totalMinutesAsleep: 400, measurementMethod: "main_sleep_v2" },
+        { date: "2026-08-10", totalMinutesAsleep: 420, measurementMethod: "main_sleep_v2" },
+      ] as never[]),
+      rangeReader([] as never[]),
+      rangeReader([
+        { date: "2026-08-09", restingHeartRate: 58 },
+        { date: "2026-08-10", restingHeartRate: 60 },
+      ] as never[]),
+      rangeReader([] as never[]),
+      rangeReader([
+        { date: "2026-08-09", sleepDurationMin: 410, avgHeartRate: 61 },
+        { date: "2026-08-10", sleepDurationMin: 450, avgHeartRate: 63 },
+      ] as never[]),
+    );
+
+    const result = await useCase.get("2026-08-01", "2026-08-10", "America/New_York");
+    const sleep = result.series.find((series) => series.metric === "sleep")!;
+    const heartRate = result.series.find((series) => series.metric === "heartRate")!;
+    expect(result.dateSemantics).toBe("local_wake_date");
+    expect(sleep.meanAbsoluteDifference).toBe(20);
+    expect(sleep.largestDivergences[0]?.date).toBe("2026-08-10");
+    expect(heartRate.measurementComparable).toBe(false);
+    expect(heartRate.points.every((point) => point.difference == null)).toBe(true);
+    expect(heartRate.points.every((point) => point.fitbitZ != null && point.eightSleepZ != null)).toBe(true);
+  });
+
+  it("anchors weekly comparisons to the latest completed Eastern day", async () => {
+    const completed = Array.from({ length: 14 }, (_, index) => ({
+      date: addDays("2026-08-11", -index),
+      steps: 5_000 + index,
+      minutesFairlyActive: 10,
+      minutesVeryActive: 5,
+      distanceKm: 4,
+      caloriesOut: 2_000,
+    }));
+    const activity = rangeReader([
+      { ...completed[0], date: "2026-08-12", steps: 25 },
+      ...completed,
+    ] as never[]);
+    const useCase = new WeeklyInsightsService(
+      activity as never,
+      rangeReader([] as never[]) as never,
+      rangeReader([] as never[]) as never,
+    );
+
+    const result = await useCase.getWeeklyInsights("2026-08-12");
+    expect(result.currentPeriod.end).toBe("2026-08-11");
+    expect(result.dayOfWeekDays).toBe(14);
+    expect(result.dayOfWeek.reduce((sum, day) => sum + day.samples, 0)).toBe(14);
+    expect(result.dayOfWeek.map((day) => day.dayName)).toEqual([
+      "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun",
+    ]);
+  });
+
+  it("keeps heatmap sleep averages within the latest measurement regime", async () => {
+    const activity = rangeReader([
+      { date: "2026-07-06", steps: 4_000 },
+      { date: "2026-08-03", steps: 6_000 },
+    ] as never[]);
+    const sleep = rangeReader([
+      { date: "2026-07-06", totalMinutesAsleep: 300, measurementMethod: "fitbit_legacy_main_v1" },
+      { date: "2026-08-03", totalMinutesAsleep: 450, measurementMethod: "main_sleep_v2" },
+    ] as never[]);
+    const useCase = new HeatmapService(activity as never, sleep as never, rangeReader([] as never[]) as never);
+
+    const result = await useCase.getDayOfWeekHeatmap("2026-08-04");
+    const sleepRow = result.rows.find((row) => row.metric === "sleepMin")!;
+    expect(result.dayNames[0]).toBe("Mon");
+    expect(sleepRow.values[0]).toBe(450);
+    expect(sleepRow.samples?.[0]).toBe(1);
+    expect(result.measurementRegimes?.sleep).toBe("main_sleep_v2");
   });
 });

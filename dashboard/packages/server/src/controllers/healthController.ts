@@ -130,14 +130,19 @@ export class HealthController {
   }
 
   async getDayOfWeekHeatmap(_req: Request, res: Response): Promise<void> {
-    res.json(await this.service.getDayOfWeekHeatmap());
+    res.json(await this.service.getDayOfWeekHeatmap(todayInTz(this.tz)));
   }
 
   async getCorrelations(_req: Request, res: Response): Promise<void> {
-    res.json(await this.service.getCorrelations());
+    res.json(await this.service.getCorrelations(todayInTz(this.tz)));
   }
 
   async getWeeklyInsights(_req: Request, res: Response): Promise<void> {
-    res.json(await this.service.getWeeklyInsights());
+    res.json(await this.service.getWeeklyInsights(todayInTz(this.tz)));
+  }
+
+  async getSensorAgreement(req: Request, res: Response): Promise<void> {
+    const { start, end } = parseDateRange(req, this.tz);
+    res.json(await this.service.getSensorAgreement(start, end, this.tz));
   }
 }

@@ -24,6 +24,7 @@ function makeService(opts: {
   activity?: any[];
   sleep?: any[];
   heartRate?: any[];
+  hrv?: any[];
   food?: any[];
   driving?: DrivingDay[];
 } = {}) {
@@ -32,7 +33,7 @@ function makeService(opts: {
     repoOf(opts.sleep ?? []), // sleep
     repoOf(opts.heartRate ?? []), // heartRate
     empty, // weight
-    empty, // hrv
+    repoOf(opts.hrv ?? []), // hrv
     empty, // exerciseLog
     empty, // spo2
     empty, // breathing
@@ -194,5 +195,32 @@ describe("HealthDataService.getCorrelations — time in car", () => {
     );
     expect(pair).toBeDefined();
     expect(pair!.points.length).toBe(12);
+  });
+
+  it("excludes the partial current day and does not bridge sleep/HRV regimes", async () => {
+    const sleep: any[] = [];
+    const hrv: any[] = [];
+    for (let i = 0; i < 12; i++) {
+      const oldDate = `2026-07-${String(1 + i).padStart(2, "0")}`;
+      const newDate = `2026-08-${String(1 + i).padStart(2, "0")}`;
+      sleep.push(
+        { date: oldDate, totalMinutesAsleep: 350 + i, measurementMethod: "fitbit_legacy_main_v1" },
+        { date: newDate, totalMinutesAsleep: 410 + i, measurementMethod: "main_sleep_v2" },
+      );
+      hrv.push(
+        { date: oldDate, dailyRmssd: 35 + i, measurementMethod: "fitbit_legacy_v1" },
+        { date: newDate, dailyRmssd: 50 + i, measurementMethod: "sample_mean_v1" },
+      );
+    }
+    sleep.push({ date: "2026-08-13", totalMinutesAsleep: 100, measurementMethod: "main_sleep_v2" });
+    hrv.push({ date: "2026-08-13", dailyRmssd: 5, measurementMethod: "sample_mean_v1" });
+
+    const corr = await makeService({ sleep, hrv }).getCorrelations("2026-08-13");
+    const pair = corr.pairs.find((p) => p.xMetric === "sleepMin" && p.yMetric === "hrv");
+    expect(pair?.points).toHaveLength(12);
+    expect(pair?.points.every((point) => point.date.startsWith("2026-08"))).toBe(true);
+    expect(corr.window?.end).toBe("2026-08-12");
+    expect(corr.excludedCurrentDate).toBe("2026-08-13");
+    expect(corr.measurementRegimes).toEqual({ sleep: "main_sleep_v2", hrv: "sample_mean_v1" });
   });
 });

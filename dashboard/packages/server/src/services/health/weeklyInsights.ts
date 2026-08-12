@@ -11,7 +11,7 @@ import type { SleepRepository } from "../../repositories/sleepRepo.js";
 import type { HeartRateRepository } from "../../repositories/heartRateRepo.js";
 import { avg } from "../stats.js";
 import { addDays } from "../userTz.js";
-import { DAY_NAMES, computeDayOfWeek, dowOf } from "./dayOfWeek.js";
+import { FULL_DAY_NAMES, computeDayOfWeek, dowOf } from "./dayOfWeek.js";
 
 /** Week-over-week deltas plus the narrative call-outs above the charts. */
 export class WeeklyInsightsService {
@@ -21,15 +21,20 @@ export class WeeklyInsightsService {
     private heartRateRepo: HeartRateRepository,
   ) {}
 
-  async getWeeklyInsights(): Promise<WeeklyInsights> {
-    // Fetch last 90 days of activity for day-of-week patterns
-    const allActivity = await this.activityRepo.findLatest(90);
-    if (allActivity.length === 0) {
+  async getWeeklyInsights(today?: string): Promise<WeeklyInsights> {
+    // One source powers both this weekday view and the overview heatmap.
+    // Exclude today's running total: comparing a 2pm partial day with a
+    // completed day is the dominant source of false week-over-week alarms.
+    const allActivity = await this.activityRepo.findLatest(201);
+    const completedActivity = today
+      ? allActivity.filter((day) => day.date < today).slice(0, 200)
+      : allActivity.slice(0, 200);
+    if (completedActivity.length === 0) {
       throw new Error("No activity data available");
     }
 
-    // allActivity is DESC — latest first
-    const latestDate = allActivity[0].date;
+    // Repository order is DESC — latest completed day first.
+    const latestDate = completedActivity[0].date;
     const currentEnd = latestDate;
     const currentStart = addDays(latestDate, -6);
     const previousEnd = addDays(latestDate, -7);
@@ -38,8 +43,8 @@ export class WeeklyInsightsService {
     const inRange = <T extends { date: string }>(rows: T[], from: string, to: string) =>
       rows.filter((d) => d.date >= from && d.date <= to);
 
-    const currentActivity = inRange(allActivity, currentStart, currentEnd);
-    const previousActivity = inRange(allActivity, previousStart, previousEnd);
+    const currentActivity = inRange(completedActivity, currentStart, currentEnd);
+    const previousActivity = inRange(completedActivity, previousStart, previousEnd);
 
     // Fetch sleep + HR for both weeks in one call each
     const [sleepData, hrData] = await Promise.all([
@@ -47,8 +52,13 @@ export class WeeklyInsightsService {
       this.heartRateRepo.findByDateRange(previousStart, currentEnd),
     ]);
 
-    const currentSleep = inRange(sleepData, currentStart, currentEnd);
-    const previousSleep = inRange(sleepData, previousStart, previousEnd);
+    const latestSleepMethod = [...sleepData]
+      .sort((a, b) => b.date.localeCompare(a.date))[0]?.measurementMethod ?? null;
+    const comparableSleep = latestSleepMethod == null
+      ? sleepData
+      : sleepData.filter((day) => day.measurementMethod === latestSleepMethod);
+    const currentSleep = inRange(comparableSleep, currentStart, currentEnd);
+    const previousSleep = inRange(comparableSleep, previousStart, previousEnd);
     const currentHr = inRange(hrData, currentStart, currentEnd);
     const previousHr = inRange(hrData, previousStart, previousEnd);
 
@@ -88,13 +98,10 @@ export class WeeklyInsightsService {
     const sleepEfficiency = compareIfBoth(currentSleep, previousSleep, (d) => d.efficiency);
     const restingHr = compareIfBoth(currentHr, previousHr, (d) => d.restingHeartRate);
 
-    // Day-of-week patterns from all available data, rotated so the bars
-    // line up with the rolling current-period window (period start on the
-    // left, period end on the right). Without this the chart reads in
-    // fixed Sun→Sat calendar order even though the date-range pill shows a
-    // rolling Tue→Mon (or whichever) window — the visual mismatch reads
-    // like a bug to anyone scanning quickly.
-    const dayOfWeek = computeDayOfWeek(allActivity, dowOf(currentStart));
+    // Weekday patterns are aggregates, not the seven dates in currentPeriod.
+    // Keep them in conventional Mon→Sun order and use the same completed
+    // 200-day source window as the heatmap.
+    const dayOfWeek = computeDayOfWeek(completedActivity, 1);
 
     const highlights = generateHighlights(
       currentActivity,
@@ -115,6 +122,7 @@ export class WeeklyInsightsService {
       sleepEfficiency,
       restingHr,
       dayOfWeek,
+      dayOfWeekDays: completedActivity.length,
       highlights,
     };
   }
@@ -174,7 +182,7 @@ export function generateHighlights(
   if (bestDay) {
     highlights.push({
       kind: "neutral",
-      text: `Best day: ${DAY_NAMES[dowOf(bestDay.date)]} with ${bestDay.steps?.toLocaleString()} steps`,
+      text: `Best day: ${FULL_DAY_NAMES[dowOf(bestDay.date)]} with ${bestDay.steps?.toLocaleString()} steps`,
     });
   }
 
@@ -183,7 +191,7 @@ export function generateHighlights(
   if (sorted.length > 0 && sorted[0].avgSteps > 0) {
     highlights.push({
       kind: "neutral",
-      text: `${sorted[0].dayName}s are your most active day (${sorted[0].avgSteps.toLocaleString()} avg steps)`,
+      text: `${FULL_DAY_NAMES[sorted[0].dow]} is your most active weekday (${sorted[0].avgSteps.toLocaleString()} average steps)`,
     });
   }
 

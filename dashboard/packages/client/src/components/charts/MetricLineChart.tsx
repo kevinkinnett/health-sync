@@ -125,7 +125,6 @@ export function MetricLineChart({
             stroke={color}
             strokeWidth={1.5}
             dot={{ r: 1.5 }}
-            connectNulls
             name={title}
           />
           {movingAverage && (

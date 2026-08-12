@@ -170,8 +170,13 @@ function MetricRow({ effect: m }: { effect: MetricEffect }) {
   return (
     <tr className="border-t border-outline-variant/10">
       <td className="py-2.5 text-on-surface">
-        {m.label}
-        <span className="text-outline text-[11px]"> ({m.unit})</span>
+        <span>{m.label}<span className="text-outline text-[11px]"> ({m.unit})</span></span>
+        {m.provenance && (
+          <span className="block text-[10px] text-outline mt-0.5">
+            {m.provenance.deviceLabel} · {m.provenance.measurement}
+            {m.provenance.regimes.length > 1 ? ` · ${m.provenance.regimes.length} regimes` : ""}
+          </span>
+        )}
       </td>
       <td className="py-2.5 text-right tabular-nums text-on-surface-variant">
         {m.before.mean}

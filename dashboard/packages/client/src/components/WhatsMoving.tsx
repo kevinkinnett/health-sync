@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { CorrelationsData, CorrelationPair } from "@health-dashboard/shared";
 import { CorrelationBadge } from "./charts/CorrelationBadge";
 
-// "Real enough to act on" gate. |r| ≥ 0.2 matches the "Weak" badge cutoff;
+// "Worth a closer look" gate. |r| ≥ 0.2 matches the "Weak" badge cutoff;
 // n ≥ 12 sits just above the correlation engine's 10-day join floor so a
 // barely-overlapping fluke can't headline. The grid below still shows
 // everything — this panel is the verdict, not the full record.
@@ -38,7 +38,7 @@ function MovingRow({ pair, max }: { pair: CorrelationPair; max: number }) {
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <span className="text-sm font-semibold text-on-surface">
             {pair.xLabel} <span className="text-outline">↔</span> {pair.yLabel}
-            {pair.lagDays === 1 && (
+            {pair.lagDays === 1 && !pair.yLabel.toLowerCase().includes("that night") && (
               <span className="ml-2 text-[10px] uppercase tracking-wider text-outline font-bold">
                 next day
               </span>
@@ -66,7 +66,7 @@ function MovingRow({ pair, max }: { pair: CorrelationPair; max: number }) {
 
 /**
  * Ranked verdict over the cross-metric correlations: only the
- * relationships strong + well-sampled enough to act on, ordered by
+ * relationships strong + well-sampled enough to investigate, ordered by
  * signal strength (|r|·√n, the same t-stat proxy the grid sorts by).
  * Renders above the full scatter grid so the page leads with "here's
  * what matters" instead of a wall of charts.
@@ -85,15 +85,15 @@ export function WhatsMoving({ data }: { data: CorrelationsData }) {
     <div className="bg-surface-container rounded-xl p-5">
       <div className="flex items-baseline justify-between gap-2 mb-1">
         <h2 className="text-lg font-headline font-semibold text-on-surface">
-          What's Moving
+          Worth Investigating
         </h2>
         <span className="text-xs text-outline tabular-nums">
           {data.dataPoints} days
         </span>
       </div>
       <p className="text-xs text-on-surface-variant mb-2">
-        Relationships strong and well-sampled enough to act on, ranked by
-        signal strength. These are associations, not proof of cause.
+        The stronger, better-sampled associations, ranked by signal strength.
+        Use these to form questions, not treatment or lifestyle conclusions.
       </p>
 
       {ranked.length === 0 ? (
@@ -122,6 +122,15 @@ export function WhatsMoving({ data }: { data: CorrelationsData }) {
             </button>
           )}
         </>
+      )}
+      {(data.window?.end || data.excludedCurrentDate) && (
+        <p className="text-[11px] text-outline mt-3">
+          Completed days{data.window?.end ? ` through ${data.window.end}` : " only"}.
+          {data.excludedCurrentDate ? ` ${data.excludedCurrentDate} is excluded while it is in progress.` : ""}
+          {data.measurementRegimes?.sleep || data.measurementRegimes?.hrv
+            ? " Sleep and HRV are kept within their latest measurement regimes."
+            : ""}
+        </p>
       )}
     </div>
   );
