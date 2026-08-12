@@ -19,6 +19,7 @@ const CSS = readFileSync(
   join(__dirname, "..", "index.css"),
   "utf8",
 );
+const CLIENT_ROOT = join(__dirname, "..", "..");
 
 function token(name: string): string {
   const m = CSS.match(new RegExp(`--color-${name}:\\s*(#[0-9a-fA-F]{6})`));
@@ -38,6 +39,11 @@ function contrast(a: string, b: string): number {
   return (hi + 0.05) / (lo + 0.05);
 }
 
+function channelSpread(hex: string): number {
+  const channels = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  return Math.max(...channels) - Math.min(...channels);
+}
+
 const PAGE = "surface";
 const CARD = "surface-container";
 
@@ -53,6 +59,52 @@ describe("dark theme — accents are readable as text", () => {
       }
     });
   }
+});
+
+describe("dark theme — graphite surfaces stay neutral and ordered", () => {
+  const surfaces = [
+    "surface-container-lowest",
+    "surface",
+    "surface-container-low",
+    "surface-container",
+    "surface-container-high",
+    "surface-container-highest",
+    "surface-bright",
+  ];
+
+  it("keeps every surface close to a neutral gray", () => {
+    for (const name of surfaces) {
+      expect(
+        channelSpread(token(name)),
+        `${name} has a visible color cast`,
+      ).toBeLessThanOrEqual(18);
+    }
+  });
+
+  it("makes each elevation step lighter than the one below it", () => {
+    const values = surfaces.map((name) => luminance(token(name)));
+    for (let index = 1; index < values.length; index += 1) {
+      expect(values[index], surfaces[index]).toBeGreaterThan(values[index - 1]);
+    }
+  });
+
+  it("keeps primary and secondary text neutral rather than lavender", () => {
+    for (const name of ["on-surface", "on-surface-variant"]) {
+      expect(channelSpread(token(name)), `${name} is visibly tinted`).toBeLessThanOrEqual(12);
+    }
+  });
+});
+
+describe("dark theme — browser and PWA chrome stay synchronized", () => {
+  it("uses the page surface for installed and browser chrome", () => {
+    const html = readFileSync(join(CLIENT_ROOT, "index.html"), "utf8");
+    const viteConfig = readFileSync(join(CLIENT_ROOT, "vite.config.ts"), "utf8");
+    const surface = token("surface");
+
+    expect(html).toContain(`<meta name="theme-color" content="${surface}"`);
+    expect(viteConfig).toContain(`theme_color: "${surface}"`);
+    expect(viteConfig).toContain(`background_color: "${surface}"`);
+  });
 });
 
 describe("dark theme — labels are readable on their own backgrounds", () => {

@@ -3,7 +3,7 @@ import * as Plot from "@observablehq/plot";
 import type { LagProfile } from "@health-dashboard/shared";
 import { PlotFigure } from "./PlotFigure";
 import { PLOT_STYLE, METRIC_COLOR } from "./plotTheme";
-import { DEFAULT_SERIES } from "./chartPalette";
+import { CHART_CHROME, DEFAULT_SERIES } from "./chartPalette";
 
 interface Row {
   lag: number;
@@ -52,10 +52,10 @@ export function LagCurve({ data }: { data: LagProfile }) {
         Plot.rect([{}], {
           y1: -0.2,
           y2: 0.2,
-          fill: "#222a3d",
+          fill: CHART_CHROME.grid,
           fillOpacity: 0.35,
         }),
-        Plot.ruleY([0], { stroke: "#464554" }),
+        Plot.ruleY([0], { stroke: CHART_CHROME.inactive }),
         Plot.line(rows, {
           x: "lag",
           y: "r",

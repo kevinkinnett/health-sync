@@ -122,9 +122,14 @@ describe("InsightChatService", () => {
     // (The agentic loop catches LLM throws and emits a placeholder
     // rather than re-raising, so `send` actually returns successfully
     // with placeholder=true. Either way the user row is persisted.)
-    await service.send({ message: "How was my sleep?" }).catch(() => undefined);
+    const result = await service.send({ message: "How was my sleep?" });
     expect(repo.rows[0]?.role).toBe("user");
     expect(repo.rows[0]?.content).toBe("How was my sleep?");
+    expect(result.meta.placeholder).toBe(true);
+    expect(repo.rows.at(-1)).toMatchObject({
+      role: "assistant",
+      content: result.message.content,
+    });
   });
 
   it("injects the grounding prelude into the FIRST user message only", async () => {
@@ -170,6 +175,24 @@ describe("InsightChatService", () => {
     const assistantTurns = repo.rows.filter((r) => r.role === "assistant");
     expect(assistantTurns.length).toBe(1);
     expect(assistantTurns[0].content).toBe("Plain answer.");
+  });
+
+  it("allows twelve tool calls and persists the reserved synthesis turn", async () => {
+    const responses = Array.from({ length: 12 }, (_, index) =>
+      toolCallResponse(`call-${index + 1}`, "query_summary"),
+    );
+    responses.push(textResponse("Final grounded synthesis."));
+    const service = makeService(makeLlm(responses), repo);
+
+    const result = await service.send({ message: "Review every relevant signal" });
+
+    expect(result.meta.placeholder).toBe(false);
+    expect(result.meta.rounds).toBe(13);
+    expect(repo.rows.filter((row) => row.role === "tool")).toHaveLength(12);
+    expect(repo.rows.at(-1)).toMatchObject({
+      role: "assistant",
+      content: "Final grounded synthesis.",
+    });
   });
 
   it("resolves tool_name by walking back to the assistant turn that issued the tool_call", async () => {

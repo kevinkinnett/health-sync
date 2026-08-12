@@ -1,5 +1,7 @@
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { analyzeNavItems } from "./navigation";
+import { DateRangePresets } from "./ui/DateRangePresets";
+import { PageHeader } from "./ui/PageHeader";
 
 const trendViews = analyzeNavItems.filter((item) => item.to.startsWith("/analytics/"));
 
@@ -10,13 +12,11 @@ export function AnalyticsLayout() {
 
   return (
     <div className="space-y-6">
-      <header className="flex flex-col gap-4 rounded-2xl border border-outline-variant/10 bg-surface-container-low p-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Explore</p>
-          <h1 className="font-headline text-2xl font-bold tracking-tight text-on-surface mt-1">{current.label}</h1>
-          <p className="text-sm text-on-surface-variant mt-1">Choose a metric or relationship to inspect in detail.</p>
-        </div>
-        <label className="sm:min-w-64">
+      <PageHeader
+        eyebrow="Explore"
+        title={current.label}
+        description={current.description}
+        action={<label className="block w-full sm:min-w-64">
           <span className="sr-only">Explore health view</span>
           <select
             aria-label="Explore health view"
@@ -28,8 +28,9 @@ export function AnalyticsLayout() {
               <option key={view.to} value={view.to}>{view.label}</option>
             ))}
           </select>
-        </label>
-      </header>
+        </label>}
+      />
+      <DateRangePresets className="sm:hidden" label="Analytics date range" />
       <Outlet />
     </div>
   );

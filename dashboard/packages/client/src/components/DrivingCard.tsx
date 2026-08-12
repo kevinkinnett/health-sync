@@ -40,19 +40,19 @@ function Header() {
 export function DrivingCard({ data }: { data: DrivingSummary }) {
   if (!data || data.latestDate == null) {
     return (
-      <div className="bg-surface-container rounded-xl p-5 border border-outline-variant/10">
+      <section className="rounded-2xl bg-surface-container p-5">
         <Header />
         <p className="text-on-surface-variant text-sm mt-3">
           No driving data yet — syncing from TeslaMate.
         </p>
-      </div>
+      </section>
     );
   }
 
   const max = Math.max(...data.trend.map((d) => d.minutes), 1);
 
   return (
-    <div className="bg-surface-container rounded-xl p-5 border border-outline-variant/10">
+    <section className="rounded-2xl bg-surface-container p-5">
       <Header />
       <div className="mt-3 flex items-end justify-between gap-4">
         <div>
@@ -85,6 +85,6 @@ export function DrivingCard({ data }: { data: DrivingSummary }) {
           Most recent · {shortDate(data.latestDate)}: {fmtHm(data.latestMinutes)} driving
         </p>
       )}
-    </div>
+    </section>
   );
 }

@@ -85,6 +85,46 @@ export class Allowance {
 }
 
 /**
+ * Limits optional tool executions independently from LLM rounds.
+ *
+ * A round can contain multiple tool calls, so using the round ceiling as a
+ * proxy for tool usage both under-counts batches and leaves no guaranteed
+ * synthesis turn. The orchestrator consumes this budget per executed call
+ * and can force a no-tools response once it is exhausted.
+ */
+export class ToolCallBudget {
+  private used = 0;
+  readonly max: number;
+
+  constructor(max: number) {
+    this.max = Number.isFinite(max) ? Math.max(0, Math.floor(max)) : 0;
+  }
+
+  get spent(): number {
+    return this.used;
+  }
+
+  get remaining(): number {
+    return Math.max(0, this.max - this.used);
+  }
+
+  get exhausted(): boolean {
+    return this.remaining === 0;
+  }
+
+  /** Consumes one tool execution when capacity remains. */
+  tryUse(): boolean {
+    if (this.exhausted) return false;
+    this.used++;
+    return true;
+  }
+
+  reset(): void {
+    this.used = 0;
+  }
+}
+
+/**
  * Ledger of tools the caller demanded versus tools actually invoked.
  * Drives `tool_choice` pinning, the nag target and the placeholder text.
  */

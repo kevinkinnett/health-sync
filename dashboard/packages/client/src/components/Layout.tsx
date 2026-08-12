@@ -1,22 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BuildStamp } from "./BuildStamp";
 import { BuildCompatibilityGate } from "./BuildCompatibilityGate";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
-import { useDateRangeStore, type PresetRange } from "../stores/dateRangeStore";
+import { useDateRangeStore } from "../stores/dateRangeStore";
 import { useUserTimezone } from "../api/queries";
 import { AlertBell } from "./AlertBell";
 import {
   allNavItems,
+  analyzeNavItems,
   bottomNavQuickItems,
   navSections,
 } from "./navigation";
-
-const presets: { label: string; value: PresetRange }[] = [
-  { label: "7D", value: "7d" },
-  { label: "30D", value: "30d" },
-  { label: "90D", value: "90d" },
-  { label: "All", value: "all" },
-];
+import { DateRangePresets } from "./ui/DateRangePresets";
 
 /**
  * Render the sectioned link list. Shared by `<SideNav>` (desktop rail)
@@ -61,7 +56,7 @@ function NavSections({ onNavigate }: { onNavigate?: () => void }) {
 
 function SideNav() {
   return (
-    <aside className="hidden lg:flex flex-col h-screen w-64 fixed left-0 top-0 bg-surface-container-low border-r border-outline-variant/15 z-40 pt-20">
+    <aside className="hidden xl:flex flex-col h-screen w-64 fixed left-0 top-0 bg-surface-container-low border-r border-outline-variant/15 z-40 pt-20">
       {/* Brand */}
       <div className="px-4 mb-6">
         <div className="flex items-center gap-3 px-2">
@@ -102,6 +97,65 @@ function SideNav() {
 }
 
 /**
+ * A compact rail for tablet and small-laptop widths. These viewports have
+ * enough horizontal space for persistent navigation, but not enough to give
+ * the full 16rem sidebar a useful share of the screen.
+ */
+function CompactRail({ onOpenMenu }: { onOpenMenu: () => void }) {
+  return (
+    <nav
+      aria-label="Tablet navigation"
+      data-testid="tablet-nav"
+      className="fixed bottom-0 left-0 top-16 z-40 hidden w-20 flex-col items-center border-r border-outline-variant/35 bg-surface-container-low px-2 py-4 md:flex xl:hidden"
+    >
+      <div className="flex flex-1 flex-col items-center gap-2">
+        {bottomNavQuickItems.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.end}
+            title={item.label}
+            aria-label={item.label}
+            className={({ isActive }) =>
+              `flex min-h-14 w-14 flex-col items-center justify-center gap-1 rounded-xl transition-colors ${
+                isActive
+                  ? "bg-primary/12 text-primary"
+                  : "text-outline hover:bg-surface-container-high hover:text-on-surface"
+              }`
+            }
+          >
+            <span className="material-symbols-outlined">{item.icon}</span>
+            <span className="text-[9px] font-bold uppercase tracking-wide">{item.label}</span>
+          </NavLink>
+        ))}
+        <button
+          type="button"
+          onClick={onOpenMenu}
+          title="More"
+          aria-label="Open tablet menu"
+          className="flex min-h-14 w-14 flex-col items-center justify-center gap-1 rounded-xl text-outline transition-colors hover:bg-surface-container-high hover:text-on-surface"
+        >
+          <span className="material-symbols-outlined">menu</span>
+          <span className="text-[9px] font-bold uppercase tracking-wide">More</span>
+        </button>
+      </div>
+      <NavLink
+        to="/settings"
+        aria-label="Settings"
+        title="Settings"
+        className={({ isActive }) =>
+          `flex h-12 w-12 items-center justify-center rounded-xl transition-colors ${
+            isActive ? "bg-primary/12 text-primary" : "text-outline hover:bg-surface-container-high hover:text-on-surface"
+          }`
+        }
+      >
+        <span className="material-symbols-outlined">settings</span>
+      </NavLink>
+    </nav>
+  );
+}
+
+/**
  * Mobile slide-in drawer that mirrors the desktop sidebar item-for-item.
  * Triggered by the "More" button on the bottom nav. Closes on backdrop
  * click, Escape key, or selecting any nav link (handled via the
@@ -114,19 +168,30 @@ function MobileMenu({
   open: boolean;
   onClose: () => void;
 }) {
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+
   useEffect(() => {
     if (!open) return;
+    previousFocusRef.current = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    closeRef.current?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = previousOverflow;
+      previousFocusRef.current?.focus();
+    };
   }, [open, onClose]);
 
   if (!open) return null;
   return (
     <div
-      className="lg:hidden fixed inset-0 z-[60]"
+      className="xl:hidden fixed inset-0 z-[60]"
       role="dialog"
       aria-modal="true"
       aria-label="Menu"
@@ -139,12 +204,13 @@ function MobileMenu({
       <div className="absolute left-0 top-0 bottom-0 w-72 max-w-[85vw] bg-surface-container-low border-r border-outline-variant/15 flex flex-col">
         <div className="flex items-center justify-between px-4 py-3 border-b border-outline-variant/10">
           <span className="text-sm font-bold text-primary tracking-wide">
-            Health OS
+            Vitalis
           </span>
           <button
+            ref={closeRef}
             onClick={onClose}
             aria-label="Close menu"
-            className="text-outline hover:text-on-surface p-1"
+            className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-outline hover:bg-surface-container-high hover:text-on-surface"
           >
             <span className="material-symbols-outlined">close</span>
           </button>
@@ -162,57 +228,41 @@ function MobileMenu({
 }
 
 function TopBar() {
-  const { preset, setPreset } = useDateRangeStore();
   const location = useLocation();
 
   // Pick the longest path-prefix match so a deep route like
   // "/analytics/activity" is reported as "Activity" rather than
   // bubbling up to a shorter "/analytics" entry.
   const pageTitle = location.pathname === "/alerts" ? "Alert History" :
-    [...allNavItems]
+    [...allNavItems, ...analyzeNavItems]
       .filter((n) =>
         n.end ? location.pathname === n.to : location.pathname.startsWith(n.to),
       )
       .sort((a, b) => b.to.length - a.to.length)[0]?.label ?? "Dashboard";
   const showDateRange =
-    location.pathname.startsWith("/analytics/") ||
-    location.pathname.startsWith("/timeline");
+    location.pathname.startsWith("/analytics/");
 
   return (
-    <header className="fixed top-0 w-full z-50 bg-surface/80 glass flex justify-between items-center px-6 py-3 lg:pl-[calc(16rem+1.5rem)]">
+    <header className="fixed top-0 z-50 flex w-full items-center justify-between border-b border-outline-variant/20 bg-surface/90 px-4 py-2.5 glass sm:px-6 md:pl-[calc(5rem+1.5rem)] xl:pl-[calc(16rem+1.5rem)]">
       <div className="flex items-center gap-6">
         <span className="text-xl font-bold tracking-tight text-primary font-headline">
           VITALIS
         </span>
-        <span className="hidden md:block text-on-surface-variant text-sm font-medium">
+        <span data-testid="page-title" className="hidden md:block text-on-surface-variant text-sm font-medium">
           {pageTitle}
         </span>
       </div>
 
       <div className="flex items-center gap-3">
         {/* Date range presets */}
-        <div className={`${showDateRange ? "hidden sm:flex" : "hidden"} items-center gap-1 bg-surface-container-low px-1.5 py-1 rounded-xl border border-outline-variant/10`}>
-          {presets.map((p) => (
-            <button
-              key={p.value}
-              onClick={() => setPreset(p.value)}
-              className={`px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
-                preset === p.value
-                  ? "bg-primary text-on-primary-fixed"
-                  : "text-outline hover:text-on-surface"
-              }`}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
+        {showDateRange && <DateRangePresets className="hidden sm:grid" />}
 
         {/* Icons */}
         <AlertBell />
         <NavLink
           to="/settings"
           aria-label="Settings"
-          className="text-outline hover:text-on-surface transition-colors p-1"
+          className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-outline transition-colors hover:bg-surface-container-low hover:text-on-surface"
         >
           <span className="material-symbols-outlined">settings</span>
         </NavLink>
@@ -225,7 +275,7 @@ function BottomNav({ onOpenMenu }: { onOpenMenu: () => void }) {
   return (
     <nav
       aria-label="Quick access"
-      className="lg:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 pb-6 pt-3 bg-surface-container-low/90 glass border-t border-outline-variant/15"
+      className="fixed bottom-0 left-0 z-50 flex w-full items-center justify-around border-t border-outline-variant/35 bg-surface-container-low/95 px-4 pb-6 pt-3 glass md:hidden"
     >
       {bottomNavQuickItems.map((item) => (
         <NavLink
@@ -294,10 +344,11 @@ export function Layout() {
     <div className="min-h-screen bg-surface">
       <TopBar />
       <SideNav />
+      <CompactRail onOpenMenu={() => setMenuOpen(true)} />
       <BottomNav onOpenMenu={() => setMenuOpen(true)} />
       <MobileMenu open={menuOpen} onClose={() => setMenuOpen(false)} />
-      <main className="pt-16 pb-24 lg:pb-8 lg:pl-64 px-4 md:px-8">
-        <div className="max-w-7xl mx-auto mt-4">
+      <main className="min-w-0 px-4 pb-24 pt-16 md:pl-[calc(5rem+2rem)] md:pr-8 md:pb-8 xl:pl-[calc(16rem+2rem)]">
+        <div className="min-w-0 max-w-7xl mx-auto mt-4">
           <BuildCompatibilityGate>
             <Outlet />
           </BuildCompatibilityGate>

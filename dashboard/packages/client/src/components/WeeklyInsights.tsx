@@ -128,14 +128,11 @@ function HighlightCard({ highlight }: { highlight: Highlight }) {
 
 export function WeeklyInsights({ data }: { data: WeeklyInsightsData }) {
   return (
-    <div className="bg-surface-container rounded-xl p-6 relative overflow-hidden">
-      {/* Decorative glow */}
-      <div className="absolute top-0 right-0 w-64 h-64 bg-primary/5 rounded-full blur-3xl -mr-32 -mt-32" />
-
-      <div className="relative z-10">
+    <section className="relative overflow-hidden rounded-2xl bg-surface-container p-6">
+      <div>
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-lg font-headline font-semibold text-primary">
+          <h2 className="text-lg font-headline font-semibold text-on-surface">
             Weekly Insights
           </h2>
           <span className="bg-surface-container-high px-3 py-1 rounded-full text-[10px] text-on-surface-variant border border-outline-variant/20 tracking-wider font-bold">
@@ -182,6 +179,6 @@ export function WeeklyInsights({ data }: { data: WeeklyInsightsData }) {
           </div>
         )}
       </div>
-    </div>
+    </section>
   );
 }

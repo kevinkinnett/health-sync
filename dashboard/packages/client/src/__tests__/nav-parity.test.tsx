@@ -86,6 +86,21 @@ describe("Nav parity (desktop sidebar ↔ mobile drawer)", () => {
     expect(screen.queryByTestId("mobile-menu-nav")).not.toBeInTheDocument();
   });
 
+  it("the tablet rail exposes quick routes and a distinct menu action", () => {
+    renderLayout();
+
+    const tabletNav = screen.getByTestId("tablet-nav");
+    expect(navHrefs(tabletNav)).toEqual([
+      "/",
+      "/analytics/overview",
+      "/timeline",
+      "/settings",
+    ]);
+    expect(
+      screen.getByRole("button", { name: "Open tablet menu" }),
+    ).toBeInTheDocument();
+  });
+
   it("clicking the More button opens the drawer; close button dismisses it", () => {
     renderLayout();
     fireEvent.click(screen.getByRole("button", { name: /open menu/i }));

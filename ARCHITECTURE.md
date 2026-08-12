@@ -167,6 +167,12 @@ The dashboard shell follows a workflow-first information architecture:
   and browser interactions, while `pages/Insights.tsx` only owns page-level tab
   selection. This keeps server-state rules independently testable without
   hiding them inside a page-sized component.
+- Long-form Markdown and content-driven text inputs are shared UI concerns.
+  `components/ui/MarkdownContent.tsx` owns safe, overflow-aware Markdown
+  rendering and `components/ui/AutoGrowTextarea.tsx` owns textarea measurement
+  and height capping. Insights composes those primitives with the shared
+  `PageHeader` and `Card` components instead of maintaining page-specific
+  typography or input-resizing rules.
 - Supplement and medication libraries share the intake-library shell, item
   fields, validation, and payload mapping in `components/intake/`. Focused
   domain hooks own each library's queries and mutations; supplement composition

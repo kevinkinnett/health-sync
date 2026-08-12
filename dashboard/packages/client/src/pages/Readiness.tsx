@@ -27,7 +27,7 @@ const BAND: Record<ReadinessBand, { ring: string; text: string; label: string; b
   primed: { ring: READINESS_BAND_COLOR.primed, text: "text-secondary", label: "Primed", blurb: "Clearly above your baseline — a good day to push." },
   balanced: { ring: READINESS_BAND_COLOR.balanced, text: "text-primary", label: "Balanced", blurb: "Around your baseline — train as planned." },
   compromised: { ring: READINESS_BAND_COLOR.compromised, text: "text-error", label: "Compromised", blurb: "Below your baseline — favour recovery." },
-  insufficient: { ring: "#5a5b6a", text: "text-outline", label: "No score yet", blurb: "Not enough baseline history." },
+  insufficient: { ring: READINESS_BAND_COLOR.insufficient, text: "text-outline", label: "No score yet", blurb: "Not enough baseline history." },
 };
 
 export function Readiness() {

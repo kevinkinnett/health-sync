@@ -35,6 +35,27 @@ export function SupplementLog() {
 
   return (
     <div className="space-y-6">
+      {selected && (
+        <IntakeConfirmPanel
+          key={selected.id}
+          item={selected}
+          icon="medication"
+          iconClass="text-secondary"
+          notesPlaceholder="e.g. with breakfast"
+          saving={log.logging}
+          error={log.logError}
+          onResetError={log.resetLogError}
+          onClose={() => {
+            log.resetLogError();
+            setSelected(null);
+          }}
+          onConfirm={log.logIntake}
+          renderPreview={(draft) => (
+            <SupplementCompositionPreview item={selected} draft={draft} />
+          )}
+        />
+      )}
+
       <QuickLogGrid
         noun="supplement"
         icon="medication"
@@ -57,27 +78,6 @@ export function SupplementLog() {
           ) : null
         }
       />
-
-      {selected && (
-        <IntakeConfirmPanel
-          key={selected.id}
-          item={selected}
-          icon="medication"
-          iconClass="text-secondary"
-          notesPlaceholder="e.g. with breakfast"
-          saving={log.logging}
-          error={log.logError}
-          onResetError={log.resetLogError}
-          onClose={() => {
-            log.resetLogError();
-            setSelected(null);
-          }}
-          onConfirm={log.logIntake}
-          renderPreview={(draft) => (
-            <SupplementCompositionPreview item={selected} draft={draft} />
-          )}
-        />
-      )}
 
       <IntakeTimelineSection
         title="Today"

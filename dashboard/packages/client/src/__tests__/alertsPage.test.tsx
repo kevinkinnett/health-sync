@@ -87,7 +87,12 @@ describe("Alert history", () => {
     renderPage();
     await screen.findByText("Google Health sync is late");
 
-    expect(screen.queryByText("Readiness has dropped")).not.toBeInTheDocument();
+    expect(screen.getByText("Readiness has dropped")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^current$/i }));
+    await waitFor(() => {
+      expect(screen.getByText("Google Health sync is late")).toBeInTheDocument();
+      expect(screen.queryByText("Readiness has dropped")).not.toBeInTheDocument();
+    });
     fireEvent.click(screen.getByRole("button", { name: /^history$/i }));
     await waitFor(() => {
       expect(screen.getByText("Readiness has dropped")).toBeInTheDocument();

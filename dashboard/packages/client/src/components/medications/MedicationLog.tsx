@@ -30,21 +30,6 @@ export function MedicationLog() {
 
   return (
     <div className="space-y-6">
-      <QuickLogGrid
-        noun="medication"
-        icon="prescriptions"
-        iconClass="text-tertiary"
-        hoverClass="hover:bg-tertiary/10"
-        items={log.items}
-        loading={log.itemsLoading}
-        error={log.itemsError}
-        onRetry={log.retryItems}
-        onSelect={(item) => {
-          log.resetLogError();
-          setSelected(item);
-        }}
-      />
-
       {selected && (
         <IntakeConfirmPanel
           key={selected.id}
@@ -62,6 +47,21 @@ export function MedicationLog() {
           onConfirm={log.logIntake}
         />
       )}
+
+      <QuickLogGrid
+        noun="medication"
+        icon="prescriptions"
+        iconClass="text-tertiary"
+        hoverClass="hover:bg-tertiary/10"
+        items={log.items}
+        loading={log.itemsLoading}
+        error={log.itemsError}
+        onRetry={log.retryItems}
+        onSelect={(item) => {
+          log.resetLogError();
+          setSelected(item);
+        }}
+      />
 
       <IntakeTimelineSection
         title="Today"

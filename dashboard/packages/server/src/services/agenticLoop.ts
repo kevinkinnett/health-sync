@@ -17,6 +17,7 @@ import {
   BudgetClock,
   RequiredTools,
   StuckDetector,
+  ToolCallBudget,
 } from "./agentic/policies.js";
 import { logger } from "../logger.js";
 
@@ -61,6 +62,12 @@ export interface AgenticLoopOptions {
   ) => Promise<string>;
   /** Hard ceiling on total LLM rounds. */
   maxRounds?: number;
+  /**
+   * Maximum optional tool executions. Once exhausted, the next round is
+   * forced to synthesize with `tool_choice=none`. Required tools may exceed
+   * this soft ceiling rather than being silently skipped.
+   */
+  maxToolCalls?: number;
   /**
    * After a final-text response without the required tools, retry up
    * to this many times with an explicit nag before giving up.
@@ -121,6 +128,15 @@ export interface AgenticLoopResult {
   placeholder: boolean;
 }
 
+type AgenticExitReason =
+  | "answered"
+  | "wall-time"
+  | "llm-error"
+  | "session-expired"
+  | "stuck"
+  | "missing-tools"
+  | "round-limit";
+
 /**
  * Run the loop. Pure function: doesn't touch the database, doesn't
  * touch HTTP responses. The caller persists or returns whatever it
@@ -135,6 +151,8 @@ export async function runAgenticLoop(
 
   const clock = new BudgetClock(opts.totalBudgetMs ?? 5 * 60_000);
   const tools = new RequiredTools(opts.requiredTools ?? []);
+  const toolBudget =
+    opts.maxToolCalls == null ? null : new ToolCallBudget(opts.maxToolCalls);
   const stuck = new StuckDetector(3);
   const nags = new Allowance(opts.maxNags ?? 2);
   // The proxy's tool session can expire mid-loop (restart / >10min idle);
@@ -147,12 +165,19 @@ export async function runAgenticLoop(
   let sanitized = false;
   /** Total LLM rounds actually issued, across restarts. */
   let roundsRun = 0;
+  let toolCallsRun = 0;
   /** True once a real final answer was accepted (may be empty text). */
   let answered = false;
+  let exitReason: AgenticExitReason = "round-limit";
 
-  const bail = (missing: string[]): void => {
+  const bail = (missing: string[], reason: AgenticExitReason): void => {
     placeholder = true;
+    exitReason = reason;
     finalContent = placeholderMessage(missing);
+    // The placeholder is a real user-visible assistant turn. Keeping it in
+    // the transcript ensures chat persistence and history refetches cannot
+    // make the response disappear after the POST succeeds.
+    transcript.push({ role: "assistant", content: finalContent });
   };
 
   for (let round = 1; round <= maxRounds; round++) {
@@ -161,11 +186,18 @@ export async function runAgenticLoop(
         { label, round, elapsedMs: clock.elapsedMs, totalBudgetMs: clock.budget },
         "Agentic loop exceeded total wall-time budget; emitting placeholder",
       );
-      bail(tools.missing());
+      bail(tools.missing(), "wall-time");
       break;
     }
 
-    const toolChoice: ToolChoice = tools.satisfied() ? "auto" : "required";
+    const forceSynthesis =
+      tools.satisfied() &&
+      ((toolBudget?.exhausted ?? false) || round === maxRounds);
+    const toolChoice: ToolChoice = tools.satisfied()
+      ? forceSynthesis
+        ? "none"
+        : "auto"
+      : "required";
     const missingAtRoundStart = tools.missing();
 
     roundsRun++;
@@ -177,6 +209,9 @@ export async function runAgenticLoop(
         toolChoice,
         missing: missingAtRoundStart.length,
         called: tools.invokedCount,
+        toolCallsUsed: toolBudget?.spent ?? toolCallsRun,
+        maxToolCalls: toolBudget?.max,
+        forceSynthesis,
       },
       "Agentic round start",
     );
@@ -214,6 +249,7 @@ export async function runAgenticLoop(
         transcript.length = 0;
         transcript.push(...opts.messages);
         tools.reset();
+        toolBudget?.reset();
         stuck.reset();
         nags.reset();
         round = 0; // for-loop ++ brings it back to 1; the clock still caps wall time
@@ -228,18 +264,23 @@ export async function runAgenticLoop(
         },
         "Agentic round LLM call failed after retries; emitting placeholder",
       );
-      bail(tools.missing());
+      bail(
+        tools.missing(),
+        isSessionExpired(err) ? "session-expired" : "llm-error",
+      );
       break;
     }
 
     const message = response.choices[0]?.message;
     const toolCalls = message?.tool_calls ?? [];
+    const toolNames = toolCalls.map((call) => call.function.name).sort();
     logger.info(
       {
         label,
         round,
         durationMs: Date.now() - roundStart,
         toolCalls: toolCalls.length,
+        tools: toolNames,
         contentChars: (message?.content ?? "").length,
       },
       "Agentic round complete",
@@ -254,13 +295,37 @@ export async function runAgenticLoop(
         tool_calls: toolCalls,
       });
 
-      const toolNames = toolCalls.map((c) => c.function.name).sort();
       stuck.record(toolNames.join(","));
       opts.onProgress?.({ kind: "tool-calls", round, tools: toolNames });
 
       for (const call of toolCalls) {
-        const result = await opts.executeTool(call.function.name, parseArgs(call));
-        tools.markCalled(call.function.name);
+        const required = tools.missing().includes(call.function.name);
+        const withinBudget = toolBudget?.tryUse() ?? true;
+        let result: string;
+
+        if (!withinBudget && !required) {
+          result = JSON.stringify({
+            error: "tool_budget_exhausted",
+            message:
+              "This optional tool call was skipped. Synthesize the answer from the results already available.",
+          });
+          logger.warn(
+            {
+              label,
+              round,
+              tool: call.function.name,
+              maxToolCalls: toolBudget?.max,
+            },
+            "Agentic optional tool call skipped after budget exhaustion",
+          );
+        } else {
+          result = await opts.executeTool(
+            call.function.name,
+            parseArgs(call),
+          );
+          tools.markCalled(call.function.name);
+          toolCallsRun++;
+        }
         transcript.push({
           role: "tool",
           tool_call_id: call.id,
@@ -278,7 +343,7 @@ export async function runAgenticLoop(
       // still unsatisfied — the model is spinning, so stop early.
       if (missingAtRoundStart.length > 0 && stuck.isStuck()) {
         opts.onProgress?.({ kind: "stuck", round });
-        bail(missingAtRoundStart);
+        bail(missingAtRoundStart, "stuck");
         break;
       }
 
@@ -333,7 +398,7 @@ export async function runAgenticLoop(
       // grounding rules already say "don't fabricate" but some models
       // still do; an explicit retry catches the rest.
       if (!nags.tryUse()) {
-        bail(missingNow);
+        bail(missingNow, "missing-tools");
         break;
       }
       transcript.push({ role: "assistant", content: text });
@@ -357,6 +422,7 @@ export async function runAgenticLoop(
     sanitized = cleaned !== text;
     finalContent = cleaned;
     answered = true;
+    exitReason = "answered";
     transcript.push({ role: "assistant", content: cleaned });
     break;
   }
@@ -365,7 +431,22 @@ export async function runAgenticLoop(
   // the round cap was exhausted. Keyed off `answered` rather than an
   // empty `finalContent` so a legitimately empty final answer isn't
   // misreported as a placeholder.
-  if (!answered && !placeholder) bail(tools.missing());
+  if (!answered && !placeholder) bail(tools.missing(), "round-limit");
+
+  const completionDetails = {
+    label,
+    exitReason,
+    placeholder,
+    rounds: roundsRun,
+    toolCalls: toolCallsRun,
+    tools: tools.invoked(),
+    maxToolCalls: toolBudget?.max,
+  };
+  if (placeholder) {
+    logger.warn(completionDetails, "Agentic loop completed with placeholder");
+  } else {
+    logger.info(completionDetails, "Agentic loop completed");
+  }
 
   opts.onProgress?.({ kind: "complete", rounds: roundsRun, sanitized });
 
