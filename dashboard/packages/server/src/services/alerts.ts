@@ -6,6 +6,8 @@ import type {
 import type { ReadinessDayInput } from "./readiness.js";
 import {
   fuseMetric,
+  resolveReading,
+  sourceValue,
   type FusibleMetric,
   type ReadinessSource,
   type SourceValues,
@@ -69,14 +71,21 @@ function windowFor(
   days: ReadinessDayInput[],
   idx: number,
   field: keyof ReadinessDayInput,
+  metric: FusibleMetric,
 ): Partial<Record<ReadinessSource, number[]>> {
   const win = days.slice(Math.max(0, idx - BASELINE_DAYS), idx);
   const out: Partial<Record<ReadinessSource, number[]>> = {};
+  const targetValues = days[idx][field] as SourceValues;
   for (const src of ["fitbit", "eightSleep"] as ReadinessSource[]) {
+    const target = resolveReading(metric, src, targetValues?.[src]);
+    if (!target) continue;
     const vals: number[] = [];
     for (const d of win) {
-      const v = (d[field] as SourceValues)?.[src];
-      if (v != null) vals.push(v);
+      const reading = resolveReading(metric, src, (d[field] as SourceValues)?.[src]);
+      if (reading && reading.regime === target.regime &&
+          reading.comparisonGroup === target.comparisonGroup) {
+        vals.push(reading.value as number);
+      }
     }
     if (vals.length) out[src] = vals;
   }
@@ -93,7 +102,7 @@ function fusedZAt(
   const fused = fuseMetric(
     metric,
     days[idx][field] as SourceValues,
-    windowFor(days, idx, field),
+    windowFor(days, idx, field, metric),
     { minBaselineDays: MIN_BASELINE_DAYS, zClamp: Z_CLAMP },
   );
   return fused.z;
@@ -101,7 +110,10 @@ function fusedZAt(
 
 /** First present raw value across sources (for absolute-threshold checks). */
 function rawValue(sv: SourceValues): number | null {
-  for (const v of Object.values(sv)) if (v != null) return v;
+  for (const value of Object.values(sv)) {
+    const raw = sourceValue(value);
+    if (raw != null) return raw;
+  }
   return null;
 }
 

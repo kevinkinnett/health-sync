@@ -230,6 +230,7 @@
     "date",
     "deep_rmssd",
     "fetched_at",
+    "non_rem_heart_rate",
     "raw_jsonb"
   ],
   "universe.health_skin_temp_daily": [
@@ -249,6 +250,7 @@
     "minutes_light",
     "minutes_rem",
     "minutes_wake",
+    "nap_minutes_asleep",
     "raw_jsonb",
     "total_minutes_asleep",
     "total_minutes_in_bed",

@@ -33,6 +33,10 @@ const readinessSourceSchema = z.object({
   label: z.string().min(1),
   provenance: readinessProvenanceSchema,
   z: z.number(),
+  value: z.number(),
+  baseline: z.number(),
+  measurement: z.string().min(1),
+  regime: z.string().min(1),
 });
 
 const readinessComponentSchema = z.object({
@@ -43,19 +47,35 @@ const readinessComponentSchema = z.object({
   z: z.number().nullable(),
   contribution: z.number(),
   weightPct: z.number(),
+  configuredWeight: z.number().nonnegative(),
   status: z.enum(["good", "neutral", "poor", "unavailable"]),
   sources: z.array(readinessSourceSchema).optional(),
   disagreement: z.boolean().optional(),
+  measurementComparable: z.boolean().optional(),
+  disagreementThreshold: z.number().positive().optional(),
+  disagreementExplanation: z.string().optional(),
 });
 
 export const readinessResponseSchema = z.object({
+  methodVersion: z.string().min(1),
   date: z.string().nullable(),
   score: z.number().min(0).max(100).nullable(),
   band: z.enum(["primed", "balanced", "compromised", "insufficient"]),
   summary: z.string(),
   baselineDays: z.number().int().nonnegative(),
+  timezone: z.string().min(1),
+  confidence: z.enum(["high", "moderate", "low"]),
+  coveragePct: z.number().min(0).max(100),
+  provisional: z.boolean(),
+  caveats: z.array(z.string()),
   components: z.array(readinessComponentSchema),
-  history: z.array(z.object({ date: z.string(), score: z.number().min(0).max(100) })),
+  history: z.array(z.object({
+    date: z.string(),
+    score: z.number().min(0).max(100),
+    methodVersion: z.string().min(1),
+    confidence: z.enum(["high", "moderate", "low"]),
+    coveragePct: z.number().min(0).max(100),
+  })),
 });
 
 export const ingestStatusResponseSchema = z.object({

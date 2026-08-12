@@ -17,6 +17,8 @@ export type ReadinessComponentStatus =
   | "poor"
   | "unavailable";
 
+export type ReadinessConfidence = "high" | "moderate" | "low";
+
 export type ReadinessMetric =
   | "hrv"
   | "rhr"
@@ -46,6 +48,13 @@ export interface ReadinessComponentSource {
   provenance: ReadinessSourceProvenance;
   /** Signed z (positive = better recovery), this source alone. */
   z: number;
+  /** This source's actual observation and own-regime trailing baseline. */
+  value: number;
+  baseline: number;
+  /** Honest measurement definition; sources may measure related constructs. */
+  measurement: string;
+  /** Algorithm/source version used to select the baseline regime. */
+  regime: string;
 }
 
 export interface ReadinessComponent {
@@ -63,21 +72,32 @@ export interface ReadinessComponent {
   contribution: number;
   /** This metric's weight in the composite, as a percentage. */
   weightPct: number;
+  /** Stable policy weight before missing-signal normalization. */
+  configuredWeight: number;
   status: ReadinessComponentStatus;
   /** Per-sensor breakdown for fused metrics (HRV/RHR/etc). Omitted for
    *  single-source metrics' callers that don't populate it. */
   sources?: ReadinessComponentSource[];
   /** True when ≥2 sensors measured this and disagreed materially. */
   disagreement?: boolean;
+  /** False when source trends are fused but their raw readings are not interchangeable. */
+  measurementComparable?: boolean;
+  disagreementThreshold?: number;
+  disagreementExplanation?: string;
 }
 
 /** One day's score, for the trend sparkline. */
 export interface ReadinessPoint {
   date: string;
   score: number;
+  methodVersion: string;
+  confidence: ReadinessConfidence;
+  coveragePct: number;
 }
 
 export interface ReadinessScore {
+  /** Scoring/data semantics version for reproducible historical interpretation. */
+  methodVersion: string;
   /** The day actually scored (latest with core data), or null. */
   date: string | null;
   /** 0–100, 50 = at baseline. Null when `band === "insufficient"`. */
@@ -87,6 +107,14 @@ export interface ReadinessScore {
   summary: string;
   /** How many days of history the baseline was computed from. */
   baselineDays: number;
+  /** IANA timezone used to turn UTC sleep timestamps into the wake-date key. */
+  timezone: string;
+  confidence: ReadinessConfidence;
+  /** Share of configured signal weight actually present before renormalization. */
+  coveragePct: number;
+  /** Latest daily provider values may still be revised after another sync. */
+  provisional: boolean;
+  caveats: string[];
   components: ReadinessComponent[];
   /** Recent daily scores (oldest→newest) for a trend sparkline. */
   history: ReadinessPoint[];

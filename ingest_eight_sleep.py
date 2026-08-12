@@ -30,15 +30,20 @@ a short rolling window (recent_days) to catch the latest night + revisions.
 import json
 import time
 from datetime import datetime, timedelta, timezone
-from statistics import mean
 from typing import Any, Optional
-from zoneinfo import ZoneInfo
 
 import psycopg
 import requests
 import wmill
 
 from u.kevin.ingest_common import conn_kwargs, create_ingest_run, update_ingest_run
+from u.kevin.eight_sleep_points import (
+    local_wake_date,
+    parse_dt,
+    select_main_session,
+    series_mean,
+    series_minmax,
+)
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -168,55 +173,6 @@ class EightClient:
 # Parsing helpers
 # ---------------------------------------------------------------------------
 
-def parse_dt(s: Optional[str], tz_name: str) -> Optional[datetime]:
-    """Parse an ISO timestamp; stamp naive values with the device tz."""
-    if not s or not isinstance(s, str):
-        return None
-    s = s.strip()
-    if not s:
-        return None
-    has_offset = s.endswith("Z") or (len(s) >= 6 and s[-6] in "+-" and s[-3] == ":")
-    try:
-        if has_offset:
-            return datetime.fromisoformat(s.replace("Z", "+00:00"))
-        if "." in s:
-            s = s.split(".", 1)[0]
-        naive = datetime.fromisoformat(s)
-    except ValueError:
-        return None
-    try:
-        zi = ZoneInfo(tz_name)
-    except Exception:  # noqa: BLE001
-        zi = timezone.utc
-    return naive.replace(tzinfo=zi)
-
-
-def _numeric_values(series: Any) -> list[float]:
-    """Flatten an Eight Sleep timeseries (list of scalars or [ts, value])."""
-    out: list[float] = []
-    if isinstance(series, list):
-        for e in series:
-            v = e[-1] if isinstance(e, (list, tuple)) and e else e
-            if isinstance(v, (int, float)) and not isinstance(v, bool):
-                out.append(float(v))
-    return out
-
-
-def agg_mean(ts: dict, *keys: str) -> Optional[float]:
-    for k in keys:
-        vals = _numeric_values(ts.get(k)) if isinstance(ts, dict) else []
-        if vals:
-            return mean(vals)
-    return None
-
-
-def agg_minmax(ts: dict, key: str) -> tuple[Optional[float], Optional[float]]:
-    vals = _numeric_values(ts.get(key)) if isinstance(ts, dict) else []
-    if not vals:
-        return (None, None)
-    return (min(vals), max(vals))
-
-
 def _int(v: Any) -> Optional[int]:
     return int(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
 
@@ -338,14 +294,14 @@ def fetch_trends(client: EightClient, uid: str, tz_name: str, start: str, end: s
 
 
 def upsert_day(conn: psycopg.Connection, day: dict, tz_name: str, side: str = "main") -> int:
-    d = day.get("day")
+    d = local_wake_date(day, tz_name)
     if not d:
         return 0
-    sessions = day.get("sessions") or []
-    sess = sessions[-1] if sessions else {}
+    # Older payload variants may expose one session directly on the day.
+    sess = select_main_session(day) or day
     ts = sess.get("timeseries") or {}
 
-    hr_min, hr_max = agg_minmax(ts, "heartRate")
+    hr_min, hr_max = series_minmax(ts, "heartRate")
     routine = day.get("sleepRoutineScore")
     routine_total = (
         routine.get("total") if isinstance(routine, dict)
@@ -392,21 +348,21 @@ def upsert_day(conn: psycopg.Connection, day: dict, tz_name: str, side: str = "m
                 raw_jsonb = EXCLUDED.raw_jsonb, fetched_at = NOW()
             """,
             (
-                d, side, day.get("mainSessionId"),
-                parse_dt(day.get("sleepStart"), tz_name),
-                parse_dt(day.get("sleepEnd"), tz_name),
-                parse_dt(day.get("presenceStart"), tz_name),
-                parse_dt(day.get("presenceEnd"), tz_name),
+                d, side, str(sess.get("id")) if sess.get("id") is not None else None,
+                parse_dt(sess.get("sleepStart") or day.get("sleepStart"), tz_name),
+                parse_dt(sess.get("sleepEnd") or day.get("sleepEnd"), tz_name),
+                parse_dt(sess.get("presenceStart") or day.get("presenceStart"), tz_name),
+                parse_dt(sess.get("presenceEnd") or day.get("presenceEnd"), tz_name),
                 _int(day.get("sleepDuration")), _int(day.get("presenceDuration")),
                 _int(day.get("deepDuration")), _int(day.get("lightDuration")),
                 _int(day.get("remDuration")),
                 day.get("deepPercent"), day.get("remPercent"), day.get("lightPercent"),
                 _int(day.get("tnt")), _int(day.get("score")),
                 _int(day.get("sleepQualityScore")), _int(routine_total),
-                agg_mean(ts, "heartRate"), hr_min, hr_max,
-                agg_mean(ts, "rmssd"),
-                agg_mean(ts, "respiratoryRate", "nemeanRespiratoryRateNightly", "nemeanRespiratoryRate"),
-                agg_mean(ts, "tempBedC"), agg_mean(ts, "tempRoomC"),
+                series_mean(ts, "heartRate"), hr_min, hr_max,
+                series_mean(ts, "rmssd"),
+                series_mean(ts, "respiratoryRate", "nemeanRespiratoryRateNightly", "nemeanRespiratoryRate"),
+                series_mean(ts, "tempBedC"), series_mean(ts, "tempRoomC"),
                 _int(day.get("snoreDuration")),
                 json.dumps(day),
             ),
@@ -479,8 +435,9 @@ def main(
                 for day in days:
                     try:
                         rows += upsert_day(conn, day, user_timezone)
-                        if day.get("day"):
-                            day_dates.append(day["day"])
+                        normalized_date = local_wake_date(day, user_timezone)
+                        if normalized_date:
+                            day_dates.append(normalized_date)
                     except Exception as exc:  # noqa: BLE001
                         errors += 1
                         print(f"  upsert {day.get('day')} failed: {exc}")

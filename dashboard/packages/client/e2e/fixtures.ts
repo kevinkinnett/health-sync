@@ -93,6 +93,7 @@ const SUMMARY: HealthSummary = {
       totalMinutesAsleep: 435,
       totalMinutesInBed: 479,
       totalSleepRecords: 1,
+      napMinutesAsleep: 0,
       minutesDeep: 90,
       minutesLight: 250,
       minutesRem: 90,
@@ -100,6 +101,7 @@ const SUMMARY: HealthSummary = {
       efficiency: 91,
       mainSleepStartTime: `${TODAY}T05:10:00Z`,
       mainSleepEndTime: `${TODAY}T12:25:00Z`,
+      measurementMethod: "main_sleep_v2",
       fetchedAt: FETCHED,
     },
     sparkline: spark(7.2),
@@ -401,6 +403,8 @@ const HRV: HrvDay[] = [
   date: date as string,
   dailyRmssd: dailyRmssd as number,
   deepRmssd: deepRmssd as number,
+  nonRemHeartRate: null,
+  measurementMethod: "daily_hrv_v1",
   fetchedAt: FETCHED,
 }));
 
@@ -478,11 +482,17 @@ const NOTIFICATIONS: NotificationSettings = {
 };
 
 const READINESS: ReadinessScore = {
+  methodVersion: "readiness-v2-main-night",
   date: TODAY,
   score: 62,
   band: "balanced",
   summary: "Around your baseline.",
   baselineDays: 30,
+  timezone: "America/New_York",
+  confidence: "moderate",
+  coveragePct: 57,
+  provisional: true,
+  caveats: ["Some readiness signals are unavailable, so available signals were reweighted."],
   components: [
     {
       metric: "hrv",
@@ -492,6 +502,7 @@ const READINESS: ReadinessScore = {
       z: 0.4,
       contribution: 3.2,
       weightPct: 30,
+      configuredWeight: 35,
       status: "good",
     },
     {
@@ -502,13 +513,14 @@ const READINESS: ReadinessScore = {
       z: 0.1,
       contribution: 0.8,
       weightPct: 25,
+      configuredWeight: 25,
       status: "neutral",
     },
   ],
   history: [
-    { date: "2026-07-24", score: 58 },
-    { date: "2026-07-25", score: 60 },
-    { date: TODAY, score: 62 },
+    { date: "2026-07-24", score: 58, methodVersion: "readiness-v2-main-night", confidence: "moderate", coveragePct: 57 },
+    { date: "2026-07-25", score: 60, methodVersion: "readiness-v2-main-night", confidence: "moderate", coveragePct: 57 },
+    { date: TODAY, score: 62, methodVersion: "readiness-v2-main-night", confidence: "moderate", coveragePct: 57 },
   ],
 };
 

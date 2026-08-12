@@ -25,7 +25,8 @@ TOKEN_URL = "https://oauth2.googleapis.com/token"
 TYPES = [
     "daily-resting-heart-rate", "daily-respiratory-rate",
     "daily-sleep-temperature-derivations", "oxygen-saturation",
-    "heart-rate-variability", "weight", "vo2-max", "steps", "distance",
+    "daily-heart-rate-variability", "heart-rate-variability",
+    "weight", "vo2-max", "steps", "distance",
     "active-zone-minutes", "nutrition-log", "sleep", "exercise",
 ]
 

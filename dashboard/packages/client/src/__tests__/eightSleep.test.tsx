@@ -49,7 +49,7 @@ describe("AnalyticsEightSleep", () => {
     );
     renderScreen();
     await waitFor(() => {
-      expect(screen.getByText("Last night")).toBeInTheDocument();
+      expect(screen.getByText("Latest night ending")).toBeInTheDocument();
       expect(screen.getByText("Sleep Score")).toBeInTheDocument();
       expect(screen.getByText("Overnight Heart Rate")).toBeInTheDocument();
       expect(screen.getByText("HRV (RMSSD)")).toBeInTheDocument();

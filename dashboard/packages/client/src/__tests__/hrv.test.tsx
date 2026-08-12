@@ -21,7 +21,14 @@ function renderScreen() {
 }
 
 function day(date: string, dailyRmssd: number, deepRmssd: number | null): HrvDay {
-  return { date, dailyRmssd, deepRmssd, fetchedAt: `${date}T12:00:00.000Z` };
+  return {
+    date,
+    dailyRmssd,
+    deepRmssd,
+    nonRemHeartRate: null,
+    measurementMethod: "daily_hrv_v1",
+    fetchedAt: `${date}T12:00:00.000Z`,
+  };
 }
 
 describe("AnalyticsHrv — deep sleep RMSSD", () => {

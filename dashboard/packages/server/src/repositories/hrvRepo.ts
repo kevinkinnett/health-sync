@@ -7,7 +7,10 @@ export class HrvRepository {
 
   async findByDateRange(start: string, end: string): Promise<HrvDay[]> {
     const { rows } = await this.pool.query(
-      `SELECT date, daily_rmssd, deep_rmssd, fetched_at
+      `SELECT date, daily_rmssd, deep_rmssd, non_rem_heart_rate,
+              COALESCE(raw_jsonb->>'method',
+                CASE WHEN raw_jsonb->>'_src'='google_health' THEN 'sample_mean_v1' ELSE 'fitbit_legacy_v1' END
+              ) AS measurement_method, fetched_at
        FROM universe.health_hrv_daily
        WHERE date >= $1 AND date <= $2
        ORDER BY date`,
@@ -18,7 +21,10 @@ export class HrvRepository {
 
   async findLatest(limit: number): Promise<HrvDay[]> {
     const { rows } = await this.pool.query(
-      `SELECT date, daily_rmssd, deep_rmssd, fetched_at
+      `SELECT date, daily_rmssd, deep_rmssd, non_rem_heart_rate,
+              COALESCE(raw_jsonb->>'method',
+                CASE WHEN raw_jsonb->>'_src'='google_health' THEN 'sample_mean_v1' ELSE 'fitbit_legacy_v1' END
+              ) AS measurement_method, fetched_at
        FROM universe.health_hrv_daily
        ORDER BY date DESC
        LIMIT $1`,
@@ -33,6 +39,8 @@ function mapRow(row: Record<string, unknown>): HrvDay {
     date: toDateStr(row.date),
     dailyRmssd: row.daily_rmssd != null ? Number(row.daily_rmssd) : null,
     deepRmssd: row.deep_rmssd != null ? Number(row.deep_rmssd) : null,
+    nonRemHeartRate: row.non_rem_heart_rate != null ? Number(row.non_rem_heart_rate) : null,
+    measurementMethod: String(row.measurement_method ?? "unknown"),
     fetchedAt: toTimestampStr(row.fetched_at) ?? "",
   };
 }

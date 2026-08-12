@@ -37,11 +37,17 @@ function renderScreen() {
 }
 
 const SCORE: ReadinessScore = {
+  methodVersion: "readiness-v2-main-night",
   date: "2026-05-30",
   score: 72,
   band: "primed",
   summary: "Primed — hrv is a bright spot.",
   baselineDays: 30,
+  timezone: "America/New_York",
+  confidence: "high",
+  coveragePct: 100,
+  provisional: false,
+  caveats: [],
   components: [
     {
       metric: "hrv",
@@ -51,10 +57,11 @@ const SCORE: ReadinessScore = {
       z: 1.4,
       contribution: 12,
       weightPct: 35,
+      configuredWeight: 35,
       status: "good",
       sources: [
-        { label: "Fitbit", provenance: FITBIT_VIA_GOOGLE, z: 0.9 },
-        { label: "Eight Sleep", provenance: EIGHT_SLEEP, z: 1.8 },
+        { label: "Fitbit", provenance: FITBIT_VIA_GOOGLE, z: 0.9, value: 52, baseline: 48, measurement: "daily RMSSD", regime: "daily_hrv_v1" },
+        { label: "Eight Sleep", provenance: EIGHT_SLEEP, z: 1.8, value: 78, baseline: 65, measurement: "main-session RMSSD", regime: "main_session_v1" },
       ],
     },
     {
@@ -65,12 +72,14 @@ const SCORE: ReadinessScore = {
       z: 0.9,
       contribution: 6,
       weightPct: 25,
+      configuredWeight: 25,
       status: "good",
       sources: [
-        { label: "Fitbit", provenance: FITBIT_VIA_GOOGLE, z: 0.2 },
-        { label: "Eight Sleep", provenance: EIGHT_SLEEP, z: 1.6 },
+        { label: "Fitbit", provenance: FITBIT_VIA_GOOGLE, z: 0.2, value: 55, baseline: 56, measurement: "daily resting HR", regime: "daily_rhr_v1" },
+        { label: "Eight Sleep", provenance: EIGHT_SLEEP, z: 1.6, value: 49, baseline: 54, measurement: "average sleeping HR", regime: "main_session_v1" },
       ],
       disagreement: true,
+      disagreementExplanation: "Source-relative trends diverged beyond the expected range.",
     },
     // Neutral signal — the dashboard card hides this, the detail screen shows it.
     {
@@ -81,6 +90,7 @@ const SCORE: ReadinessScore = {
       z: 0.1,
       contribution: 0,
       weightPct: 8,
+      configuredWeight: 8,
       status: "neutral",
     },
     // Unavailable today — should land in the "not scored" footnote, not a row.
@@ -92,13 +102,14 @@ const SCORE: ReadinessScore = {
       z: null,
       contribution: 0,
       weightPct: 7,
+      configuredWeight: 7,
       status: "unavailable",
     },
   ],
   history: [
-    { date: "2026-05-28", score: 60 },
-    { date: "2026-05-29", score: 68 },
-    { date: "2026-05-30", score: 72 },
+    { date: "2026-05-28", score: 60, methodVersion: "readiness-v2-main-night", confidence: "high", coveragePct: 100 },
+    { date: "2026-05-29", score: 68, methodVersion: "readiness-v2-main-night", confidence: "high", coveragePct: 100 },
+    { date: "2026-05-30", score: 72, methodVersion: "readiness-v2-main-night", confidence: "high", coveragePct: 100 },
   ],
 };
 
@@ -135,11 +146,9 @@ describe("Readiness screen", () => {
     apiFetchMock.mockResolvedValue(SCORE);
     renderScreen();
     // HRV fused from two sensors → both shown with signed z.
-    expect(
-      await screen.findByText(
-        /Fitbit device via Google Health \+0\.9 · Eight Sleep \+1\.8/,
-      ),
-    ).toBeInTheDocument();
+    expect(await screen.findAllByText("Fitbit device via Google Health")).not.toHaveLength(0);
+    expect(screen.getAllByText("Eight Sleep")).not.toHaveLength(0);
+    expect(screen.getByText("daily RMSSD")).toBeInTheDocument();
     // RHR sensors disagreed → flag rendered.
     expect(screen.getByText("⚑")).toBeInTheDocument();
   });
@@ -173,11 +182,17 @@ describe("Readiness screen", () => {
 
   it("degrades to a friendly message when there is no score yet", async () => {
     apiFetchMock.mockResolvedValue({
+      methodVersion: "readiness-v2-main-night",
       date: "2026-05-30",
       score: null,
       band: "insufficient",
       summary: "Not enough baseline history yet — keep syncing.",
       baselineDays: 0,
+      timezone: "America/New_York",
+      confidence: "low",
+      coveragePct: 0,
+      provisional: false,
+      caveats: [],
       components: [],
       history: [],
     } satisfies ReadinessScore);

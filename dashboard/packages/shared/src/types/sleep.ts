@@ -3,6 +3,8 @@ export interface SleepDay {
   totalMinutesAsleep: number | null;
   totalMinutesInBed: number | null;
   totalSleepRecords: number | null;
+  /** Sleep outside the main overnight session on this local wake date. */
+  napMinutesAsleep: number | null;
   minutesDeep: number | null;
   minutesLight: number | null;
   minutesRem: number | null;
@@ -10,5 +12,6 @@ export interface SleepDay {
   efficiency: number | null;
   mainSleepStartTime: string | null;
   mainSleepEndTime: string | null;
+  measurementMethod: string;
   fetchedAt: string;
 }

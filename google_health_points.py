@@ -7,6 +7,32 @@ the ingestion job to import.
 
 import hashlib
 import json
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
+
+
+USER_TZ = "America/New_York"
+
+
+def _sleep_wake_date(interval: dict) -> str | None:
+    """Return Google's local wake date without assuming a fixed UTC offset."""
+    end = interval.get("endTime")
+    if not isinstance(end, str) or not end:
+        return None
+    try:
+        instant = datetime.fromisoformat(end.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    offset_text = interval.get("endUtcOffset")
+    if isinstance(offset_text, str) and offset_text.endswith("s"):
+        try:
+            return (
+                instant.astimezone(timezone.utc)
+                + timedelta(seconds=float(offset_text[:-1]))
+            ).date().isoformat()
+        except ValueError:
+            pass
+    return instant.astimezone(ZoneInfo(USER_TZ)).date().isoformat()
 
 
 def parse_point(data_type: str, point: dict) -> dict:
@@ -31,9 +57,11 @@ def parse_point(data_type: str, point: dict) -> dict:
         civil_date = value.get("date")
         if isinstance(interval, dict):
             start, end = interval.get("startTime"), interval.get("endTime")
+            if data_type == "sleep":
+                point_date = _sleep_wake_date(interval)
         elif isinstance(sample_time, dict):
             start = end = sample_time.get("physicalTime")
-        if isinstance(civil_date, dict):
+        if isinstance(civil_date, dict) and not point_date:
             point_date = (
                 f"{civil_date['year']:04d}-{civil_date['month']:02d}-"
                 f"{civil_date['day']:02d}"

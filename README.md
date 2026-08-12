@@ -40,6 +40,8 @@ google_health_points.py
                       Pure Google Health point normalization
 google_health_capture.py
                       Testable API pagination and raw-point persistence
+eight_sleep_points.py
+                      Pure Eight Sleep main-session and wake-date selection
 dashboard/packages/server/migrations/  Versioned, transactional schema migrations
 tests/                Dependency-free Python unit tests
 ```
@@ -86,3 +88,9 @@ as `u.kevin.google_health_points`, `u.kevin.google_health_capture`, and
 `u.kevin.google_health_rollups` first. The explicit workspace imports keep
 production dependencies visible while the helpers remain locally testable
 without Windmill credentials.
+
+When deploying `ingest_eight_sleep.py`, deploy `eight_sleep_points.py` first as
+`u.kevin.eight_sleep_points`. Sleep dates are the `America/New_York` calendar
+day on which the main session ended. The code converts the provider's UTC
+timestamps using the embedded UTC offset or configured IANA timezone, so this
+also handles EST/EDT transitions; it does not apply a fixed five-hour offset.
