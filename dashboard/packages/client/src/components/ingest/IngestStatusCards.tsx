@@ -25,10 +25,13 @@ export function PipelineHeader({
   return (
     <section className="flex flex-col md:flex-row md:items-end justify-between gap-4">
       <div>
-        <h1 className="text-3xl font-bold font-headline text-on-surface mb-2">
-          Pipeline Status
+        <h1 className="text-3xl font-bold font-headline text-on-surface">
+          Data &amp; Analysis Pipeline
         </h1>
-        <div className="flex flex-wrap gap-3">
+        <p className="mt-1 text-sm text-on-surface-variant">
+          Source ingestion, scheduled reports, and health notifications in one operational view.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-3">
           <ConnectionBadge label="Database" status={databaseStatus} />
           <ConnectionBadge
             label="Windmill"
@@ -250,7 +253,29 @@ const SCHEDULE_DESCRIPTIONS: Record<
     description:
       "Captures Google Health data and refreshes the dashboard's daily health metrics every four hours.",
   },
+  ingest_eight_sleep: {
+    title: "Eight Sleep Sync",
+    description: "Refreshes nightly Eight Sleep sessions on a wake-window-aware schedule.",
+  },
+  ingest_tesla_drives: {
+    title: "Tesla Driving Sync",
+    description: "Refreshes driving summaries from TeslaMate for contextual analytics.",
+  },
+  weekly_health_report: {
+    title: "Weekly AI Health Report",
+    description: "Builds the scheduled weekly health summary after source data is available.",
+  },
+  evaluate_health_alerts: {
+    title: "Health Alert Evaluation",
+    description: "Evaluates health and ingestion alert rules and applies notification policy.",
+  },
 };
+
+const CATEGORY_META = {
+  source: { title: "Data sources", description: "Provider and contextual data entering Vitalis." },
+  analysis: { title: "Derived analytics", description: "Scheduled reports derived from stored health data." },
+  notification: { title: "Notifications", description: "Scheduled evaluation and delivery workflows." },
+} as const;
 
 export function ScheduleGrid({
   schedules,
@@ -279,21 +304,42 @@ export function ScheduleGrid({
     );
   }
 
+  const categories = (["source", "analysis", "notification"] as const)
+    .map((category) => ({
+      category,
+      schedules: schedules.filter((schedule) => schedule.pipelineCategory === category),
+    }))
+    .filter((group) => group.schedules.length > 0);
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      {schedules.map((schedule) => {
-        const selected = triggeredSchedulePath === schedule.path;
-        return (
-          <ScheduleCard
-            key={schedule.path}
-            schedule={schedule}
-            isTriggering={selected && isTriggering}
-            jobId={selected ? triggerJobId : null}
-            error={selected ? triggerError : null}
-            onTrigger={() => onTrigger(schedule.path)}
-          />
-        );
-      })}
+    <div className="space-y-6">
+      {categories.map((group) => (
+        <section key={group.category} aria-labelledby={`pipeline-${group.category}`}>
+          <div className="mb-3">
+            <h2 id={`pipeline-${group.category}`} className="font-bold font-headline text-on-surface">
+              {CATEGORY_META[group.category].title}
+            </h2>
+            <p className="text-xs text-on-surface-variant">
+              {CATEGORY_META[group.category].description}
+            </p>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {group.schedules.map((schedule) => {
+              const selected = triggeredSchedulePath === schedule.path;
+              return (
+                <ScheduleCard
+                  key={schedule.path}
+                  schedule={schedule}
+                  isTriggering={selected && isTriggering}
+                  jobId={selected ? triggerJobId : null}
+                  error={selected ? triggerError : null}
+                  onTrigger={() => onTrigger(schedule.path)}
+                />
+              );
+            })}
+          </div>
+        </section>
+      ))}
     </div>
   );
 }
@@ -311,9 +357,15 @@ function ScheduleCard({
   error: string | null;
   onTrigger: () => Promise<void>;
 }) {
-  const name = schedule.path.split("/").pop() ?? schedule.path;
+  const name = schedule.scriptPath.split("/").pop() ?? schedule.scriptPath;
+  const scheduleName = schedule.path.split("/").pop() ?? schedule.path;
   const meta = SCHEDULE_DESCRIPTIONS[name];
   const isBackfill = name.includes("backfill");
+  const icon = schedule.pipelineCategory === "analysis"
+    ? "analytics"
+    : schedule.pipelineCategory === "notification"
+      ? "notifications_active"
+      : isBackfill ? "history" : "sync";
 
   return (
     <article className="bg-surface-container p-6 rounded-xl border border-outline-variant/10">
@@ -322,16 +374,21 @@ function ScheduleCard({
           isBackfill ? "bg-tertiary/10 text-tertiary" : "bg-primary/10 text-primary"
         }`}>
           <span className="material-symbols-outlined" aria-hidden="true">
-            {isBackfill ? "history" : "sync"}
+            {icon}
           </span>
         </div>
         <span className="text-[10px] px-2 py-1 rounded-full font-bold tracking-widest uppercase bg-surface-container-high text-outline">
-          {schedule.enabled ? cronToHuman(schedule.schedule) : "Disabled"}
+          {schedule.enabled ? cronToHuman(schedule.schedule, schedule.timezone) : "Disabled"}
         </span>
       </div>
       <h2 className="text-lg font-bold font-headline text-on-surface">
-        {meta?.title ?? name}
+        {meta?.title ?? schedule.pipelineLabel}
       </h2>
+      {scheduleName !== name && (
+        <div className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-outline">
+          {scheduleName.replace(/_/g, " ")}
+        </div>
+      )}
       <p className="text-on-surface-variant text-xs mt-1 mb-5 leading-relaxed">
         {meta?.description ?? schedule.summary ?? "Windmill schedule."}
       </p>
@@ -339,14 +396,20 @@ function ScheduleCard({
         <div className="text-[10px] text-outline font-semibold uppercase tracking-tighter">
           Cron: <span className="text-on-surface-variant">{schedule.schedule}</span>
         </div>
-        <button
-          type="button"
-          onClick={() => void onTrigger()}
-          disabled={isTriggering || !schedule.enabled}
-          className="w-full sm:w-auto bg-surface-container-highest px-4 py-2.5 rounded-lg text-xs font-bold hover:text-primary disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          {isTriggering ? "Starting…" : "Run now"}
-        </button>
+        {schedule.triggerable ? (
+          <button
+            type="button"
+            onClick={() => void onTrigger()}
+            disabled={isTriggering || !schedule.enabled}
+            className="w-full sm:w-auto bg-surface-container-highest px-4 py-2.5 rounded-lg text-xs font-bold hover:text-primary disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {isTriggering ? "Starting…" : "Run now"}
+          </button>
+        ) : (
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-outline">
+            Managed in Windmill
+          </span>
+        )}
       </div>
       {jobId && (
         <div role="status" className="mt-3 text-xs text-secondary">

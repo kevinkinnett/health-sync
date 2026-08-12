@@ -21,9 +21,13 @@ import type {
   DrivingSummary,
   ReadinessScore,
   SensorAgreementData,
+  RecoveryAnomalyReport,
+  MedicationIntake,
+  SupplementIntake,
 } from "@health-dashboard/shared";
 import { apiFetch } from "../client";
 import { useDateRangeStore } from "../../stores/dateRangeStore";
+import { addDays } from "../../lib/userTz";
 
 export function useHealthSummary() {
   return useQuery<HealthSummary>({
@@ -149,6 +153,45 @@ export function useSensorAgreement() {
   return useQuery<SensorAgreementData>({
     queryKey: ["health", "sensor-agreement", start, end],
     queryFn: () => apiFetch(`/health/sensor-agreement?start=${start}&end=${end}`),
+  });
+}
+
+export function useRecoveryAnomalies() {
+  const { start, end } = useDateRangeStore();
+  return useQuery<RecoveryAnomalyReport>({
+    queryKey: ["health", "recovery-anomalies", start, end],
+    queryFn: () => apiFetch(`/health/recovery-anomalies?start=${start}&end=${end}`),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export interface SensorNightContextData {
+  activity: ActivityDay[];
+  exerciseLogs: ExerciseLog[];
+  medicationIntakes: MedicationIntake[];
+  supplementIntakes: SupplementIntake[];
+}
+
+/** Loads nearby behavior only after a comparison night is opened. */
+export function useSensorNightContext(date: string | null) {
+  return useQuery<SensorNightContextData>({
+    queryKey: ["health", "sensor-night-context", date],
+    enabled: date != null,
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      if (!date) throw new Error("A wake date is required");
+      const previousDate = addDays(date, -1);
+      const nextDate = addDays(date, 1);
+      const [activity, exerciseLogs, medicationIntakes, supplementIntakes] = await Promise.all([
+        apiFetch<ActivityDay[]>(`/health/activity?start=${previousDate}&end=${date}`),
+        apiFetch<ExerciseLog[]>(`/health/exercise-logs?start=${previousDate}&end=${date}`),
+        // Intake filters are instants. Fetch through the following midnight,
+        // then bucket in the configured IANA zone in the detail panel.
+        apiFetch<MedicationIntake[]>(`/medications/intakes?start=${previousDate}&end=${nextDate}`),
+        apiFetch<SupplementIntake[]>(`/supplements/intakes?start=${previousDate}&end=${nextDate}`),
+      ]);
+      return { activity, exerciseLogs, medicationIntakes, supplementIntakes };
+    },
   });
 }
 

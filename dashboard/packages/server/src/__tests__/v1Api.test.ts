@@ -44,6 +44,7 @@ function fakeServices(): V1Context {
       getRecords: vi.fn().mockResolvedValue({ records: [], streaks: [] }),
       getCorrelations: vi.fn().mockResolvedValue({ pairs: [] }),
       getDayOfWeekHeatmap: vi.fn().mockResolvedValue({ rows: [], dayNames: [], totalDays: 0 }),
+      getRecoveryAnomalies: vi.fn().mockResolvedValue({ unusualDays: [], daysAnalyzed: 0 }),
     } as never,
     analyticsService: {
       getSupplementAdherence: vi.fn().mockResolvedValue({ ok: true }),

@@ -15,6 +15,12 @@ export type { FoodLogDay } from "./types/food.js";
 export type { DrivingDay, DrivingSummary } from "./types/driving.js";
 export type {
   SensorAgreementMetric,
+  SensorAgreementEvidenceLevel,
+  SensorTrendAlignment,
+  SensorDivergencePattern,
+  SensorAgreementEvidence,
+  SensorSleepSessionContext,
+  SensorAgreementNight,
   SensorAgreementPoint,
   SensorAgreementDivergence,
   SensorAgreementSeries,
@@ -34,6 +40,8 @@ export type {
   IngestRun,
   IngestRunTypeDetail,
   TriggerResponse,
+  PipelineCategory,
+  PipelineIdentity,
   WindmillJob,
   WindmillCompletedJob,
   WindmillSchedule,
@@ -97,6 +105,15 @@ export type {
   AlertDelivery,
   EvaluateAlertsResponse,
 } from "./types/alerts.js";
+export type {
+  RecoveryFeatureSource,
+  RecoveryFeatureImpact,
+  RecoveryFeature,
+  RecoveryAnomalySeverity,
+  RecoveryAnomalyDirection,
+  RecoveryAnomalyDay,
+  RecoveryAnomalyReport,
+} from "./types/recoveryAnomalies.js";
 export type {
   NotificationThresholds,
   NotificationKindToggles,

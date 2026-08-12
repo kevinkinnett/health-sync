@@ -91,7 +91,14 @@ describe("focused health use cases", () => {
   it("pairs sensors on local wake date and keeps different heart-rate definitions separate", async () => {
     const useCase = new SensorAgreementService(
       rangeReader([
-        { date: "2026-08-09", totalMinutesAsleep: 400, measurementMethod: "main_sleep_v2" },
+        {
+          date: "2026-08-09", totalMinutesAsleep: 400, totalMinutesInBed: 430,
+          napMinutesAsleep: 20, totalSleepRecords: 2, minutesDeep: 80,
+          minutesLight: 240, minutesRem: 80, minutesWake: 30, efficiency: 93,
+          mainSleepStartTime: "2026-08-09T03:00:00Z",
+          mainSleepEndTime: "2026-08-09T10:10:00Z",
+          measurementMethod: "main_sleep_v2",
+        },
         { date: "2026-08-10", totalMinutesAsleep: 420, measurementMethod: "main_sleep_v2" },
       ] as never[]),
       rangeReader([] as never[]),
@@ -101,7 +108,12 @@ describe("focused health use cases", () => {
       ] as never[]),
       rangeReader([] as never[]),
       rangeReader([
-        { date: "2026-08-09", sleepDurationMin: 410, avgHeartRate: 61 },
+        {
+          date: "2026-08-09", sleepDurationMin: 410, avgHeartRate: 61,
+          sleepStart: "2026-08-09T03:20:00Z", sleepEnd: "2026-08-09T10:15:00Z",
+          score: 86, deepMin: 90, lightMin: 240, remMin: 80, tnt: 7,
+          avgBedTempC: 27.1, avgRoomTempC: 20.3,
+        },
         { date: "2026-08-10", sleepDurationMin: 450, avgHeartRate: 63 },
       ] as never[]),
     );
@@ -115,6 +127,58 @@ describe("focused health use cases", () => {
     expect(heartRate.measurementComparable).toBe(false);
     expect(heartRate.points.every((point) => point.difference == null)).toBe(true);
     expect(heartRate.points.every((point) => point.fitbitZ != null && point.eightSleepZ != null)).toBe(true);
+    expect(result.nights[0]).toMatchObject({
+      date: "2026-08-09",
+      fitbit: { napMin: 20, sleepRecords: 2, sessionStart: "2026-08-09T03:00:00Z" },
+      eightSleep: { score: 86, tossAndTurnCount: 7, sessionStart: "2026-08-09T03:20:00Z" },
+    });
+  });
+
+  it("labels evidence strength and sustained relative-trend divergence conservatively", async () => {
+    const dates = Array.from({ length: 14 }, (_, index) => `2026-07-${String(index + 1).padStart(2, "0")}`);
+    const fitbitValues = dates.map((date, index) => ({
+      date, totalMinutesAsleep: 360 + index * 10, measurementMethod: "main_sleep_v2",
+    }));
+    const eightValues = dates.map((date, index) => ({
+      date,
+      sleepDurationMin: index < 3 ? 520 - index * 10 : 360 + index * 10,
+    }));
+    const useCase = new SensorAgreementService(
+      rangeReader(fitbitValues as never[]), rangeReader([] as never[]),
+      rangeReader([] as never[]), rangeReader([] as never[]),
+      rangeReader(eightValues as never[]),
+    );
+
+    const result = await useCase.get(dates[0], dates.at(-1)!, "America/New_York");
+    const sleep = result.series.find((series) => series.metric === "sleep")!;
+    expect(sleep.evidence.level).toBe("established");
+    expect(sleep.evidence.latestRollingCorrelation).not.toBeNull();
+    expect(sleep.points.slice(0, 3).map((point) => point.divergencePattern)).toEqual([
+      "sustained", "sustained", "sustained",
+    ]);
+    expect(sleep.points[13].rollingCorrelation).not.toBeNull();
+  });
+
+  it("does not bridge measurement regimes when rating sensor evidence", async () => {
+    const dates = Array.from({ length: 10 }, (_, index) => `2026-06-${String(index + 1).padStart(2, "0")}`);
+    const useCase = new SensorAgreementService(
+      rangeReader(dates.map((date, index) => ({
+        date,
+        totalMinutesAsleep: 400 + index * 5,
+        measurementMethod: index < 3 ? "fitbit_legacy_main_v1" : "main_sleep_v2",
+      })) as never),
+      rangeReader([] as never[]), rangeReader([] as never[]), rangeReader([] as never[]),
+      rangeReader(dates.map((date, index) => ({ date, sleepDurationMin: 410 + index * 5 })) as never),
+    );
+
+    const result = await useCase.get(dates[0], dates.at(-1)!, "America/New_York");
+    const sleep = result.series.find((series) => series.metric === "sleep")!;
+    expect(sleep.joinedDays).toBe(10);
+    expect(sleep.evidence).toMatchObject({ level: "limited", analysisNights: 7, regimeCount: 2 });
+    expect(sleep.correlation).toBe(1);
+    expect(sleep.evidence.interpretation).toContain("latest measurement regime");
+    expect(sleep.points[3].rollingCorrelation).toBeNull();
+    expect(sleep.points[9].rollingCorrelation).toBe(1);
   });
 
   it("anchors weekly comparisons to the latest completed Eastern day", async () => {

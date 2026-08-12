@@ -81,8 +81,17 @@ export interface TriggerResponse {
   message: string;
 }
 
+/** Operational role of a Windmill workflow in the health-data system. */
+export type PipelineCategory = "source" | "analysis" | "notification";
+
+export interface PipelineIdentity {
+  pipelineKey: string;
+  pipelineLabel: string;
+  pipelineCategory: PipelineCategory;
+}
+
 /** A Windmill job that is either queued or currently running. */
-export interface WindmillJob {
+export interface WindmillJob extends PipelineIdentity {
   id: string;
   scriptPath: string;
   createdAt: string;
@@ -93,7 +102,7 @@ export interface WindmillJob {
 }
 
 /** A completed Windmill job (for history). */
-export interface WindmillCompletedJob {
+export interface WindmillCompletedJob extends PipelineIdentity {
   id: string;
   scriptPath: string;
   schedulePath: string | null;
@@ -104,14 +113,17 @@ export interface WindmillCompletedJob {
   isSkipped: boolean;
 }
 
-export interface WindmillSchedule {
+export interface WindmillSchedule extends PipelineIdentity {
   path: string;
   schedule: string;
+  timezone: string;
   enabled: boolean;
   scriptPath: string;
   nextExecution: string | null;
   summary: string | null;
   description: string | null;
+  /** Only dashboard-owned coordinators can be started from this screen. */
+  triggerable: boolean;
 }
 
 export interface IngestOverview {

@@ -251,7 +251,7 @@ export function buildV1Endpoints(): V1EndpointDef[] {
       path: "/sensor-agreement",
       summary: "Fitbit and Eight Sleep agreement",
       description:
-        "Pairs Fitbit-device measurements imported through Google Health with Eight Sleep on the same America/New_York local wake date. Reports overlap, correlation, mean absolute difference, measurement definitions, regimes, and largest-divergence nights. Heart-rate values are related but explicitly non-comparable definitions.",
+        "Pairs Fitbit-device measurements imported through Google Health with Eight Sleep on the same America/New_York local wake date. Reports overlap, evidence maturity, rolling correlation, relative-trend alignment, isolated or sustained divergence, session context, measurement definitions, regimes, and largest-divergence nights. Heart-rate values are related but explicitly non-comparable definitions; agreement is not a sensor-accuracy verdict.",
       parameters: dateRangeParams,
       handler: async (args, ctx) => {
         const { start, end } = resolveDateRange(args, ctx.userTimezone);
@@ -288,6 +288,21 @@ export function buildV1Endpoints(): V1EndpointDef[] {
       description:
         "Versioned personal recovery score (0-100, 50 = personal baseline) synthesized from Fitbit/Google Health and Eight Sleep signals: HRV, resting/sleeping HR, sleep, breathing rate, SpO2, and skin-temperature deviation. Returns definitions, source/regime metadata, per-signal breakdown, and history. Treat the current local date as provisional when still in progress.",
       handler: async (_args, ctx) => ctx.healthDataService.getReadiness(),
+    },
+    {
+      path: "/recovery-anomalies",
+      summary: "Explainable unusual recovery days",
+      description:
+        "Completed local wake dates whose recovery signals differ materially from their own robust, weekday-aware trailing baselines. Every result includes contributing signals, source/regime provenance, coverage, and direction. Scores measure unusualness, not health risk, and are not diagnostic.",
+      parameters: dateRangeParams,
+      handler: async (args, ctx) => {
+        const { start, end } = resolveDateRange(args, ctx.userTimezone);
+        return ctx.healthDataService.getRecoveryAnomalies(
+          start,
+          end,
+          todayInTz(ctx.userTimezone),
+        );
+      },
     },
 
     // -----------------------------------------------------------------

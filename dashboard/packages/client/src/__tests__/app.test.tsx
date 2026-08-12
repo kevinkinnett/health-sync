@@ -129,7 +129,7 @@ describe("App routing and layout", () => {
 
   it("renders Ingest page at /ingest", async () => {
     renderWithProviders("/ingest");
-    expect(await screen.findByText("Pipeline Status")).toBeInTheDocument();
+    expect(await screen.findByText("Data & Analysis Pipeline")).toBeInTheDocument();
     expect(screen.getByText("Historical Coverage by Data Type")).toBeInTheDocument();
   });
 });

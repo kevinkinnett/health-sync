@@ -22,6 +22,9 @@ describe("ingest page model", () => {
 
   it("counts running, scheduled, and queued jobs independently", () => {
     const base: WindmillJob = {
+      pipelineKey: "google-health",
+      pipelineLabel: "Google Health Sync",
+      pipelineCategory: "source",
       id: "job",
       scriptPath: "f/ingest",
       createdAt: "2026-08-11T16:00:00Z",

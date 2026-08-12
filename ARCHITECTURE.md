@@ -208,12 +208,21 @@ The dashboard shell follows a workflow-first information architecture:
   and the status/job components own presentation. `pages/Ingest.tsx` only
   composes those pieces, keeping refresh, trigger, freshness, coverage, and job
   history behavior testable without a page-sized component.
-- Dossiers use an accessible dialog shell that owns focus trapping, focus
-  restoration, escape handling, and scroll locking. Pure content parsing stays
+- Content-heavy drawers share an accessible side-panel shell that owns focus
+  trapping, focus restoration, escape handling, and scroll locking. Dossiers
+  adapt that shell while pure content parsing stays
   in `dossierContentModel.ts`; loading, refresh, error, content, and citation
   presentation are separate components. Cached dossier content remains visible
   during background refreshes so a network retry does not erase useful safety
   information.
+- Sensor Comparison is an evidence-and-investigation workflow rather than only
+  a chart. The server preserves per-wake-date session boundaries, stage and nap
+  context, rolling agreement, evidence maturity, and conservative
+  isolated/sustained trend-divergence labels. Selecting a point opens the
+  shared side panel with Eastern and UTC timing, source definitions, possible
+  data-quality explanations, and lazily loaded nearby activity and intake
+  context. The copy consistently treats agreement as directional evidence,
+  never as proof that one sensor is accurate.
 - The API Console follows the same page-composition boundary. `useApiConsole.ts`
   owns its server state, `apiConsoleModel.ts` owns URL, curl-example, and status
   presentation rules, and focused cards and tables own rendering. The route

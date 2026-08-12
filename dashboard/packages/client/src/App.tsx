@@ -24,6 +24,7 @@ const AnalyticsExercises = lazy(() => import("./pages/analytics/Exercises").then
 const AnalyticsVitals = lazy(() => import("./pages/analytics/Vitals").then((m) => ({ default: m.AnalyticsVitals })));
 const AnalyticsEightSleep = lazy(() => import("./pages/analytics/EightSleep").then((m) => ({ default: m.AnalyticsEightSleep })));
 const AnalyticsSensors = lazy(() => import("./pages/analytics/Sensors").then((m) => ({ default: m.AnalyticsSensors })));
+const AnalyticsUnusualDays = lazy(() => import("./pages/analytics/UnusualDays").then((m) => ({ default: m.AnalyticsUnusualDays })));
 const AnalyticsNutrition = lazy(() => import("./pages/analytics/Nutrition").then((m) => ({ default: m.AnalyticsNutrition })));
 const AnalyticsRecords = lazy(() => import("./pages/analytics/Records").then((m) => ({ default: m.AnalyticsRecords })));
 const AnalyticsCorrelations = lazy(() => import("./pages/analytics/Correlations").then((m) => ({ default: m.AnalyticsCorrelations })));
@@ -61,6 +62,7 @@ export default function App() {
               <Route path="vitals" element={<AnalyticsVitals />} />
               <Route path="eight-sleep" element={<AnalyticsEightSleep />} />
               <Route path="sensors" element={<AnalyticsSensors />} />
+              <Route path="unusual-days" element={<AnalyticsUnusualDays />} />
               <Route path="nutrition" element={<AnalyticsNutrition />} />
               <Route path="records" element={<AnalyticsRecords />} />
               <Route path="correlations" element={<AnalyticsCorrelations />} />

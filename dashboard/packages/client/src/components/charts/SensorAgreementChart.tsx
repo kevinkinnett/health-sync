@@ -17,9 +17,11 @@ import { annotationMarkers } from "./annotationMarkers";
 export function SensorAgreementChart({
   series,
   annotations = [],
+  onSelectDate,
 }: {
   series: SensorAgreementSeries;
   annotations?: ChartAnnotation[];
+  onSelectDate?: (date: string) => void;
 }) {
   const ct = useChartTheme();
   const standardized = !series.measurementComparable;
@@ -30,21 +32,21 @@ export function SensorAgreementChart({
   }));
 
   return (
-    <div className="h-56" role="img" aria-label={`${series.label} comparison over ${series.joinedDays} joined nights`}>
+    <div className={`h-56 ${onSelectDate ? "cursor-pointer" : ""}`} role="img" aria-label={`${series.label} comparison over ${series.joinedDays} joined nights${onSelectDate ? "; select a point to inspect that night" : ""}`}>
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={data} margin={{ top: 8, right: 12, bottom: 6, left: 4 }}>
+        <LineChart
+          data={data}
+          margin={{ top: 8, right: 12, bottom: 6, left: 4 }}
+          onClick={(state) => {
+            if (onSelectDate && typeof state?.activeLabel === "string") onSelectDate(state.activeLabel);
+          }}
+        >
           {annotationMarkers(annotations)}
           <CartesianGrid stroke={ct.grid} strokeDasharray="3 3" vertical={false} />
           <XAxis dataKey="date" tick={ct.tick} tickFormatter={(value: string) => value.slice(5)} minTickGap={24} />
           <YAxis
             tick={ct.tick}
             width={48}
-            label={{
-              value: standardized ? "z" : series.unit,
-              position: "insideLeft",
-              offset: 10,
-              style: { fontSize: 11, fill: ct.tick.fill },
-            }}
           />
           <Tooltip
             contentStyle={ct.tooltip.contentStyle}

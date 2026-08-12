@@ -223,6 +223,19 @@ describe("Health API endpoints", () => {
     expect(res.body).toBeInstanceOf(Array);
   });
 
+  it("GET /api/health/recovery-anomalies returns an explainable report", async () => {
+    const res = await request(app)
+      .get("/api/health/recovery-anomalies?start=2026-04-01&end=2026-04-30")
+      .expect(200);
+    expect(res.body).toMatchObject({
+      methodVersion: expect.any(String),
+      timezone: "America/New_York",
+      window: { start: "2026-04-01", end: "2026-04-30" },
+      unusualDays: expect.any(Array),
+      caveats: expect.any(Array),
+    });
+  });
+
   it("GET /api/health/summary returns all sections", async () => {
     const res = await request(app).get("/api/health/summary").expect(200);
 

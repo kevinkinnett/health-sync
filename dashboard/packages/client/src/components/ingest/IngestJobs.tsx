@@ -53,7 +53,11 @@ export function ActiveJobsPanel({
           </thead>
           <tbody className="divide-y divide-outline-variant/10">
             {jobs.map((job) => {
-              const source = scheduleLabel(job.schedulePath);
+              const source = scheduleLabel(
+                job.schedulePath,
+                job.pipelineLabel,
+                job.pipelineCategory,
+              );
               const phase = windmillJobPhase(job);
               const statusLabel =
                 phase === "running"
@@ -226,7 +230,11 @@ export function JobHistoryPanel({
       </div>
       <div className="divide-y divide-outline-variant/10">
         {jobs.map((job) => {
-          const source = scheduleLabel(job.schedulePath);
+          const source = scheduleLabel(
+            job.schedulePath,
+            job.pipelineLabel,
+            job.pipelineCategory,
+          );
           const databaseRun = findMatchingRun(job.startedAt, runs);
           const isExpanded = expandedJobs.has(job.id);
           const hasDetails =
@@ -305,7 +313,9 @@ export function JobHistoryPanel({
                     </p>
                   ) : job.success ? (
                     <p className="text-xs text-outline italic">
-                      Job completed but no matching database run was found.
+                      {job.pipelineCategory === "source"
+                        ? "Job completed but no matching database run was found."
+                        : "Job completed successfully. This workflow does not write an ingestion run."}
                     </p>
                   ) : (
                     <p className="text-xs text-error italic">

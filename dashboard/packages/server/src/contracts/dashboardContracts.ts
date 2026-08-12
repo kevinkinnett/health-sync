@@ -78,6 +78,47 @@ export const readinessResponseSchema = z.object({
   })),
 });
 
+const recoveryFeatureSourceSchema = z.object({
+  provenance: readinessProvenanceSchema,
+  value: z.number(),
+  expected: z.number(),
+  z: z.number().min(-5).max(5),
+  measurement: z.string().min(1),
+  regime: z.string().min(1),
+  baselineDays: z.number().int().nonnegative(),
+});
+
+const recoveryFeatureSchema = z.object({
+  metric: z.enum(["hrv", "rhr", "sleep", "breathing", "spo2", "skinTemp", "restlessness"]),
+  label: z.string().min(1),
+  unit: z.string().min(1),
+  value: z.number().nullable(),
+  expected: z.number().nullable(),
+  recoveryZ: z.number().min(-5).max(5),
+  impact: z.enum(["better", "worse", "neutral"]),
+  sources: z.array(recoveryFeatureSourceSchema).min(1),
+});
+
+export const recoveryAnomalyResponseSchema = z.object({
+  methodVersion: z.string().min(1),
+  timezone: z.string().min(1),
+  baselineWindowDays: z.number().int().positive(),
+  minimumBaselineDays: z.number().int().positive(),
+  window: z.object({ start: z.string(), end: z.string() }),
+  excludedCurrentDate: z.string(),
+  daysAnalyzed: z.number().int().nonnegative(),
+  unusualDays: z.array(z.object({
+    date: z.string(),
+    score: z.number().min(0).max(100),
+    severity: z.enum(["watch", "notable", "strong"]),
+    direction: z.enum(["worse", "better", "mixed"]),
+    summary: z.string().min(1),
+    coveragePct: z.number().min(0).max(100),
+    features: z.array(recoveryFeatureSchema).min(3),
+  })),
+  caveats: z.array(z.string()),
+});
+
 export const ingestStatusResponseSchema = z.object({
   provenance: z.object({
     device: z.literal("fitbit"),
@@ -131,17 +172,24 @@ export const ingestOverviewResponseSchema = z.object({
   runs: z.array(ingestRunSchema),
   windmillConnected: z.boolean(),
   activeJobs: z.array(z.object({
+    pipelineKey: z.string(), pipelineLabel: z.string(),
+    pipelineCategory: z.enum(["source", "analysis", "notification"]),
     id: z.string(), scriptPath: z.string(), createdAt: z.string(),
     startedAt: z.string().nullable(), scheduledFor: z.string().nullable(),
     running: z.boolean(), schedulePath: z.string().nullable(),
   })),
   completedJobs: z.array(z.object({
+    pipelineKey: z.string(), pipelineLabel: z.string(),
+    pipelineCategory: z.enum(["source", "analysis", "notification"]),
     id: z.string(), scriptPath: z.string(), schedulePath: z.string().nullable(),
     createdAt: z.string(), startedAt: z.string().nullable(), durationMs: z.number().nullable(),
     success: z.boolean(), isSkipped: z.boolean(),
   })),
   schedules: z.array(z.object({
-    path: z.string(), schedule: z.string(), enabled: z.boolean(), scriptPath: z.string(),
+    pipelineKey: z.string(), pipelineLabel: z.string(),
+    pipelineCategory: z.enum(["source", "analysis", "notification"]),
+    path: z.string(), schedule: z.string(), timezone: z.string(), enabled: z.boolean(), scriptPath: z.string(),
     nextExecution: z.string().nullable(), summary: z.string().nullable(), description: z.string().nullable(),
+    triggerable: z.boolean(),
   })),
 });
