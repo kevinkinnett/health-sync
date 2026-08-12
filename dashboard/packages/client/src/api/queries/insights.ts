@@ -98,7 +98,35 @@ export function useSendChatMessage() {
         method: "POST",
         body: JSON.stringify(body),
       }),
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
+      // Retain the authoritative POST response immediately. The subsequent
+      // invalidation reconciles timestamps with the database, but a delayed
+      // or failed refetch must not make an assistant response disappear.
+      queryClient.setQueryData<ChatConversationResponse>(
+        ["insights", "chat", "get", data.conversationId],
+        (current) => {
+          const messages = [...(current?.messages ?? [])];
+          const last = messages[messages.length - 1];
+          if (last?.role !== "user" || last.content !== variables.message) {
+            messages.push({
+              role: "user",
+              content: variables.message,
+              createdAt: new Date().toISOString(),
+            });
+          }
+          const latest = messages[messages.length - 1];
+          if (
+            latest?.role !== "assistant" ||
+            latest.content !== data.message.content
+          ) {
+            messages.push({
+              ...data.message,
+              createdAt: new Date().toISOString(),
+            });
+          }
+          return { conversationId: data.conversationId, messages };
+        },
+      );
       queryClient.invalidateQueries({ queryKey: ["insights", "chat", "list"] });
       queryClient.invalidateQueries({
         queryKey: ["insights", "chat", "get", data.conversationId],

@@ -12,8 +12,8 @@ export function PageHeader({
   action?: ReactNode;
 }) {
   return (
-    <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-      <div className="max-w-3xl">
+    <header className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div className="min-w-0 max-w-3xl">
         {eyebrow && (
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary mb-2">{eyebrow}</p>
         )}
@@ -22,7 +22,7 @@ export function PageHeader({
           <p className="text-base leading-relaxed text-on-surface-variant mt-2">{description}</p>
         )}
       </div>
-      {action}
+      {action && <div className="min-w-0 shrink-0">{action}</div>}
     </header>
   );
 }

@@ -34,6 +34,7 @@ export interface InsightChatState {
   historyOpen: boolean;
   isSending: boolean;
   messages: ChatTurn[];
+  notice: { kind: "warning" | "error"; message: string } | null;
   closeHistory: () => void;
   newChat: () => void;
   selectConversation: (id: string) => void;
@@ -66,12 +67,28 @@ export function useInsightChat(): InsightChatState {
     if (!message || send.isPending) return;
 
     setDraft("");
-    const result = await send.mutateAsync({
-      conversationId: conversationId ?? undefined,
-      message,
-    });
-    setConversationId(result.conversationId);
+    try {
+      const result = await send.mutateAsync({
+        conversationId: conversationId ?? undefined,
+        message,
+      });
+      setConversationId(result.conversationId);
+    } catch {
+      // React Query owns the error shown below. Restore the prompt so a
+      // transient server/proxy failure never makes the user's text vanish.
+      setDraft((current) => current || message);
+    }
   };
+
+  const notice = send.error
+    ? { kind: "error" as const, message: send.error.message }
+    : send.data?.meta.placeholder
+      ? {
+          kind: "warning" as const,
+          message:
+            "The fallback response was saved; try a narrower follow-up if you need more detail.",
+        }
+      : null;
 
   return {
     conversationId,
@@ -79,14 +96,17 @@ export function useInsightChat(): InsightChatState {
     historyOpen,
     isSending: send.isPending,
     messages: [...persistedMessages, ...optimisticMessages],
+    notice,
     closeHistory: () => setHistoryOpen(false),
     newChat: () => {
       setConversationId(null);
       setDraft("");
+      if (!send.isPending) send.reset();
     },
     selectConversation: (id) => {
       setConversationId(id);
       setHistoryOpen(false);
+      if (!send.isPending) send.reset();
     },
     sendMessage,
     setDraft,

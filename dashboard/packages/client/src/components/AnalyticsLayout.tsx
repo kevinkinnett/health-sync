@@ -1,5 +1,6 @@
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { analyzeNavItems } from "./navigation";
+import { DateRangePresets } from "./ui/DateRangePresets";
 
 const trendViews = analyzeNavItems.filter((item) => item.to.startsWith("/analytics/"));
 
@@ -14,7 +15,7 @@ export function AnalyticsLayout() {
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Explore</p>
           <h1 className="font-headline text-2xl font-bold tracking-tight text-on-surface mt-1">{current.label}</h1>
-          <p className="text-sm text-on-surface-variant mt-1">Choose a metric or relationship to inspect in detail.</p>
+          <p className="max-w-xl text-sm text-on-surface-variant mt-1">{current.description}</p>
         </div>
         <label className="sm:min-w-64">
           <span className="sr-only">Explore health view</span>
@@ -30,6 +31,7 @@ export function AnalyticsLayout() {
           </select>
         </label>
       </header>
+      <DateRangePresets className="sm:hidden" label="Analytics date range" />
       <Outlet />
     </div>
   );

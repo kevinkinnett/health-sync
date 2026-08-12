@@ -20,7 +20,7 @@ export function Alerts() {
   const markRead = useMarkAlertsRead();
   const markOneRead = useMarkAlertRead();
   const [filter, setFilter] = useState<Filter>("all");
-  const [episodeFilter, setEpisodeFilter] = useState<EpisodeFilter>("current");
+  const [episodeFilter, setEpisodeFilter] = useState<EpisodeFilter>("all");
   const alerts = useMemo(() => query.data?.alerts ?? [], [query.data?.alerts]);
   const visible = useMemo(
     () => alerts.filter((alert) => {
@@ -63,7 +63,7 @@ export function Alerts() {
         )}
       </header>
 
-      <section className="grid gap-3 sm:grid-cols-3" aria-label="Alert summary">
+      <section className="grid grid-cols-3 gap-2 sm:gap-3" aria-label="Alert summary">
         <SummaryCard label="Open" value={query.data?.openCount ?? alerts.filter((alert) => alert.resolvedAt == null).length} icon="notifications_active" />
         <SummaryCard label="Unread" value={query.data?.unreadCount ?? 0} icon="mark_email_unread" />
         <SummaryCard label="Recorded" value={alerts.length} icon="history" />
@@ -129,12 +129,12 @@ export function Alerts() {
 
 function SummaryCard({ label, value, icon }: { label: string; value: number; icon: string }) {
   return (
-    <div className="rounded-2xl border border-outline-variant/15 bg-surface-container-low p-4">
+    <div className="min-w-0 rounded-2xl border border-outline-variant/15 bg-surface-container-low p-3 sm:p-4">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-bold uppercase tracking-wider text-outline">{label}</span>
-        <span className="material-symbols-outlined text-[20px] text-primary">{icon}</span>
+        <span className="truncate text-[10px] font-bold uppercase tracking-wider text-outline sm:text-xs">{label}</span>
+        <span className="material-symbols-outlined hidden text-[20px] text-primary min-[25rem]:block">{icon}</span>
       </div>
-      <div className="mt-2 font-headline text-3xl font-semibold tabular-nums text-on-surface">{value}</div>
+      <div className="mt-2 font-headline text-2xl font-semibold tabular-nums text-on-surface sm:text-3xl">{value}</div>
     </div>
   );
 }

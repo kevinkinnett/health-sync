@@ -110,7 +110,11 @@ export class InsightChatService {
       tools,
       executeTool: (name, args) =>
         executeHealthTool(name, args, this.v1Ctx),
-      maxRounds: 8,
+      // Broad questions can legitimately inspect several recovery and
+      // training signals. Tool executions have their own allowance, while
+      // round 13 is reserved for a forced no-tools synthesis response.
+      maxToolCalls: 12,
+      maxRounds: 13,
       maxNags: 2,
       task: "chat",
       temperature: 0.3,

@@ -311,6 +311,29 @@ describe("Insights page", () => {
     );
   });
 
+  it("grows the chat composer with its content and scrolls only after the cap", async () => {
+    apiFetchMock.mockImplementation(() => Promise.resolve([]));
+    renderInsights();
+    fireEvent.click(screen.getByRole("tab", { name: /chat/i }));
+
+    const textarea = await screen.findByRole("textbox", {
+      name: /ask about your health data/i,
+    });
+    Object.defineProperty(textarea, "scrollHeight", {
+      configurable: true,
+      value: 116,
+    });
+    fireEvent.input(textarea);
+    expect(textarea).toHaveStyle({ height: "116px", overflowY: "hidden" });
+
+    Object.defineProperty(textarea, "scrollHeight", {
+      configurable: true,
+      value: 240,
+    });
+    fireEvent.input(textarea);
+    expect(textarea).toHaveStyle({ height: "160px", overflowY: "auto" });
+  });
+
   it("sends a chat message and persists the conversation id for follow-ups", async () => {
     let convId: string | null = null;
     apiFetchMock.mockImplementation((path: string, opts?: RequestInit) => {
@@ -348,6 +371,74 @@ describe("Insights page", () => {
       expect(screen.getByText(/Sleep averaged 6h45m/)).toBeInTheDocument();
     });
     expect(convId).toBe("conv-1");
+  });
+
+  it("keeps a placeholder response visible and explains the analysis limit", async () => {
+    const fallback =
+      "Unable to produce a grounded answer because the analysis limit was reached.";
+    apiFetchMock.mockImplementation((path: string, opts?: RequestInit) => {
+      if (path === "/insights/chat/conversations") return Promise.resolve([]);
+      if (path === "/insights/chat" && opts?.method === "POST") {
+        return Promise.resolve({
+          conversationId: "limited-1",
+          message: { role: "assistant", content: fallback },
+          meta: {
+            sanitized: false,
+            placeholder: true,
+            toolsCalled: ["query_sleep"],
+            rounds: 13,
+          },
+        });
+      }
+      if (path?.startsWith("/insights/chat/limited-1")) {
+        return Promise.resolve({
+          conversationId: "limited-1",
+          messages: [
+            {
+              role: "user",
+              content: "Use every signal",
+              createdAt: new Date().toISOString(),
+            },
+            {
+              role: "assistant",
+              content: fallback,
+              createdAt: new Date().toISOString(),
+            },
+          ],
+        });
+      }
+      return Promise.resolve(null);
+    });
+
+    renderInsights();
+    fireEvent.click(screen.getByRole("tab", { name: /chat/i }));
+    const textarea = await screen.findByPlaceholderText(/ask about your health/i);
+    fireEvent.change(textarea, { target: { value: "Use every signal" } });
+    fireEvent.click(screen.getByRole("button", { name: /send message/i }));
+
+    expect(await screen.findByText(fallback)).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(/analysis limit reached/i);
+  });
+
+  it("shows chat request failures and restores the unsent draft", async () => {
+    apiFetchMock.mockImplementation((path: string, opts?: RequestInit) => {
+      if (path === "/insights/chat/conversations") return Promise.resolve([]);
+      if (path === "/insights/chat" && opts?.method === "POST") {
+        return Promise.reject(new Error("LLM proxy unavailable"));
+      }
+      return Promise.resolve(null);
+    });
+
+    renderInsights();
+    fireEvent.click(screen.getByRole("tab", { name: /chat/i }));
+    const textarea = await screen.findByPlaceholderText(/ask about your health/i);
+    fireEvent.change(textarea, { target: { value: "How is my recovery?" } });
+    fireEvent.click(screen.getByRole("button", { name: /send message/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /LLM proxy unavailable/i,
+    );
+    expect(textarea).toHaveValue("How is my recovery?");
   });
 
   it("Enter sends, Shift+Enter does not", async () => {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { AlertSeverity, HealthAlert } from "@health-dashboard/shared";
 import { useAlerts, useMarkAlertsRead } from "../api/queries";
 import { formatRelativeAgo } from "../lib/relativeTime";
@@ -24,6 +24,7 @@ export function AlertBell() {
   const markRead = useMarkAlertsRead();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const panelId = useId();
 
   const alerts = data?.alerts ?? [];
   const unread = data?.unreadCount ?? 0;
@@ -60,7 +61,9 @@ export function AlertBell() {
         aria-label={
           unread > 0 ? `Notifications, ${unread} unread` : "Notifications"
         }
-        className="text-outline hover:text-on-surface transition-colors p-1 relative"
+        aria-expanded={open}
+        aria-controls={panelId}
+        className="relative flex min-h-11 min-w-11 items-center justify-center rounded-lg text-outline transition-colors hover:bg-surface-container-low hover:text-on-surface"
       >
         <span className="material-symbols-outlined">notifications</span>
         {unread > 0 && (
@@ -75,9 +78,10 @@ export function AlertBell() {
 
       {open && (
         <div
-          role="menu"
+          id={panelId}
+          role="dialog"
           aria-label="Notifications"
-          className="absolute right-0 top-10 w-80 max-h-96 overflow-y-auto bg-surface-container-high rounded-xl border border-outline-variant/15 shadow-xl z-50"
+          className="fixed inset-x-2 top-16 z-50 max-h-[calc(100dvh-5rem)] overflow-y-auto rounded-xl border border-outline-variant/15 bg-surface-container-high shadow-xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-12 sm:max-h-96 sm:w-80"
         >
           <div className="px-4 py-3 border-b border-outline-variant/10">
             <div className="flex items-center justify-between gap-3">
@@ -98,7 +102,7 @@ export function AlertBell() {
           ) : (
             <ul>
               {alerts.map((a) => (
-                <AlertRow key={a.id} alert={a} />
+                <AlertRow key={a.id} alert={a} onNavigate={() => setOpen(false)} />
               ))}
             </ul>
           )}
@@ -108,7 +112,7 @@ export function AlertBell() {
   );
 }
 
-function AlertRow({ alert }: { alert: HealthAlert }) {
+function AlertRow({ alert, onNavigate }: { alert: HealthAlert; onNavigate: () => void }) {
   const action = alertAction(alert.kind);
   return (
     <li className="px-4 py-3 border-b border-outline-variant/5 last:border-0">
@@ -127,6 +131,7 @@ function AlertRow({ alert }: { alert: HealthAlert }) {
           </div>
           <Link
             to={action.to}
+            onClick={onNavigate}
             className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
           >
             {action.label}

@@ -154,6 +154,117 @@ describe("runAgenticLoop — reported round count", () => {
   });
 });
 
+describe("runAgenticLoop — tool budget and reserved synthesis", () => {
+  it("allows 12 tool executions, then forces a no-tools synthesis round", async () => {
+    const choices: Array<string | undefined> = [];
+    let calls = 0;
+    let executions = 0;
+    const llm = scripted(async () => {
+      calls++;
+      return calls <= 12
+        ? toolCallResponse("query_x", `call_${calls}`)
+        : textResponse("synthesized answer");
+    });
+    const original = llm.chatCompletion.bind(llm);
+    llm.chatCompletion = async (request, options) => {
+      choices.push(request.tool_choice);
+      return original(request, options);
+    };
+
+    const result = await runAgenticLoop({
+      llm,
+      model: "sonnet",
+      messages: [{ role: "user", content: "ask" }],
+      tools: [TOOL],
+      executeTool: async () => {
+        executions++;
+        return "{}";
+      },
+      maxToolCalls: 12,
+      maxRounds: 13,
+      task: "chat",
+    });
+
+    expect(calls).toBe(13);
+    expect(executions).toBe(12);
+    expect(choices.slice(0, 12)).toEqual(Array(12).fill("auto"));
+    expect(choices[12]).toBe("none");
+    expect(result.content).toBe("synthesized answer");
+    expect(result.placeholder).toBe(false);
+    expect(result.rounds).toBe(13);
+  });
+
+  it("keeps the fallback assistant turn in the transcript at the round cap", async () => {
+    const result = await runAgenticLoop({
+      llm: scripted(async () => toolCallResponse("query_x", "call_1")),
+      model: "sonnet",
+      messages: [{ role: "user", content: "ask" }],
+      tools: [TOOL],
+      executeTool: async () => "{}",
+      maxRounds: 1,
+      task: "chat",
+    });
+
+    expect(result.placeholder).toBe(true);
+    expect(result.transcript.at(-1)).toEqual({
+      role: "assistant",
+      content: result.content,
+    });
+    expect(result.content).toMatch(/round budget/i);
+  });
+
+  it("returns protocol-complete synthetic results for calls beyond the budget", async () => {
+    let round = 0;
+    let executions = 0;
+    const llm = scripted(async () => {
+      round++;
+      if (round === 2) return textResponse("done");
+      return {
+        choices: [
+          {
+            message: {
+              content: null,
+              tool_calls: [
+                {
+                  id: "first",
+                  type: "function",
+                  function: { name: "query_x", arguments: "{}" },
+                },
+                {
+                  id: "overflow",
+                  type: "function",
+                  function: { name: "query_x", arguments: "{}" },
+                },
+              ],
+            },
+          },
+        ],
+      };
+    });
+
+    const result = await runAgenticLoop({
+      llm,
+      model: "sonnet",
+      messages: [{ role: "user", content: "ask" }],
+      tools: [TOOL],
+      executeTool: async () => {
+        executions++;
+        return "{}";
+      },
+      maxToolCalls: 1,
+      maxRounds: 2,
+      task: "chat",
+    });
+
+    expect(executions).toBe(1);
+    expect(result.content).toBe("done");
+    const overflow = result.transcript.find(
+      (message) => message.role === "tool" && message.tool_call_id === "overflow",
+    );
+    expect(overflow?.content).toMatch(/tool_budget_exhausted/);
+  });
+});
+
 describe("runAgenticLoop — empty final answer", () => {
   it("treats an empty-but-valid answer as answered, not as a placeholder", async () => {
     const result = await runAgenticLoop({

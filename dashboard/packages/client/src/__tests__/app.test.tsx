@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 // `waitFor` is used by the Dashboard mount test — the Loading state
 // renders synchronously but we wrap to keep the test resilient to
 // future async changes in `useHealthSummary`.
@@ -89,11 +89,17 @@ describe("App routing and layout", () => {
   });
 
   it("renders date range presets in the nav", () => {
-    renderWithProviders();
-    expect(screen.getByText("7D")).toBeInTheDocument();
-    expect(screen.getByText("30D")).toBeInTheDocument();
-    expect(screen.getByText("90D")).toBeInTheDocument();
-    expect(screen.getByText("All")).toBeInTheDocument();
+    renderWithProviders("/analytics/overview");
+    const mobileRange = screen.getByLabelText("Analytics date range");
+    expect(within(mobileRange).getByText("7D")).toBeInTheDocument();
+    expect(within(mobileRange).getByText("30D")).toBeInTheDocument();
+    expect(within(mobileRange).getByText("90D")).toBeInTheDocument();
+    expect(within(mobileRange).getByText("All")).toBeInTheDocument();
+  });
+
+  it("uses detailed analytics metadata for the top-bar title", () => {
+    renderWithProviders("/analytics/activity");
+    expect(screen.getByTestId("page-title")).toHaveTextContent("Activity");
   });
 
   it("mounts the Dashboard route at /", async () => {

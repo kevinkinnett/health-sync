@@ -1,7 +1,8 @@
 import { useState } from "react";
 import type { InsightCategory, InsightJob } from "@health-dashboard/shared";
 import { DEFAULT_SERIES, SERIES } from "../charts/chartPalette";
-import { MarkdownBody } from "./MarkdownBody";
+import { Card } from "../ui/Card";
+import { MarkdownContent } from "../ui/MarkdownContent";
 import { useInsightReports } from "./useInsightReports";
 
 export function ReportsTab() {
@@ -29,17 +30,18 @@ export function ReportsTab() {
         </div>
       )}
 
-      <header className="bg-surface-container rounded-xl p-5 border border-outline-variant/10 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-        <div className="text-sm text-on-surface">
+      <Card as="div" className="p-4 sm:p-5">
+        <header className="flex min-w-0 flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div className="min-w-0 text-sm text-on-surface">
           {reports.activeSummary ? (
-            <>
-              <span className="font-bold">
+            <div className="flex min-w-0 flex-col gap-1.5 sm:flex-row sm:items-center">
+              <span className="font-bold tabular-nums">
                 {new Date(reports.activeSummary.createdAt).toLocaleString()}
               </span>
-              <span className="ml-2 inline-block text-[10px] uppercase tracking-widest font-bold text-outline bg-surface-container-low px-2 py-0.5 rounded">
+              <span className="inline-flex w-fit rounded bg-surface-container-low px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-outline">
                 {reports.activeSummary.dateFrom} → {reports.activeSummary.dateTo}
               </span>
-            </>
+            </div>
           ) : reports.isLoading ? (
             <span className="text-outline">Loading analyses…</span>
           ) : (
@@ -48,36 +50,40 @@ export function ReportsTab() {
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {reports.generations.length > 0 && (
-            <>
+            <div
+              className="flex h-11 items-center rounded-lg border border-outline-variant/15 bg-surface-container-low px-1"
+              aria-label="Analysis history"
+            >
               <button
                 onClick={reports.selectOlder}
                 disabled={
                   reports.resolvedIndex >= reports.generations.length - 1
                 }
                 aria-label="Older analysis"
-                className="p-1 text-outline hover:text-on-surface disabled:opacity-30"
+                className="flex h-9 w-9 items-center justify-center rounded-md text-outline hover:bg-surface-container-high hover:text-on-surface disabled:opacity-30"
               >
                 <span className="material-symbols-outlined">chevron_left</span>
               </button>
-              <span className="text-xs tabular-nums text-outline">
-                {reports.resolvedIndex + 1} / {reports.generations.length}
+              <span className="px-1 text-xs tabular-nums text-outline">
+                <span className="hidden sm:inline">Analysis </span>
+                {reports.resolvedIndex + 1} of {reports.generations.length}
               </span>
               <button
                 onClick={reports.selectNewer}
                 disabled={reports.resolvedIndex === 0}
                 aria-label="Newer analysis"
-                className="p-1 text-outline hover:text-on-surface disabled:opacity-30"
+                className="flex h-9 w-9 items-center justify-center rounded-md text-outline hover:bg-surface-container-high hover:text-on-surface disabled:opacity-30"
               >
                 <span className="material-symbols-outlined">chevron_right</span>
               </button>
-            </>
+            </div>
           )}
           <button
             onClick={reports.regenerate}
             disabled={reports.inFlight || reports.isStarting}
-            className="flex items-center gap-1.5 px-4 py-2 bg-primary text-on-primary-fixed rounded-lg text-sm font-bold disabled:opacity-50"
+            className="flex h-11 items-center gap-1.5 rounded-lg bg-primary px-4 text-sm font-bold text-on-primary-fixed disabled:opacity-50"
           >
             <span className="material-symbols-outlined text-base">
               {reports.inFlight ? "hourglass_empty" : "auto_awesome"}
@@ -88,13 +94,14 @@ export function ReportsTab() {
             <button
               onClick={onDelete}
               aria-label="Delete this analysis"
-              className="p-2 text-outline hover:text-error transition-colors"
+              className="flex h-11 w-11 items-center justify-center rounded-lg text-outline transition-colors hover:bg-error/10 hover:text-error"
             >
               <span className="material-symbols-outlined">delete</span>
             </button>
           )}
         </div>
-      </header>
+        </header>
+      </Card>
 
       {!reports.inFlight && reports.detail && (
         <CategoryAccordion categories={reports.detail.categories} />
@@ -112,7 +119,7 @@ export function ReportsTab() {
 
 function EmptyReport({ onGenerate }: { onGenerate: () => Promise<void> }) {
   return (
-    <div className="bg-surface-container rounded-xl p-12 text-center border border-outline-variant/10">
+    <Card className="p-8 text-center sm:p-12">
       <div className="text-outline mb-4">
         <span
           className="material-symbols-outlined text-5xl"
@@ -131,16 +138,16 @@ function EmptyReport({ onGenerate }: { onGenerate: () => Promise<void> }) {
       >
         Generate First Analysis
       </button>
-    </div>
+    </Card>
   );
 }
 
 function ProgressCard({ job }: { job: InsightJob }) {
   return (
-    <div
+    <Card
       role="status"
       aria-live="polite"
-      className="bg-surface-container rounded-xl p-5 border border-outline-variant/10"
+      className="p-5"
     >
       <div className="flex items-center gap-3 mb-3">
         <span
@@ -171,7 +178,7 @@ function ProgressCard({ job }: { job: InsightJob }) {
         />
       </div>
       <div className="text-xs text-outline">{job.statusMessage}</div>
-    </div>
+    </Card>
   );
 }
 
@@ -195,9 +202,10 @@ function CategoryAccordion({ categories }: { categories: InsightCategory[] }) {
         const isOpen = open.has(category.key);
         const color = CATEGORY_COLORS[category.key] ?? DEFAULT_SERIES;
         return (
-          <div
+          <Card
+            as="div"
             key={category.key}
-            className="bg-surface-container rounded-xl border border-outline-variant/10 overflow-hidden"
+            className="overflow-hidden"
           >
             <button
               onClick={() => {
@@ -225,11 +233,13 @@ function CategoryAccordion({ categories }: { categories: InsightCategory[] }) {
               </span>
             </button>
             {isOpen && (
-              <div className="px-4 pb-4 pt-1 text-sm text-on-surface markdown-body">
-                <MarkdownBody>{category.content}</MarkdownBody>
+              <div className="px-4 pb-5 pt-1 sm:px-5">
+                <MarkdownContent className="max-w-[80ch]">
+                  {category.content}
+                </MarkdownContent>
               </div>
             )}
-          </div>
+          </Card>
         );
       })}
     </div>

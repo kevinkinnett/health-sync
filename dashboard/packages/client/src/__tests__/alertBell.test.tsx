@@ -82,7 +82,7 @@ describe("AlertBell", () => {
     await waitFor(() => screen.getByTestId("alert-badge"));
     fireEvent.click(screen.getByRole("button", { name: /notifications/i }));
 
-    const menu = await screen.findByRole("menu", { name: /notifications/i });
+    const menu = await screen.findByRole("dialog", { name: /notifications/i });
     expect(
       within(menu).getByText(/possible illness or under-recovery/i),
     ).toBeInTheDocument();

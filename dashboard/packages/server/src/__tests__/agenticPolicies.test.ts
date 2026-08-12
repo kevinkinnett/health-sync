@@ -4,6 +4,7 @@ import {
   BudgetClock,
   RequiredTools,
   StuckDetector,
+  ToolCallBudget,
 } from "../services/agentic/policies.js";
 
 /**
@@ -94,6 +95,31 @@ describe("Allowance", () => {
     expect(a.tryUse()).toBe(false);
     a.reset();
     expect(a.tryUse()).toBe(true);
+  });
+});
+
+describe("ToolCallBudget", () => {
+  it("counts executions independently from tool identity", () => {
+    const budget = new ToolCallBudget(2);
+    expect(budget.tryUse()).toBe(true);
+    expect(budget.tryUse()).toBe(true);
+    expect(budget.tryUse()).toBe(false);
+    expect(budget.spent).toBe(2);
+    expect(budget.remaining).toBe(0);
+    expect(budget.exhausted).toBe(true);
+  });
+
+  it("normalizes invalid limits and can be reset for a session replay", () => {
+    const budget = new ToolCallBudget(-4);
+    expect(budget.max).toBe(0);
+    expect(budget.tryUse()).toBe(false);
+    expect(new ToolCallBudget(Number.NaN).max).toBe(0);
+
+    const replayed = new ToolCallBudget(1);
+    replayed.tryUse();
+    replayed.reset();
+    expect(replayed.remaining).toBe(1);
+    expect(replayed.tryUse()).toBe(true);
   });
 });
 
