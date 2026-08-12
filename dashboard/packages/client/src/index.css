@@ -1,21 +1,21 @@
 @import "tailwindcss";
 
 @theme {
-  /* ── Surface hierarchy (tonal layering) ── */
-  --color-surface: #0b1326;
-  --color-surface-dim: #0b1326;
-  --color-surface-bright: #31394d;
-  --color-surface-container-lowest: #060e20;
-  --color-surface-container-low: #131b2e;
-  --color-surface-container: #171f33;
-  --color-surface-container-high: #222a3d;
-  --color-surface-container-highest: #2d3449;
+  /* ── Graphite surface hierarchy (neutral tonal layering) ── */
+  --color-surface: #0d0f12;
+  --color-surface-dim: #0d0f12;
+  --color-surface-bright: #30343a;
+  --color-surface-container-lowest: #08090b;
+  --color-surface-container-low: #121417;
+  --color-surface-container: #171a1f;
+  --color-surface-container-high: #20242a;
+  --color-surface-container-highest: #2a2f36;
 
   /* ── On-surface text ── */
-  --color-on-surface: #dae2fd;
-  --color-on-surface-variant: #c7c4d7;
-  --color-outline: #908fa0;
-  --color-outline-variant: #464554;
+  --color-on-surface: #f1f3f5;
+  --color-on-surface-variant: #c4c8ce;
+  --color-outline: #8b929c;
+  --color-outline-variant: #3e444d;
 
   /*
    * ── Accents ──
@@ -52,8 +52,8 @@
   /* ── Primary (Blue / interactive) — chart SERIES[0] hue, 6.02 on card ── */
   --color-primary: #5ba0ee;
   --color-primary-container: #4489d2; /* gradient end: 5.11 with on-primary-fixed */
-  --color-on-primary: #0b1326; /* 6.79 on primary; white would be 2.72 */
-  --color-on-primary-fixed: #04122b;
+  --color-on-primary: #07101c;
+  --color-on-primary-fixed: #07101c;
 
   /* ── Secondary (Green / recovery) — chart SERIES[2] hue, 6.11 ── */
   --color-secondary: #22b380;
@@ -72,8 +72,8 @@
   --color-on-error: #2b0606;
 
   /* ── Inverse ── */
-  --color-inverse-surface: #dae2fd;
-  --color-inverse-on-surface: #283044;
+  --color-inverse-surface: #f1f3f5;
+  --color-inverse-on-surface: #20242a;
   --color-inverse-primary: #2b6cae;
 
   /* ── Fonts ── */
@@ -83,6 +83,14 @@
 }
 
 /* ── Base styles ── */
+:root {
+  color-scheme: dark;
+}
+
+html {
+  background-color: var(--color-surface);
+}
+
 body {
   margin: 0;
   font-family: var(--font-body);

@@ -27,7 +27,7 @@ const BAND_STYLES: Record<
   primed: { ring: READINESS_BAND_COLOR.primed, text: "text-secondary", label: "Primed" },
   balanced: { ring: READINESS_BAND_COLOR.balanced, text: "text-primary", label: "Balanced" },
   compromised: { ring: READINESS_BAND_COLOR.compromised, text: "text-error", label: "Compromised" },
-  insufficient: { ring: "#5a5b6a", text: "text-outline", label: "No score yet" },
+  insufficient: { ring: READINESS_BAND_COLOR.insufficient, text: "text-outline", label: "No score yet" },
 };
 
 export function ReadinessCard({ data, to }: { data: ReadinessScore; to?: string }) {
@@ -117,7 +117,7 @@ export function ReadinessCard({ data, to }: { data: ReadinessScore; to?: string 
  */
 function CardShell({ to, children }: { to?: string; children: ReactNode }) {
   const cls =
-    "block bg-surface-container rounded-xl p-6 border border-outline-variant/10";
+    "block rounded-2xl bg-surface-container p-6";
   return to ? (
     <Link
       to={to}

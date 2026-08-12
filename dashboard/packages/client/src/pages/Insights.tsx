@@ -9,7 +9,7 @@ export function Insights() {
   const [tab, setTab] = useState<Tab>("reports");
 
   return (
-    <div className="flex min-h-[calc(100dvh-11rem)] min-w-0 flex-col gap-6 xl:min-h-[calc(100dvh-7rem)]">
+    <div className="flex min-h-[calc(100dvh-11rem)] min-w-0 flex-col gap-8 xl:min-h-[calc(100dvh-7rem)]">
       <PageHeader
         eyebrow="AI analysis"
         title="AI Insights"

@@ -50,9 +50,9 @@ export const STATUS = {
 
 /** Recessive chrome: gridlines, inactive marks, baselines. */
 export const CHART_CHROME = {
-  grid: "#2d3449",
-  axis: "#908fa0",
-  inactive: "#464554",
+  grid: "#2a2f36",
+  axis: "#8b929c",
+  inactive: "#444b55",
 } as const;
 
 /**

@@ -129,7 +129,7 @@ export function GoalRings({ summary }: { summary: HealthSummary }) {
      * out of the bottom, over the stat cards below. It only looked right
      * back when it was the sole occupant of that column.
      */
-    <div className="bg-surface-container-high rounded-xl p-6">
+    <section className="rounded-2xl bg-surface-container p-6">
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-lg font-headline font-semibold text-on-surface">
           Daily Goals
@@ -200,6 +200,6 @@ export function GoalRings({ summary }: { summary: HealthSummary }) {
           </div>
         </div>
       </div>
-    </div>
+    </section>
   );
 }

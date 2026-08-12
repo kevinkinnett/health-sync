@@ -74,7 +74,7 @@ export function Dashboard() {
         wants anyway beats trying to balance the rail by removing things
         from it.
       */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start">
+      <div className="grid grid-cols-1 items-start gap-8 xl:grid-cols-3">
         <div className="xl:col-span-2 space-y-6">
           {weeklyData && <WeeklyInsights data={weeklyData} />}
 

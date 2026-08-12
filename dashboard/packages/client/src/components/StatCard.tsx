@@ -47,7 +47,7 @@ export function StatCard({
      * 40px icon block with nothing beside it.
      */
     <div
-      className="bg-surface-container rounded-xl p-5 border border-outline-variant/5"
+      className="rounded-xl bg-surface-container-low p-5"
       data-testid="stat-card"
     >
       <div className="flex items-center justify-between gap-2 mb-3">

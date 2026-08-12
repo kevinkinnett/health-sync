@@ -30,7 +30,7 @@ export function ReportsTab() {
         </div>
       )}
 
-      <Card as="div" className="p-4 sm:p-5">
+      <Card as="div" variant="inset" className="p-4 sm:p-5">
         <header className="flex min-w-0 flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="min-w-0 text-sm text-on-surface">
           {reports.activeSummary ? (

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { LlmModelSettings, LlmTask } from "@health-dashboard/shared";
 import { useLlmModelSettings, useUpdateLlmModelSettings } from "../api/queries";
+import { Card, CardHeader } from "./ui/Card";
 
 const MODEL_OPTIONS = [
   { value: "opus", label: "Opus", blurb: "Most capable · slowest" },
@@ -19,15 +20,15 @@ const selectClass =
 
 function CardShell({ children }: { children: React.ReactNode }) {
   return (
-    <section className="bg-surface-container rounded-xl p-6 border border-outline-variant/10">
-      <header className="mb-5">
-        <h3 className="font-headline text-xl font-bold text-on-surface">AI models</h3>
-        <p className="text-on-surface-variant text-sm mt-1">
-          Choose quality versus speed independently for each task.
-        </p>
-      </header>
+    <Card className="p-6">
+      <div className="mb-5">
+        <CardHeader
+          title="AI models"
+          description="Choose quality versus speed independently for each task."
+        />
+      </div>
       {children}
-    </section>
+    </Card>
   );
 }
 

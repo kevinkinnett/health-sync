@@ -33,7 +33,7 @@ const CONFIDENCE_STYLE: Record<
 
 export function DidItWorkCard({ data }: { data: ExperimentSummary[] }) {
   return (
-    <div className="bg-surface-container rounded-xl p-5" data-testid="did-it-work">
+    <section className="rounded-2xl bg-surface-container p-5" data-testid="did-it-work">
       <div className="flex items-baseline justify-between gap-3">
         <h3 className="text-sm font-headline font-semibold text-on-surface">
           Did it work?
@@ -62,7 +62,7 @@ export function DidItWorkCard({ data }: { data: ExperimentSummary[] }) {
           ))}
         </ul>
       )}
-    </div>
+    </section>
   );
 }
 
@@ -72,7 +72,7 @@ function VerdictRow({ summary }: { summary: ExperimentSummary }) {
     <li>
       <Link
         to={`/timeline?intervention=${summary.interventionId}`}
-        className="block rounded-lg bg-surface-container-high p-3 hover:bg-surface-container-highest transition-colors"
+        className="block rounded-lg bg-surface-container-low p-3 hover:bg-surface-container-high transition-colors"
       >
         <div className="flex items-baseline justify-between gap-3">
           <span className="text-sm font-medium text-on-surface truncate">

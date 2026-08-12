@@ -58,7 +58,7 @@ export function SettingsSwitch({
 }
 
 export function SettingsDivider() {
-  return <hr className="border-outline-variant/10" />;
+  return <hr className="border-outline-variant/35" />;
 }
 
 export function MutationNotice({

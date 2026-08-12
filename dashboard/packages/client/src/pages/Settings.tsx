@@ -24,7 +24,7 @@ function StatusRow({
     neutral: "bg-outline text-outline",
   }[state];
   return (
-    <div className="flex items-center justify-between gap-4 rounded-xl bg-surface-container-low p-3">
+    <div className="flex items-center justify-between gap-4 rounded-xl bg-surface-container-lowest/65 p-3">
       <div className="flex min-w-0 items-center gap-3">
         <span className={`h-2 w-2 shrink-0 rounded-full ${tone.split(" ")[0]}`} />
         <span className="text-sm font-medium text-on-surface">{label}</span>
@@ -178,17 +178,25 @@ export function Settings() {
         description="Preferences, integrations, and the live status of the services behind Vitalis."
       />
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
-        <div className="space-y-6 xl:col-span-4">
+      <div className="grid grid-cols-1 gap-8 xl:grid-cols-12">
+        <section className="space-y-6 xl:col-span-4" aria-labelledby="settings-local-heading">
+          <div>
+            <h2 id="settings-local-heading" className="font-headline text-lg font-semibold text-on-surface">App & data</h2>
+            <p className="mt-1 text-sm text-on-surface-variant">Local display preferences and connection status.</p>
+          </div>
           <SystemHealthCard />
           <UnitsCard />
           <ApiAccessCard />
-        </div>
-        <div className="space-y-6 xl:col-span-8">
+        </section>
+        <section className="space-y-6 xl:col-span-8" aria-labelledby="settings-automation-heading">
+          <div>
+            <h2 id="settings-automation-heading" className="font-headline text-lg font-semibold text-on-surface">Automation & intelligence</h2>
+            <p className="mt-1 text-sm text-on-surface-variant">Delivery rules, model choices, and managed ingestion.</p>
+          </div>
           <NotificationSettingsCard />
           <LlmModelSettingsCard />
           <SourceStatusCard />
-        </div>
+        </section>
       </div>
     </div>
   );

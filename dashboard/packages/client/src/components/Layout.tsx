@@ -97,6 +97,65 @@ function SideNav() {
 }
 
 /**
+ * A compact rail for tablet and small-laptop widths. These viewports have
+ * enough horizontal space for persistent navigation, but not enough to give
+ * the full 16rem sidebar a useful share of the screen.
+ */
+function CompactRail({ onOpenMenu }: { onOpenMenu: () => void }) {
+  return (
+    <nav
+      aria-label="Tablet navigation"
+      data-testid="tablet-nav"
+      className="fixed bottom-0 left-0 top-16 z-40 hidden w-20 flex-col items-center border-r border-outline-variant/35 bg-surface-container-low px-2 py-4 md:flex xl:hidden"
+    >
+      <div className="flex flex-1 flex-col items-center gap-2">
+        {bottomNavQuickItems.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.end}
+            title={item.label}
+            aria-label={item.label}
+            className={({ isActive }) =>
+              `flex min-h-14 w-14 flex-col items-center justify-center gap-1 rounded-xl transition-colors ${
+                isActive
+                  ? "bg-primary/12 text-primary"
+                  : "text-outline hover:bg-surface-container-high hover:text-on-surface"
+              }`
+            }
+          >
+            <span className="material-symbols-outlined">{item.icon}</span>
+            <span className="text-[9px] font-bold uppercase tracking-wide">{item.label}</span>
+          </NavLink>
+        ))}
+        <button
+          type="button"
+          onClick={onOpenMenu}
+          title="More"
+          aria-label="Open tablet menu"
+          className="flex min-h-14 w-14 flex-col items-center justify-center gap-1 rounded-xl text-outline transition-colors hover:bg-surface-container-high hover:text-on-surface"
+        >
+          <span className="material-symbols-outlined">menu</span>
+          <span className="text-[9px] font-bold uppercase tracking-wide">More</span>
+        </button>
+      </div>
+      <NavLink
+        to="/settings"
+        aria-label="Settings"
+        title="Settings"
+        className={({ isActive }) =>
+          `flex h-12 w-12 items-center justify-center rounded-xl transition-colors ${
+            isActive ? "bg-primary/12 text-primary" : "text-outline hover:bg-surface-container-high hover:text-on-surface"
+          }`
+        }
+      >
+        <span className="material-symbols-outlined">settings</span>
+      </NavLink>
+    </nav>
+  );
+}
+
+/**
  * Mobile slide-in drawer that mirrors the desktop sidebar item-for-item.
  * Triggered by the "More" button on the bottom nav. Closes on backdrop
  * click, Escape key, or selecting any nav link (handled via the
@@ -184,7 +243,7 @@ function TopBar() {
     location.pathname.startsWith("/analytics/");
 
   return (
-    <header className="fixed top-0 w-full z-50 bg-surface/80 glass flex justify-between items-center px-6 py-3 xl:pl-[calc(16rem+1.5rem)]">
+    <header className="fixed top-0 z-50 flex w-full items-center justify-between border-b border-outline-variant/20 bg-surface/90 px-4 py-2.5 glass sm:px-6 md:pl-[calc(5rem+1.5rem)] xl:pl-[calc(16rem+1.5rem)]">
       <div className="flex items-center gap-6">
         <span className="text-xl font-bold tracking-tight text-primary font-headline">
           VITALIS
@@ -216,7 +275,7 @@ function BottomNav({ onOpenMenu }: { onOpenMenu: () => void }) {
   return (
     <nav
       aria-label="Quick access"
-      className="xl:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 pb-6 pt-3 bg-surface-container-low/90 glass border-t border-outline-variant/15"
+      className="fixed bottom-0 left-0 z-50 flex w-full items-center justify-around border-t border-outline-variant/35 bg-surface-container-low/95 px-4 pb-6 pt-3 glass md:hidden"
     >
       {bottomNavQuickItems.map((item) => (
         <NavLink
@@ -285,9 +344,10 @@ export function Layout() {
     <div className="min-h-screen bg-surface">
       <TopBar />
       <SideNav />
+      <CompactRail onOpenMenu={() => setMenuOpen(true)} />
       <BottomNav onOpenMenu={() => setMenuOpen(true)} />
       <MobileMenu open={menuOpen} onClose={() => setMenuOpen(false)} />
-      <main className="min-w-0 pt-16 pb-24 xl:pb-8 xl:pl-64 px-4 md:px-8">
+      <main className="min-w-0 px-4 pb-24 pt-16 md:pl-[calc(5rem+2rem)] md:pr-8 md:pb-8 xl:pl-[calc(16rem+2rem)]">
         <div className="min-w-0 max-w-7xl mx-auto mt-4">
           <BuildCompatibilityGate>
             <Outlet />
