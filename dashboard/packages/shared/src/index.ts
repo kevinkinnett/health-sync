@@ -15,6 +15,12 @@ export type { FoodLogDay } from "./types/food.js";
 export type { DrivingDay, DrivingSummary } from "./types/driving.js";
 export type {
   SensorAgreementMetric,
+  SensorAgreementEvidenceLevel,
+  SensorTrendAlignment,
+  SensorDivergencePattern,
+  SensorAgreementEvidence,
+  SensorSleepSessionContext,
+  SensorAgreementNight,
   SensorAgreementPoint,
   SensorAgreementDivergence,
   SensorAgreementSeries,

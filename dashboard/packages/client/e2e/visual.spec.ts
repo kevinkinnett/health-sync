@@ -102,6 +102,22 @@ test.describe("chart appearance", () => {
     await expect(card).toHaveScreenshot("nutrition-annotated.png");
   });
 
+  test("sensor comparison — evidence card and night drill-down", async ({ page }) => {
+    await ready(page, "/analytics/sensors");
+    const card = page
+      .getByRole("heading", { name: "Main sleep duration" })
+      .locator("xpath=ancestor::article");
+    await expect(card).toBeVisible({ timeout: 15_000 });
+    await settle(page);
+    await expect(card).toHaveScreenshot("sensor-agreement-card.png");
+
+    await card.getByText("Largest gaps in this window").click();
+    await card.getByRole("button", { name: /2026-07-25/ }).click();
+    const detail = page.getByRole("dialog", { name: /Wake date Jul 25, 2026/ });
+    await expect(detail).toBeVisible();
+    await expect(detail).toHaveScreenshot("sensor-night-detail.png");
+  });
+
   test("home — the did-it-work card", async ({ page }) => {
     await ready(page, "/");
     const card = page.getByTestId("did-it-work");
@@ -117,7 +133,7 @@ test.describe("chart appearance", () => {
     // over the stat tiles below. Nothing in the DOM was wrong — only the
     // rendered box — so a pixel diff is the only thing that can see it.
     await ready(page, "/");
-    const card = page.getByText("Daily Goals").locator("../..");
+    const card = page.getByTestId("daily-goals");
     await expect(card).toBeVisible({ timeout: 15_000 });
     await settle(page);
     await expect(card).toHaveScreenshot("daily-goals.png");

@@ -209,6 +209,25 @@ const SENSOR_AGREEMENT: SensorAgreementData = {
   end: TODAY,
   timezone: "America/New_York",
   dateSemantics: "local_wake_date",
+  nights: [
+    {
+      date: "2026-07-25",
+      fitbit: {
+        sessionStart: "2026-07-25T03:15:00Z", sessionEnd: "2026-07-25T11:05:00Z",
+        sleepDurationMin: 460, deepMin: 90, lightMin: 270, remMin: 100,
+        wakeMin: 12, timeInBedMin: 472, napMin: 0, sleepRecords: 1,
+        efficiency: 97, score: null, tossAndTurnCount: null, bedTempC: null,
+        roomTempC: null, regime: "main_sleep_v2",
+      },
+      eightSleep: {
+        sessionStart: "2026-07-25T03:05:00Z", sessionEnd: "2026-07-25T11:10:00Z",
+        sleepDurationMin: 480, deepMin: 95, lightMin: 280, remMin: 105,
+        wakeMin: null, timeInBedMin: null, napMin: null, sleepRecords: null,
+        efficiency: null, score: 88, tossAndTurnCount: 7, bedTempC: 27.2,
+        roomTempC: 20.4, regime: "eight_sleep_main_session_v1",
+      },
+    },
+  ],
   series: [
     {
       metric: "sleep",
@@ -223,10 +242,16 @@ const SENSOR_AGREEMENT: SensorAgreementData = {
       correlation: null,
       meanDifference: 8.3,
       meanAbsoluteDifference: 11.7,
+      evidence: {
+        level: "insufficient", analysisNights: 3, regimeCount: 1,
+        correlationMinimumNights: 7, rollingWindowNights: 14,
+        latestRollingCorrelation: null,
+        interpretation: "Too few paired nights to judge agreement reliably.",
+      },
       points: [
-        { date: "2026-07-23", fitbit: 420, eightSleep: 430, difference: 10, fitbitZ: -1, eightSleepZ: -0.8 },
-        { date: "2026-07-24", fitbit: 440, eightSleep: 435, difference: -5, fitbitZ: 0, eightSleepZ: -0.2 },
-        { date: "2026-07-25", fitbit: 460, eightSleep: 480, difference: 20, fitbitZ: 1, eightSleepZ: 1 },
+        { date: "2026-07-23", fitbitRegime: "main_sleep_v2", fitbit: 420, eightSleep: 430, difference: 10, fitbitZ: -1, eightSleepZ: -0.8, trendGap: 0.2, trendAlignment: "aligned", divergencePattern: null, rollingCorrelation: null },
+        { date: "2026-07-24", fitbitRegime: "main_sleep_v2", fitbit: 440, eightSleep: 435, difference: -5, fitbitZ: 0, eightSleepZ: -0.2, trendGap: 0.2, trendAlignment: "aligned", divergencePattern: null, rollingCorrelation: null },
+        { date: "2026-07-25", fitbitRegime: "main_sleep_v2", fitbit: 460, eightSleep: 480, difference: 20, fitbitZ: 1, eightSleepZ: 1, trendGap: 0, trendAlignment: "aligned", divergencePattern: null, rollingCorrelation: null },
       ],
       largestDivergences: [
         { date: "2026-07-25", absoluteDifference: 20, fitbit: 460, eightSleep: 480 },

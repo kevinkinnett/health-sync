@@ -251,7 +251,7 @@ export function buildV1Endpoints(): V1EndpointDef[] {
       path: "/sensor-agreement",
       summary: "Fitbit and Eight Sleep agreement",
       description:
-        "Pairs Fitbit-device measurements imported through Google Health with Eight Sleep on the same America/New_York local wake date. Reports overlap, correlation, mean absolute difference, measurement definitions, regimes, and largest-divergence nights. Heart-rate values are related but explicitly non-comparable definitions.",
+        "Pairs Fitbit-device measurements imported through Google Health with Eight Sleep on the same America/New_York local wake date. Reports overlap, evidence maturity, rolling correlation, relative-trend alignment, isolated or sustained divergence, session context, measurement definitions, regimes, and largest-divergence nights. Heart-rate values are related but explicitly non-comparable definitions; agreement is not a sensor-accuracy verdict.",
       parameters: dateRangeParams,
       handler: async (args, ctx) => {
         const { start, end } = resolveDateRange(args, ctx.userTimezone);
