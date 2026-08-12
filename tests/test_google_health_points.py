@@ -4,6 +4,39 @@ from google_health_points import parse_point
 
 
 class ParsePointTests(unittest.TestCase):
+    def test_sleep_uses_local_wake_date_not_utc_start_date(self):
+        point = {
+            "sleep": {
+                "date": {"year": 2026, "month": 5, "day": 2},
+                "interval": {
+                    "startTime": "2026-05-02T23:58:00Z",
+                    "endTime": "2026-05-03T08:53:00Z",
+                    "startUtcOffset": "-14400s",
+                    "endUtcOffset": "-14400s",
+                }
+            },
+            "dataSource": {"platform": "FITBIT"},
+        }
+
+        parsed = parse_point("sleep", point)
+
+        self.assertEqual(parsed["pdate"], "2026-05-03")
+
+    def test_sleep_without_embedded_offset_falls_back_to_eastern_timezone(self):
+        point = {
+            "sleep": {
+                "interval": {
+                    "startTime": "2026-01-14T23:00:00Z",
+                    "endTime": "2026-01-15T03:30:00Z",
+                }
+            },
+            "dataSource": {"platform": "FITBIT"},
+        }
+
+        parsed = parse_point("sleep", point)
+
+        self.assertEqual(parsed["pdate"], "2026-01-14")
+
     def test_preserves_a_google_name_as_the_stable_key(self):
         point = {
             "name": "users/me/dataTypes/steps/dataPoints/abc",

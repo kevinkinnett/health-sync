@@ -12,7 +12,7 @@ import {
 } from "../components/charts/MetricLineChart";
 import { ReadinessWaterfall } from "../components/charts/ReadinessWaterfall";
 import { READINESS_BAND_COLOR } from "../components/charts/chartPalette";
-import { readinessSourceContribution } from "../lib/readinessSource";
+import { readinessSourceLabel } from "../lib/readinessSource";
 
 /**
  * Readiness detail screen — the "more information" view behind the
@@ -66,11 +66,32 @@ function ReadinessDetail({ data }: { data: ReadinessScore }) {
             <div className={`text-2xl font-bold font-headline ${style.text}`}>{style.label}</div>
             <p className="text-on-surface-variant mt-1">{data.summary}</p>
             <p className="text-xs text-outline mt-2">
-              {style.blurb} Scored {data.date} from a {data.baselineDays}-day personal baseline.
+              {style.blurb} Night ending {data.date} in {data.timezone}, from a {data.baselineDays}-night personal baseline.
             </p>
+            <div className="flex flex-wrap gap-2 mt-3 text-[11px]">
+              <span className={`rounded-full px-2.5 py-1 font-semibold ${
+                data.confidence === "high" ? "bg-secondary/10 text-secondary" :
+                data.confidence === "moderate" ? "bg-primary/10 text-primary" : "bg-error/10 text-error"
+              }`}>{data.confidence} confidence</span>
+              <span className="rounded-full px-2.5 py-1 bg-surface-container-high text-on-surface-variant">
+                {data.coveragePct}% signal coverage
+              </span>
+              {data.provisional && (
+                <span className="rounded-full px-2.5 py-1 bg-primary/10 text-primary">provisional</span>
+              )}
+            </div>
           </div>
         </div>
       </div>
+
+      {data.caveats.length > 0 && (
+        <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+          <h3 className="text-sm font-semibold text-on-surface">How to read this score</h3>
+          <ul className="mt-2 space-y-1 text-xs text-on-surface-variant list-disc pl-4">
+            {data.caveats.map((caveat) => <li key={caveat}>{caveat}</li>)}
+          </ul>
+        </div>
+      )}
 
       {/* Trend */}
       {data.history.length > 1 && (
@@ -93,7 +114,7 @@ function ReadinessDetail({ data }: { data: ReadinessScore }) {
         <h3 className="font-headline font-semibold text-on-surface mb-1">Signal breakdown</h3>
         <p className="text-xs text-outline mb-4">
           Each signal is scored as a deviation from your own baseline (z), then weighted.
-          Signals measured by two devices show each sensor's contribution; ⚑ marks where they disagreed.
+          Each source keeps its own raw reading, definition, baseline, and algorithm regime. ⚑ marks a trend disagreement—not automatically a faulty sensor.
         </p>
         <div className="divide-y divide-outline-variant/10">
           {present.map((c) => <ComponentRow key={c.metric} c={c} />)}
@@ -112,7 +133,9 @@ function ReadinessDetail({ data }: { data: ReadinessScore }) {
           <li>Every signal is compared to <strong>your own</strong> trailing {data.baselineDays}-day baseline, not population norms — 50 means "exactly typical for you".</li>
           <li>Each deviation is signed so <strong>positive always means better-recovered</strong> (HRV up = good; resting HR up = bad).</li>
           <li>Signals from two devices (Fitbit device via Google Health + Eight Sleep) are <strong>fused</strong> — each z-scored against its own baseline, then blended, so neither sensor's scale dominates.</li>
-          <li>Weighted, renormalised over whatever's available, and mapped to 0–100. Bands: ≥66 primed · 40–65 balanced · &lt;40 compromised.</li>
+          <li>Raw readings are averaged only when their definitions are comparable. Daily resting HR, non-REM HR, and average sleeping HR remain visibly distinct.</li>
+          <li>Baselines reset when a provider or measurement algorithm changes. Weights shown above are the actual normalized shares for this night.</li>
+          <li>This is a versioned personal wellness estimate ({data.methodVersion}), not a diagnosis. Bands: ≥66 primed · 40–65 balanced · &lt;40 compromised.</li>
         </ul>
       </div>
     </div>
@@ -170,7 +193,7 @@ function ComponentRow({ c }: { c: ReadinessComponent }) {
           )}
         </div>
         <span className="text-[10px] text-outline uppercase tracking-widest flex items-center gap-1">
-          {c.weightPct}% weight
+          {c.weightPct}% effective weight
           {route && (
             <span className="material-symbols-outlined text-sm text-outline group-hover:text-primary transition-colors">
               chevron_right
@@ -199,9 +222,25 @@ function ComponentRow({ c }: { c: ReadinessComponent }) {
       </div>
 
       {c.sources && c.sources.length > 0 && (
-        <div className="text-[11px] text-outline mt-1">
-          {c.sources.map(readinessSourceContribution).join(" · ")}
+        <div className="grid gap-1.5 mt-2 sm:grid-cols-2">
+          {c.sources.map((source) => (
+            <div key={source.provenance.device} className="rounded-lg bg-surface-container-high px-2.5 py-2 text-[11px]">
+              <div className="flex justify-between gap-2 text-on-surface-variant">
+                <span className="font-semibold">{readinessSourceLabel(source)}</span>
+                <span className="tabular-nums">z {source.z >= 0 ? "+" : ""}{source.z}</span>
+              </div>
+              <div className="mt-0.5 text-outline tabular-nums">
+                {source.value.toLocaleString()} · baseline {source.baseline.toLocaleString()}
+              </div>
+              <div className="text-outline">{source.measurement}</div>
+            </div>
+          ))}
         </div>
+      )}
+      {c.disagreementExplanation && (
+        <p className={`mt-2 text-[11px] ${c.disagreement ? "text-primary" : "text-outline"}`}>
+          {c.disagreementExplanation}
+        </p>
       )}
     </>
   );

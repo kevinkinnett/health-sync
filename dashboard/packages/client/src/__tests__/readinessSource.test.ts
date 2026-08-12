@@ -12,6 +12,10 @@ describe("readiness source provenance", () => {
         providerLabel: "Google Health",
       },
       z: 0.9,
+      value: 48,
+      baseline: 45,
+      measurement: "daily RMSSD",
+      regime: "daily_hrv_v1",
     };
 
     expect(readinessSourceLabel(source)).toBe("Fitbit device via Google Health");
@@ -29,6 +33,10 @@ describe("readiness source provenance", () => {
           providerLabel: "Eight Sleep",
         },
         z: -0.2,
+        value: 44,
+        baseline: 46,
+        measurement: "main-session RMSSD",
+        regime: "main_session_v1",
       }),
     ).toBe("Eight Sleep");
   });

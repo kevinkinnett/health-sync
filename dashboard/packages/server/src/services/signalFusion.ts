@@ -6,20 +6,16 @@
  * Google Health API; that transport detail is deliberately separate from the
  * physical sensor identity used by this model.
  *
- * Method (grounded in this user's 28-night overlap analysis):
+ * Method:
  *   1. z-score EACH source against its OWN trailing baseline — this erases
  *      inter-device bias + scale differences automatically (no calibration).
  *   2. weighted-average the per-source z's via SOURCE_WEIGHTS, renormalized
  *      over whichever sources are actually present that day.
  *
- * Why per-signal weights (not 50/50 everywhere):
- *   - HRV agreed almost perfectly across sensors (r=0.91) → 50/50, pure
- *     noise reduction.
- *   - Fitbit's resting-HR is heavily smoothed (SD 1.8) while Eight Sleep's
- *     is ~2.6x more dynamic (SD 4.7), catching rough nights Fitbit flattens
- *     → HR leans on Eight Sleep (0.65). We weighted-AVERAGE rather than
- *     "take the worse reading" to avoid a pessimism bias that cries wolf.
- *   - SpO2 is Fitbit-only (Eight Sleep doesn't measure it).
+ * Source weights remain deliberately conservative until outcome-based
+ * calibration is rerun on repaired main-session history. Related-but-unlike
+ * raw definitions are never averaged; only their source-relative z trends
+ * may contribute to the same recovery domain.
  */
 
 import type { ReadinessSourceProvenance } from "@health-dashboard/shared";
@@ -27,8 +23,19 @@ import type { ReadinessSourceProvenance } from "@health-dashboard/shared";
 /** Physical sensor identity used by the fusion model. */
 export type ReadinessSource = "fitbit" | "eightSleep";
 
-/** A metric's raw value per source for a single day (null = missing). */
-export type SourceValues = Partial<Record<ReadinessSource, number | null>>;
+export interface SourceReading {
+  value: number | null;
+  /** Human-readable definition of what the source actually measured. */
+  measurement: string;
+  /** Comparable readings share a group; unlike groups are never raw-averaged. */
+  comparisonGroup: string;
+  /** Algorithm/provider regime. Baselines only use matching regimes. */
+  regime: string;
+}
+
+export type SourceValue = number | SourceReading | null;
+/** A metric's raw observation per source for one local wake date. */
+export type SourceValues = Partial<Record<ReadinessSource, SourceValue>>;
 
 /** Signals measured by more than one source (fused). */
 export type FusibleMetric = "hrv" | "rhr" | "sleep" | "breathing" | "spo2";
@@ -62,33 +69,88 @@ export const SOURCE_WEIGHTS: Record<
   Partial<Record<ReadinessSource, number>>
 > = {
   hrv: { fitbit: 0.5, eightSleep: 0.5 },
-  rhr: { fitbit: 0.35, eightSleep: 0.65 },
+  // Equal until outcome-based calibration is rerun on repaired main sessions.
+  rhr: { fitbit: 0.5, eightSleep: 0.5 },
   sleep: { fitbit: 0.5, eightSleep: 0.5 },
   breathing: { fitbit: 0.5, eightSleep: 0.5 },
   spo2: { fitbit: 1.0 },
 };
 
-/** |z| gap between two sources we flag to the user as a disagreement. */
-export const DISAGREE_THRESHOLD = 1.0;
+/** Metric-specific z gaps; one universal threshold hid different noise floors. */
+export const DISAGREE_THRESHOLDS: Record<FusibleMetric, number> = {
+  hrv: 1.25,
+  rhr: 1.5,
+  sleep: 1.0,
+  breathing: 1.25,
+  spo2: 1.0,
+};
 
 export interface PerSourceZ {
   source: ReadinessSource;
   label: string;
   provenance: ReadinessSourceProvenance;
   z: number;
+  value: number;
+  baseline: number;
+  measurement: string;
+  comparisonGroup: string;
+  regime: string;
 }
 
 export interface FusedMetric {
   /** Fused (unsigned) z; null if no source had enough baseline. */
   z: number | null;
-  /** Weighted-mean raw value across present sources (for display). */
+  /** Weighted-mean raw value only when present source definitions match. */
   value: number | null;
   /** Mean baseline across present sources (for display). */
   baseline: number | null;
   perSource: PerSourceZ[];
-  /** ≥2 sources present and their z's diverge by > DISAGREE_THRESHOLD. */
+  /** At least two source trends diverge beyond this metric's noise floor. */
   disagreement: boolean;
+  measurementComparable: boolean;
+  disagreementThreshold: number;
   baselineDays: number;
+}
+
+const DEFAULT_READING: Record<
+  FusibleMetric,
+  Record<ReadinessSource, Omit<SourceReading, "value">>
+> = {
+  hrv: {
+    fitbit: { measurement: "Overnight HRV (RMSSD)", comparisonGroup: "overnight_hrv_rmssd", regime: "default" },
+    eightSleep: { measurement: "Overnight HRV (RMSSD)", comparisonGroup: "overnight_hrv_rmssd", regime: "default" },
+  },
+  rhr: {
+    fitbit: { measurement: "Daily resting heart rate", comparisonGroup: "daily_resting_hr", regime: "default" },
+    eightSleep: { measurement: "Average sleeping heart rate", comparisonGroup: "sleeping_hr", regime: "default" },
+  },
+  sleep: {
+    fitbit: { measurement: "Main-session sleep duration", comparisonGroup: "main_sleep_duration", regime: "default" },
+    eightSleep: { measurement: "Main-session sleep duration", comparisonGroup: "main_sleep_duration", regime: "default" },
+  },
+  breathing: {
+    fitbit: { measurement: "Overnight respiratory rate", comparisonGroup: "overnight_breathing", regime: "default" },
+    eightSleep: { measurement: "Overnight respiratory rate", comparisonGroup: "overnight_breathing", regime: "default" },
+  },
+  spo2: {
+    fitbit: { measurement: "Overnight oxygen saturation", comparisonGroup: "overnight_spo2", regime: "default" },
+    eightSleep: { measurement: "Overnight oxygen saturation", comparisonGroup: "overnight_spo2", regime: "default" },
+  },
+};
+
+export function resolveReading(
+  metric: FusibleMetric,
+  source: ReadinessSource,
+  input: SourceValue | undefined,
+): SourceReading | null {
+  if (input == null) return null;
+  if (typeof input === "number") return { value: input, ...DEFAULT_READING[metric][source] };
+  return input.value == null ? null : input;
+}
+
+export function sourceValue(input: SourceValue | undefined): number | null {
+  if (input == null) return null;
+  return typeof input === "number" ? input : input.value;
 }
 
 function mean(xs: number[]): number {
@@ -125,9 +187,10 @@ export function fuseMetric(
   for (const src of Object.keys(weights) as ReadinessSource[]) {
     const w = weights[src];
     if (!w) continue;
-    const today = todays[src];
+    const reading = resolveReading(metric, src, todays[src]);
+    const today = reading?.value;
     const base = window[src] ?? [];
-    if (today == null || base.length < opts.minBaselineDays) continue;
+    if (today == null || !reading || base.length < opts.minBaselineDays) continue;
     const m = mean(base);
     const s = std(base, m);
     const z = s > 0 ? clamp((today - m) / s, -opts.zClamp, opts.zClamp) : 0;
@@ -136,12 +199,17 @@ export function fuseMetric(
       label: SOURCE_LABELS[src],
       provenance: SOURCE_PROVENANCE[src],
       z: round2(z),
+      value: today,
+      baseline: m,
+      measurement: reading.measurement,
+      comparisonGroup: reading.comparisonGroup,
+      regime: reading.regime,
     });
     weightedZ += w * z;
     weightSum += w;
     rawValues.push(today * w);
     valueWeights.push(w);
-    baselines.push(m);
+    baselines.push(m * w);
     maxBaselineDays = Math.max(maxBaselineDays, base.length);
   }
 
@@ -152,20 +220,30 @@ export function fuseMetric(
       baseline: null,
       perSource: [],
       disagreement: false,
+      measurementComparable: true,
+      disagreementThreshold: DISAGREE_THRESHOLDS[metric],
       baselineDays: 0,
     };
   }
 
   const zs = perSource.map((p) => p.z);
-  const disagreement =
-    perSource.length >= 2 && Math.max(...zs) - Math.min(...zs) > DISAGREE_THRESHOLD;
+  const disagreementThreshold = DISAGREE_THRESHOLDS[metric];
+  const disagreement = perSource.length >= 2 &&
+    Math.max(...zs) - Math.min(...zs) > disagreementThreshold;
+  const measurementComparable = new Set(perSource.map((p) => p.comparisonGroup)).size <= 1;
 
   return {
     z: weightedZ / weightSum,
-    value: rawValues.reduce((a, b) => a + b, 0) / valueWeights.reduce((a, b) => a + b, 0),
-    baseline: mean(baselines),
+    value: measurementComparable
+      ? rawValues.reduce((a, b) => a + b, 0) / valueWeights.reduce((a, b) => a + b, 0)
+      : null,
+    baseline: measurementComparable
+      ? baselines.reduce((a, b) => a + b, 0) / valueWeights.reduce((a, b) => a + b, 0)
+      : null,
     perSource,
     disagreement,
+    measurementComparable,
+    disagreementThreshold,
     baselineDays: maxBaselineDays,
   };
 }

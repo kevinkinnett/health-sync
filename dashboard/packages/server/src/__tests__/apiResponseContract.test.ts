@@ -14,29 +14,44 @@ const source = {
     providerLabel: "Google Health",
   },
   z: 0.4,
+  value: 52,
+  baseline: 48,
+  measurement: "Overnight HRV (RMSSD)",
+  regime: "daily_hrv_v1",
+};
+
+const responseMeta = {
+  methodVersion: "readiness-v2-main-night",
+  timezone: "America/New_York",
+  confidence: "high" as const,
+  coveragePct: 100,
+  provisional: false,
+  caveats: [],
 };
 
 describe("dashboard response contracts", () => {
   it("accepts readiness sources for both current and cached clients", () => {
     expect(readinessResponseSchema.parse({
+      ...responseMeta,
       date: "2026-08-09", score: 57, band: "balanced", summary: "At baseline",
       baselineDays: 30,
       components: [{
         metric: "hrv", label: "HRV", value: 52, baseline: 48, z: 0.4,
-        contribution: 2, weightPct: 25, status: "good", sources: [source],
+        contribution: 2, weightPct: 25, configuredWeight: 35, status: "good", sources: [source],
       }],
-      history: [{ date: "2026-08-09", score: 57 }],
+      history: [{ date: "2026-08-09", score: 57, methodVersion: responseMeta.methodVersion, confidence: "high", coveragePct: 100 }],
     }).components[0]?.sources?.[0]?.label).toBe("Fitbit");
   });
 
   it("rejects removal of the legacy source label during the compatibility window", () => {
-    const breakingSource = { provenance: source.provenance, z: source.z };
+    const breakingSource = { ...source, label: undefined };
     expect(() => readinessResponseSchema.parse({
+      ...responseMeta,
       date: null, score: null, band: "insufficient", summary: "Not enough data",
       baselineDays: 0,
       components: [{
         metric: "hrv", label: "HRV", value: null, baseline: null, z: null,
-        contribution: 0, weightPct: 25, status: "unavailable", sources: [breakingSource],
+        contribution: 0, weightPct: 0, configuredWeight: 35, status: "unavailable", sources: [breakingSource],
       }],
       history: [],
     })).toThrow();

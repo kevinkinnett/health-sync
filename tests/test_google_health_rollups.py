@@ -59,6 +59,35 @@ class FakeResponse:
 
 
 class GoogleHealthRollupTests(unittest.TestCase):
+    def test_sleep_wake_date_respects_embedded_dst_offset(self):
+        interval = {
+            "startTime": "2026-05-02T23:58:00Z",
+            "endTime": "2026-05-03T08:53:00Z",
+            "endUtcOffset": "-14400s",
+        }
+
+        self.assertEqual(
+            rollups._sleep_wake_date("2026-05-02", interval).isoformat(),
+            "2026-05-03",
+        )
+
+    def test_sleep_rollup_keeps_naps_separate_from_main_sleep(self):
+        cursor = RecordingCursor([
+            ("2026-08-10", {"sleep": {
+                "summary": {"minutesAsleep": 420, "minutesInSleepPeriod": 460, "stagesSummary": []},
+                "interval": {"startTime": "2026-08-10T03:00:00Z", "endTime": "2026-08-10T11:00:00Z", "endUtcOffset": "-14400s"},
+            }}),
+            ("2026-08-10", {"sleep": {
+                "summary": {"minutesAsleep": 45, "minutesInSleepPeriod": 60, "stagesSummary": []},
+                "interval": {"startTime": "2026-08-10T18:00:00Z", "endTime": "2026-08-10T19:00:00Z", "endUtcOffset": "-14400s"},
+            }}),
+        ])
+
+        self.assertEqual(rollups._rollup_sleep(cursor, "2026-08-01"), 1)
+        _, params = cursor.calls[-1]
+        self.assertEqual(params[1], 420)
+        self.assertEqual(params[4], 45)
+
     def test_default_storage_mapping_preserves_the_legacy_contract(self):
         tables = rollups.LEGACY_ROLLUP_TABLES
 

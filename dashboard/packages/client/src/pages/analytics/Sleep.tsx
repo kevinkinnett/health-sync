@@ -18,11 +18,14 @@ export function AnalyticsSleep() {
     >
       {(data) => (
         <div className="space-y-4">
+          <p className="text-sm text-on-surface-variant">
+            Dates are the Eastern local day the main overnight session ended. Main sleep and naps are kept separate so a daytime nap cannot replace or inflate the night.
+          </p>
           <SleepStagesChart data={data} annotations={marks} />
           <SleepTimingChart data={data} />
           <DataTable
             title="Sleep Log"
-            headers={["Date", "Asleep", "In Bed", "Efficiency", "Deep", "REM"]}
+            headers={["Night ending", "Asleep", "Naps", "In Bed", "Efficiency", "Deep", "REM"]}
           >
             {[...data]
               .reverse()
@@ -34,6 +37,11 @@ export function AnalyticsSleep() {
                     {d.totalMinutesAsleep != null
                       ? `${Math.floor(d.totalMinutesAsleep / 60)}h ${d.totalMinutesAsleep % 60}m`
                       : "---"}
+                  </td>
+                  <td className={tdRightClass}>
+                    {d.napMinutesAsleep != null && d.napMinutesAsleep > 0
+                      ? `${Math.floor(d.napMinutesAsleep / 60)}h ${d.napMinutesAsleep % 60}m`
+                      : "—"}
                   </td>
                   <td className={tdRightClass}>
                     {d.totalMinutesInBed != null

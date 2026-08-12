@@ -21,7 +21,7 @@ export function AnalyticsEightSleep() {
       <p className="text-sm text-on-surface-variant">
         Your Eight Sleep Pod measures overnight heart rate, HRV, breathing,
         sleep stages, and bed/room temperature without anything on your wrist.
-        These feed your readiness score alongside Fitbit-device measurements imported through Google Health — here they are raw.
+        Each date is the Eastern local day the selected main session ended; later naps stay separate and cannot replace the night. These feed readiness alongside Fitbit-device measurements imported through Google Health — here they are raw.
       </p>
       <QueryBoundary
         query={q}
@@ -59,7 +59,7 @@ function EightSleepBody({ data }: { data: EightSleepDay[] }) {
       <MetricLineChart
         annotations={marks}
         title="Time Asleep"
-        description="Total time asleep per night."
+        description="Time asleep in the selected main overnight session; naps are excluded."
         unit="h"
         color={SERIES[0]}
         movingAverage
@@ -68,7 +68,7 @@ function EightSleepBody({ data }: { data: EightSleepDay[] }) {
       <MetricLineChart
         annotations={marks}
         title="Overnight Heart Rate"
-        description="Average heart rate during sleep. This is the more dynamic signal that drives ~65% of the fused resting-HR readiness input — the Fitbit device's wrist RHR is far more smoothed."
+        description="Average heart rate during the selected main sleep session. Readiness compares its trend to its own baseline and does not raw-average it with daily resting heart rate."
         unit="bpm"
         color={METRIC_COLOR.restingHr}
         movingAverage
@@ -77,7 +77,7 @@ function EightSleepBody({ data }: { data: EightSleepDay[] }) {
       <MetricLineChart
         annotations={marks}
         title="HRV (RMSSD)"
-        description="Heart-rate variability during sleep. Higher = better recovered; agrees closely with the Fitbit device (r≈0.91)."
+        description="Main-session heart-rate variability. Higher generally indicates better recovery; each provider is normalized against its own same-method baseline before trends are blended."
         unit="ms"
         color={METRIC_COLOR.deepMin}
         movingAverage
@@ -141,7 +141,7 @@ function LastNightCard({ night }: { night: EightSleepDay }) {
           >
             bed
           </span>
-          Last night
+          Latest night ending
         </span>
         <span className="text-[11px] text-outline tabular-nums">{night.date}</span>
       </h3>

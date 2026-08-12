@@ -10,6 +10,7 @@ import json
 import re
 from dataclasses import dataclass, fields
 from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import requests
 BASE = "https://health.googleapis.com/v4"
@@ -72,9 +73,33 @@ LEGACY_ROLLUP_TABLES = RollupStorageTables()
 # ---------------------------------------------------------------------------
 
 MARK = json.dumps({"_src": "google_health"})
+HRV_SAMPLE_MARK = json.dumps({"_src": "google_health", "method": "sample_mean_v1"})
+HRV_DAILY_MARK = json.dumps({"_src": "google_health", "method": "daily_hrv_v1"})
+SLEEP_MAIN_MARK = json.dumps({"_src": "google_health", "method": "main_sleep_v2"})
 # Must match the dashboard server's USER_TIMEZONE so rollup day buckets
 # line up with the legacy tables they replace.
 USER_TZ = "America/New_York"
+
+
+def _sleep_wake_date(fallback: date | str, interval: dict) -> date | str:
+    """Canonical sleep key: local wake date, respecting per-night DST offset."""
+    end = interval.get("endTime") if isinstance(interval, dict) else None
+    if not isinstance(end, str) or not end:
+        return fallback
+    try:
+        instant = datetime.fromisoformat(end.replace("Z", "+00:00"))
+    except ValueError:
+        return fallback
+    offset_text = interval.get("endUtcOffset")
+    if isinstance(offset_text, str) and offset_text.endswith("s"):
+        try:
+            return (
+                instant.astimezone(timezone.utc)
+                + timedelta(seconds=float(offset_text[:-1]))
+            ).date()
+        except ValueError:
+            pass
+    return instant.astimezone(ZoneInfo(USER_TZ)).date()
 
 
 def _sql_rollups(
@@ -154,7 +179,9 @@ def _sql_rollups(
         ON CONFLICT (date) DO UPDATE SET nightly_relative=EXCLUDED.nightly_relative, raw_jsonb=EXCLUDED.raw_jsonb, fetched_at=NOW()
     """), (MARK, since))
 
-    # HRV — mean of overnight per-5-min RMSSD samples (Fitbit-only are sleep-only).
+    # HRV fallback — mean of overnight per-5-min RMSSD samples. The native
+    # daily record below supersedes this when Google publishes it; retaining
+    # the sample path keeps partial provider data first-class.
     cur.execute(tables.render("""
         INSERT INTO {hrv_daily} (date, daily_rmssd, raw_jsonb)
         SELECT point_date,
@@ -162,11 +189,32 @@ def _sql_rollups(
         FROM {raw_points} WHERE data_type='heart-rate-variability' AND source_platform='FITBIT' AND point_date >= %s
         GROUP BY point_date
         ON CONFLICT (date) DO UPDATE SET daily_rmssd=EXCLUDED.daily_rmssd, raw_jsonb=EXCLUDED.raw_jsonb, fetched_at=NOW()
-    """), (MARK, since))
+    """), (HRV_SAMPLE_MARK, since))
 
-    # Deep-sleep RMSSD — the second line on the HRV chart, dead since the
-    # cutover because Google publishes no equivalent of Fitbit's deepRmssd.
-    # It does publish both ingredients, so this reconstructs it: average the
+    # Native daily HRV carries Google's civil date, nightly RMSSD, deep-sleep
+    # RMSSD, and non-REM heart rate.  The latter is a much closer comparator
+    # for Eight Sleep than all-day resting heart rate.
+    cur.execute(tables.render("""
+        INSERT INTO {hrv_daily}
+            (date, daily_rmssd, deep_rmssd, non_rem_heart_rate, raw_jsonb)
+        SELECT point_date,
+               max((value_jsonb->'dailyHeartRateVariability'->>'averageHeartRateVariabilityMilliseconds')::numeric),
+               max((value_jsonb->'dailyHeartRateVariability'->>'deepSleepRootMeanSquareOfSuccessiveDifferencesMilliseconds')::numeric),
+               max((value_jsonb->'dailyHeartRateVariability'->>'nonRemHeartRateBeatsPerMinute')::numeric),
+               %s::jsonb
+        FROM {raw_points}
+        WHERE data_type='daily-heart-rate-variability'
+              AND source_platform='FITBIT' AND point_date >= %s
+        GROUP BY point_date
+        ON CONFLICT (date) DO UPDATE SET
+            daily_rmssd=COALESCE(EXCLUDED.daily_rmssd, {hrv_daily_ref}.daily_rmssd),
+            deep_rmssd=COALESCE(EXCLUDED.deep_rmssd, {hrv_daily_ref}.deep_rmssd),
+            non_rem_heart_rate=COALESCE(EXCLUDED.non_rem_heart_rate, {hrv_daily_ref}.non_rem_heart_rate),
+            raw_jsonb=EXCLUDED.raw_jsonb, fetched_at=NOW()
+    """), (HRV_DAILY_MARK, since))
+
+    # Deep-sleep RMSSD fallback. Native daily HRV now exposes an equivalent;
+    # for older/partial records this reconstructs it by averaging the
     # per-5-min HRV samples whose timestamp falls inside a DEEP stage interval
     # from that night's sleep record.
     #
@@ -178,7 +226,9 @@ def _sql_rollups(
     # same date for the same reason, so the chart labels both as a source
     # change rather than a physiological one. Nothing but the chart reads this
     # column — readiness and the experiment engine use daily_rmssd — so the
-    # level shift has no analytical blast radius.
+    # level shift affects readiness because it consumes daily_rmssd. The raw
+    # marker therefore identifies the measurement regime so baselines do not
+    # silently straddle the cutover.
     #
     # Fill-only: DO UPDATE is guarded on the existing value being NULL, so
     # Fitbit's own numbers are never restated. Windowless, which here is about
@@ -256,11 +306,9 @@ def _rollup_sleep(
     since: str,
     tables: RollupStorageTables = LEGACY_ROLLUP_TABLES,
 ) -> int:
-    # Legacy semantics: total_minutes_asleep/in_bed sum ALL sessions that
-    # day (naps included); stage minutes + start/end come from the MAIN
-    # (longest) session. Efficiency isn't in Google's summary — computed
-    # as asleep/in-period of the main session (Fitbit's own formula is
-    # near-identical; readiness only uses it via z-scores anyway).
+    # Night semantics: total_minutes_asleep/in_bed describe the MAIN (longest)
+    # session so Fitbit and Eight Sleep compare the same construct. Naps remain
+    # visible in nap_minutes_asleep instead of contaminating readiness.
     cur.execute(tables.render("""
         SELECT point_date, value_jsonb FROM {raw_points}
         WHERE data_type='sleep' AND source_platform='FITBIT' AND point_date >= %s
@@ -271,13 +319,15 @@ def _rollup_sleep(
         summ = s.get("summary", {})
         asleep = int(summ.get("minutesAsleep", 0) or 0)
         inbed = int(summ.get("minutesInSleepPeriod", 0) or 0)
-        day = days.setdefault(pdate, {"asleep": 0, "inbed": 0, "records": 0, "best": None})
-        day["asleep"] += asleep
-        day["inbed"] += inbed
+        iv = s.get("interval", {})
+        wake_date = _sleep_wake_date(pdate, iv)
+        day = days.setdefault(wake_date, {"all_asleep": 0, "records": 0, "best": None})
+        day["all_asleep"] += asleep
         day["records"] += 1
-        if day["best"] is None or asleep > day["best"]["asleep"]:
+        if day["best"] is None or (asleep, inbed) > (
+            day["best"]["asleep"], day["best"]["inbed"]
+        ):
             stages = {x.get("type"): int(x.get("minutes", 0) or 0) for x in summ.get("stagesSummary", [])}
-            iv = s.get("interval", {})
             day["best"] = {
                 "asleep": asleep, "inbed": inbed,
                 "deep": stages.get("DEEP"), "light": stages.get("LIGHT"),
@@ -291,20 +341,22 @@ def _rollup_sleep(
         cur.execute(tables.render("""
             INSERT INTO {sleep_daily}
                 (date, total_minutes_asleep, total_minutes_in_bed, total_sleep_records,
+                 nap_minutes_asleep,
                  minutes_deep, minutes_light, minutes_rem, minutes_wake,
                  efficiency, main_sleep_start_time, main_sleep_end_time, raw_jsonb)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             ON CONFLICT (date) DO UPDATE SET
                 total_minutes_asleep=EXCLUDED.total_minutes_asleep, total_minutes_in_bed=EXCLUDED.total_minutes_in_bed,
-                total_sleep_records=EXCLUDED.total_sleep_records,
+                total_sleep_records=EXCLUDED.total_sleep_records, nap_minutes_asleep=EXCLUDED.nap_minutes_asleep,
                 minutes_deep=EXCLUDED.minutes_deep, minutes_light=EXCLUDED.minutes_light,
                 minutes_rem=EXCLUDED.minutes_rem, minutes_wake=EXCLUDED.minutes_wake,
                 efficiency=EXCLUDED.efficiency,
                 main_sleep_start_time=EXCLUDED.main_sleep_start_time, main_sleep_end_time=EXCLUDED.main_sleep_end_time,
                 raw_jsonb=EXCLUDED.raw_jsonb, fetched_at=NOW()
-        """), (d, day["asleep"], day["inbed"], day["records"],
+        """), (d, b["asleep"], b["inbed"], day["records"],
+              max(0, day["all_asleep"] - b["asleep"]),
               b["deep"], b["light"], b["rem"], b["wake"], efficiency,
-              b["start"], b["end"], MARK))
+              b["start"], b["end"], SLEEP_MAIN_MARK))
         n += 1
     return n
 

@@ -56,6 +56,17 @@ export function ReadinessCard({ data, to }: { data: ReadinessScore; to?: string 
   return (
     <CardShell to={to}>
       <ReadinessHeader date={data.date} linked={!!to} />
+      <div className="mt-2 flex flex-wrap gap-2 text-[10px] uppercase tracking-wider">
+        <span className="rounded-full bg-surface-container-high px-2 py-1 text-on-surface-variant">
+          {data.confidence} confidence
+        </span>
+        <span className="rounded-full bg-surface-container-high px-2 py-1 text-on-surface-variant">
+          {data.coveragePct}% coverage
+        </span>
+        {data.provisional && (
+          <span className="rounded-full bg-primary/10 px-2 py-1 text-primary">provisional</span>
+        )}
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-[auto_1fr] gap-6 items-center mt-3">
         {/* Score dial */}
         <div className="flex items-center gap-4">
@@ -97,7 +108,7 @@ export function ReadinessCard({ data, to }: { data: ReadinessScore; to?: string 
           )}
           {data.components.some((c) => (c.sources?.length ?? 0) >= 2) && (
             <p className="text-[10px] text-outline">
-              Fused from Fitbit device via Google Health + Eight Sleep
+              Night ending in {data.timezone} · Fitbit device via Google Health + Eight Sleep
               {drivers.some((c) => c.disagreement)
                 ? " · ⚑ marks where the sensors disagreed"
                 : ""}
@@ -199,7 +210,7 @@ function DriverChip({ component }: { component: ReadinessComponent }) {
       </span>
       {component.label}
       {component.disagreement && (
-        <span title="Fitbit device and Eight Sleep disagreed on this signal" aria-label="sensors disagreed">
+        <span title={component.disagreementExplanation || "Sensors disagreed on this signal"} aria-label="sensors disagreed">
           ⚑
         </span>
       )}

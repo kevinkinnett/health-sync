@@ -32,11 +32,50 @@ describe("focused health use cases", () => {
     );
     await expect(useCase.inputs()).resolves.toEqual([{
       date: "2026-08-10",
-      hrv: { fitbit: 50, eightSleep: 47 },
-      rhr: { fitbit: 58, eightSleep: 60 },
-      sleepMin: { fitbit: 430, eightSleep: 440 },
-      breathing: { fitbit: 14, eightSleep: 13.5 },
-      spo2: { fitbit: 96 }, skinTemp: 0.1, restlessness: 8,
+      provisional: false,
+      hrv: {
+        fitbit: { value: 50, measurement: "Overnight HRV (RMSSD)", comparisonGroup: "overnight_hrv_rmssd", regime: "unknown" },
+        eightSleep: { value: 47, measurement: "Overnight HRV (RMSSD)", comparisonGroup: "overnight_hrv_rmssd", regime: "eight_sleep_main_session_v1" },
+      },
+      rhr: {
+        fitbit: { value: 58, measurement: "Daily resting heart rate", comparisonGroup: "daily_resting_hr", regime: "google_health_daily_rhr_v1" },
+        eightSleep: { value: 60, measurement: "Average sleeping heart rate", comparisonGroup: "average_sleeping_hr", regime: "eight_sleep_main_session_v1" },
+      },
+      sleepMin: {
+        fitbit: { value: 430, measurement: "Main-session sleep duration", comparisonGroup: "main_sleep_duration", regime: "unknown" },
+        eightSleep: { value: 440, measurement: "Main-session sleep duration", comparisonGroup: "main_sleep_duration", regime: "eight_sleep_main_session_v1" },
+      },
+      breathing: {
+        fitbit: { value: 14, measurement: "Overnight respiratory rate", comparisonGroup: "overnight_breathing", regime: "google_health_daily_respiratory_v1" },
+        eightSleep: { value: 13.5, measurement: "Overnight respiratory rate", comparisonGroup: "overnight_breathing", regime: "eight_sleep_main_session_v1" },
+      },
+      spo2: { fitbit: { value: 96, measurement: "Overnight oxygen saturation", comparisonGroup: "overnight_spo2", regime: "google_health_overnight_spo2_v1" } },
+      skinTemp: 0.1, restlessness: 8,
     }]);
+  });
+
+  it("prefers native non-REM heart rate and marks the Eastern current day provisional", async () => {
+    const useCase = new ReadinessUseCase(
+      reader([{
+        date: "2026-08-11",
+        dailyRmssd: 50,
+        deepRmssd: 45,
+        nonRemHeartRate: 54,
+        measurementMethod: "daily_hrv_v1",
+      }] as never[]),
+      reader([{ date: "2026-08-11", restingHeartRate: 59 }] as never[]),
+      reader([]), reader([]), reader([]), reader([]), reader([]),
+      // 02:30 UTC is still the prior Eastern calendar day (EDT).
+      () => new Date("2026-08-12T02:30:00Z"),
+    );
+
+    const [input] = await useCase.inputs();
+    expect(input.provisional).toBe(true);
+    expect(input.rhr.fitbit).toEqual({
+      value: 54,
+      measurement: "Non-REM sleeping heart rate",
+      comparisonGroup: "non_rem_sleeping_hr",
+      regime: "daily_hrv_v1",
+    });
   });
 });

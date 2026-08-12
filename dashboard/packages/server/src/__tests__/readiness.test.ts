@@ -3,6 +3,7 @@ import {
   computeReadiness,
   type ReadinessDayInput,
 } from "../services/readiness.js";
+import { fuseMetric } from "../services/signalFusion.js";
 
 /**
  * The readiness math is the feature — these pin its contract against
@@ -157,6 +158,11 @@ describe("computeReadiness", () => {
     expect(r.components.find((c) => c.metric === "breathing")!.status).toBe(
       "unavailable",
     );
+    expect(
+      r.components.reduce((sum, component) => sum + component.weightPct, 0),
+    ).toBeCloseTo(100, 1);
+    expect(r.coveragePct).toBeLessThan(100);
+    expect(r.caveats.join(" ")).toMatch(/coverage/i);
   });
 
   it("falls back to the last complete day when today's overnight row is empty", () => {
@@ -232,5 +238,74 @@ describe("computeReadiness", () => {
     expect(
       hrv.sources?.find((s) => s.provenance.device === "fitbit")?.provenance.provider,
     ).toBe("google_health");
+  });
+
+  it("does not raw-average related heart-rate measurements with different definitions", () => {
+    const fused = fuseMetric(
+      "rhr",
+      {
+        fitbit: {
+          value: 58,
+          measurement: "Daily resting heart rate",
+          comparisonGroup: "daily_resting_hr",
+          regime: "daily_rhr_v1",
+        },
+        eightSleep: {
+          value: 52,
+          measurement: "Average sleeping heart rate",
+          comparisonGroup: "average_sleeping_hr",
+          regime: "eight_sleep_main_session_v1",
+        },
+      },
+      {
+        fitbit: [59, 60, 61, 60, 59, 60, 61, 60, 59, 60],
+        eightSleep: [53, 54, 55, 54, 53, 54, 55, 54, 53, 54],
+      },
+      { minBaselineDays: 10, zClamp: 3 },
+    );
+
+    expect(fused.perSource).toHaveLength(2);
+    expect(fused.measurementComparable).toBe(false);
+    expect(fused.value).toBeNull();
+    expect(fused.baseline).toBeNull();
+    expect(fused.z).not.toBeNull();
+  });
+
+  it("does not bridge a baseline across a measurement-regime cutover", () => {
+    const days: ReadinessDayInput[] = Array.from({ length: 15 }, (_, i) => ({
+      date: new Date(Date.UTC(2026, 0, i + 1)).toISOString().slice(0, 10),
+      hrv: {
+        fitbit: {
+          value: 45 + (i % 3),
+          measurement: "Overnight HRV (RMSSD)",
+          comparisonGroup: "overnight_hrv_rmssd",
+          regime: i < 10 ? "sample_mean_v1" : "daily_hrv_v1",
+        },
+      },
+      rhr: { fitbit: 60 + (i % 3) },
+      sleepMin: { fitbit: 420 + (i % 3) * 5 },
+      breathing: { fitbit: 14 + (i % 3) * 0.1 },
+      spo2: {},
+      skinTemp: null,
+      restlessness: null,
+    }));
+
+    const result = computeReadiness(days);
+    expect(result.components.find((component) => component.metric === "hrv")?.status)
+      .toBe("unavailable");
+    expect(result.baselineDays).toBe(14);
+  });
+
+  it("reports version, confidence, coverage, and provisional daily state", () => {
+    const days = toInputs(series(30, {}, {}));
+    days[days.length - 1].provisional = true;
+    const result = computeReadiness(days);
+
+    expect(result.methodVersion).toBe("readiness-v2-main-night");
+    expect(result.timezone).toBe("America/New_York");
+    expect(result.provisional).toBe(true);
+    expect(result.confidence).not.toBe("high");
+    expect(result.coveragePct).toBeGreaterThan(0);
+    expect(result.caveats.join(" ")).toMatch(/may revise/i);
   });
 });

@@ -1,11 +1,14 @@
 import type {
   ReadinessBand,
   ReadinessComponent,
+  ReadinessConfidence,
   ReadinessMetric,
   ReadinessScore,
 } from "@health-dashboard/shared";
 import {
   fuseMetric,
+  resolveReading,
+  sourceValue,
   SOURCE_PROVENANCE,
   type FusibleMetric,
   type ReadinessSource,
@@ -40,6 +43,8 @@ const MIN_BASELINE_DAYS = 10;
 const Z_CLAMP = 3;
 const TANH_SCALE = 1.5;
 const HISTORY_DAYS = 14;
+export const READINESS_METHOD_VERSION = "readiness-v2-main-night";
+export const READINESS_TIMEZONE = "America/New_York";
 
 const WEIGHTS: Record<ReadinessMetric, number> = {
   hrv: 35,
@@ -50,6 +55,7 @@ const WEIGHTS: Record<ReadinessMetric, number> = {
   skinTemp: 7,
   restlessness: 5,
 };
+const TOTAL_CONFIGURED_WEIGHT = Object.values(WEIGHTS).reduce((sum, value) => sum + value, 0);
 
 /** +1 = higher is better-recovered, −1 = lower is better. */
 const DIRECTION: Record<FusibleMetric, 1 | -1> = {
@@ -93,6 +99,8 @@ export interface ReadinessDayInput {
   skinTemp: number | null;
   /** Eight Sleep-only toss-and-turn count (higher = more restless). */
   restlessness: number | null;
+  /** True while the latest provider-derived daily values may still revise. */
+  provisional?: boolean;
 }
 
 // ---- Helpers --------------------------------------------------------------
@@ -127,14 +135,21 @@ function statusFor(signedZ: number): ReadinessComponent["status"] {
 function windowFor(
   baselineWindow: ReadinessDayInput[],
   field: keyof ReadinessDayInput,
+  metric: FusibleMetric,
+  todays: SourceValues,
 ): Partial<Record<ReadinessSource, number[]>> {
   const out: Partial<Record<ReadinessSource, number[]>> = {};
   for (const src of ["fitbit", "eightSleep"] as ReadinessSource[]) {
+    const target = resolveReading(metric, src, todays[src]);
+    if (!target) continue;
     const vals: number[] = [];
     for (const d of baselineWindow) {
       const sv = d[field] as SourceValues;
-      const v = sv?.[src];
-      if (v != null) vals.push(v);
+      const reading = resolveReading(metric, src, sv?.[src]);
+      if (reading && reading.regime === target.regime &&
+          reading.comparisonGroup === target.comparisonGroup) {
+        vals.push(reading.value as number);
+      }
     }
     if (vals.length) out[src] = vals;
   }
@@ -154,7 +169,8 @@ function unavailable(metric: ReadinessMetric, value: number | null = null): Read
     baseline: null,
     z: null,
     contribution: 0,
-    weightPct: WEIGHTS[metric],
+    weightPct: 0,
+    configuredWeight: WEIGHTS[metric],
     status: "unavailable",
   };
 }
@@ -166,6 +182,10 @@ interface DayScore {
   band: ReadinessBand;
   components: ReadinessComponent[];
   baselineDays: number;
+  coveragePct: number;
+  confidence: ReadinessConfidence;
+  provisional: boolean;
+  caveats: string[];
 }
 
 function scoreDay(days: ReadinessDayInput[], idx: number): DayScore {
@@ -180,7 +200,7 @@ function scoreDay(days: ReadinessDayInput[], idx: number): DayScore {
   // --- Fusible (multi-source) metrics ---
   for (const { metric, field } of FUSIBLE) {
     const todays = target[field] as SourceValues;
-    const window = windowFor(baselineWindow, field);
+    const window = windowFor(baselineWindow, field, metric, todays);
     const fused = fuseMetric(metric, todays, window, {
       minBaselineDays: MIN_BASELINE_DAYS,
       zClamp: Z_CLAMP,
@@ -204,14 +224,26 @@ function scoreDay(days: ReadinessDayInput[], idx: number): DayScore {
       baseline: fused.baseline != null ? round1(fused.baseline) : null,
       z: round2(signedZ),
       contribution: 0,
-      weightPct: WEIGHTS[metric],
+      weightPct: 0,
+      configuredWeight: WEIGHTS[metric],
       status: statusFor(signedZ),
       sources: fused.perSource.map((p) => ({
         label: p.label,
         provenance: p.provenance,
         z: round2(p.z * DIRECTION[metric]),
+        value: round1(p.value),
+        baseline: round1(p.baseline),
+        measurement: p.measurement,
+        regime: p.regime,
       })),
       disagreement: fused.disagreement,
+      measurementComparable: fused.measurementComparable,
+      disagreementThreshold: fused.disagreementThreshold,
+      disagreementExplanation: fused.disagreement
+        ? `${fused.perSource.map((source) => source.measurement).join(" and ")} moved in materially different directions.`
+        : !fused.measurementComparable && fused.perSource.length >= 2
+          ? "These source trends support the same recovery domain, but their raw values are not interchangeable."
+          : undefined,
     });
   }
 
@@ -236,12 +268,17 @@ function scoreDay(days: ReadinessDayInput[], idx: number): DayScore {
         baseline: round1(mean),
         z: round2(signedZ),
         contribution: 0,
-        weightPct: WEIGHTS.restlessness,
+        weightPct: 0,
+        configuredWeight: WEIGHTS.restlessness,
         status: statusFor(signedZ),
         sources: [{
           label: "Eight Sleep",
           provenance: SOURCE_PROVENANCE.eightSleep,
           z: round2(signedZ),
+          value: round1(todayVal),
+          baseline: round1(mean),
+          measurement: "Main-session tosses and turns",
+          regime: "eight_sleep_main_session_v1",
         }],
       });
     } else {
@@ -261,12 +298,17 @@ function scoreDay(days: ReadinessDayInput[], idx: number): DayScore {
       baseline: 0,
       z: round2(signedZ),
       contribution: 0,
-      weightPct: WEIGHTS.skinTemp,
+      weightPct: 0,
+      configuredWeight: WEIGHTS.skinTemp,
       status: statusFor(signedZ),
       sources: [{
         label: "Fitbit",
         provenance: SOURCE_PROVENANCE.fitbit,
         z: round2(signedZ),
+        value: round2(target.skinTemp),
+        baseline: 0,
+        measurement: "Nightly skin-temperature deviation",
+        regime: "google_health_sleep_temperature_v1",
       }],
     });
   } else {
@@ -274,19 +316,57 @@ function scoreDay(days: ReadinessDayInput[], idx: number): DayScore {
   }
 
   const presentCount = components.filter((c) => c.z != null).length;
+  const coveragePct = round1((weightTotal / TOTAL_CONFIGURED_WEIGHT) * 100);
+  const provisional = target.provisional === true;
+  const disagreementCount = components.filter((component) => component.disagreement).length;
+  const confidence: ReadinessConfidence =
+    coveragePct >= 85 && disagreementCount === 0 && !provisional
+      ? "high"
+      : coveragePct >= 60 && disagreementCount <= 1
+        ? "moderate"
+        : "low";
+  const caveats = buildCaveats(components, coveragePct, provisional);
   if (!hasCore || presentCount < 3 || weightTotal === 0) {
-    return { score: null, band: "insufficient", components, baselineDays: maxBaselineDays };
+    return {
+      score: null, band: "insufficient", components, baselineDays: maxBaselineDays,
+      coveragePct, confidence: "low", provisional, caveats,
+    };
   }
 
   const weightedZ = weightedSum / weightTotal;
   const score = clamp(Math.round(50 + 50 * Math.tanh(weightedZ / TANH_SCALE)), 1, 99);
 
   for (const c of components) {
-    if (c.z == null) continue;
+    if (c.z == null) {
+      c.weightPct = 0;
+      continue;
+    }
+    c.weightPct = round1((WEIGHTS[c.metric] / weightTotal) * 100);
     c.contribution = round1((WEIGHTS[c.metric] / weightTotal) * c.z * (50 / TANH_SCALE));
   }
 
-  return { score, band: bandFor(score), components, baselineDays: maxBaselineDays };
+  return {
+    score, band: bandFor(score), components, baselineDays: maxBaselineDays,
+    coveragePct, confidence, provisional, caveats,
+  };
+}
+
+function buildCaveats(
+  components: ReadinessComponent[],
+  coveragePct: number,
+  provisional: boolean,
+): string[] {
+  const caveats: string[] = [];
+  if (provisional) caveats.push("Today’s Google Health daily values may revise after another device sync.");
+  if (coveragePct < 100) caveats.push(`Score uses ${coveragePct}% of configured signal coverage.`);
+  for (const component of components) {
+    if (component.disagreement && component.disagreementExplanation) {
+      caveats.push(`${component.label}: ${component.disagreementExplanation}`);
+    } else if (component.measurementComparable === false && component.sources?.length) {
+      caveats.push(`${component.label}: source trends are fused, but raw measurements use different definitions.`);
+    }
+  }
+  return caveats;
 }
 
 // ---- Public entry point ---------------------------------------------------
@@ -308,11 +388,17 @@ export function computeReadiness(
 
   if (targetIdx < 0) {
     return {
+      methodVersion: READINESS_METHOD_VERSION,
       date: null,
       score: null,
       band: "insufficient",
       summary: "Not enough recent data to compute readiness.",
       baselineDays: 0,
+      timezone: READINESS_TIMEZONE,
+      confidence: "low",
+      coveragePct: 0,
+      provisional: false,
+      caveats: [],
       components: [],
       history: [],
     };
@@ -320,26 +406,38 @@ export function computeReadiness(
 
   const current = scoreDay(days, targetIdx);
 
-  const history: { date: string; score: number }[] = [];
+  const history: ReadinessScore["history"] = [];
   for (let i = Math.max(0, targetIdx - historyDays + 1); i <= targetIdx; i++) {
     if (!eligible(days[i])) continue;
     const s = scoreDay(days, i);
-    if (s.score != null) history.push({ date: days[i].date, score: s.score });
+    if (s.score != null) history.push({
+      date: days[i].date,
+      score: s.score,
+      methodVersion: READINESS_METHOD_VERSION,
+      confidence: s.confidence,
+      coveragePct: s.coveragePct,
+    });
   }
 
   return {
+    methodVersion: READINESS_METHOD_VERSION,
     date: days[targetIdx].date,
     score: current.score,
     band: current.band,
     summary: summarize(current),
     baselineDays: current.baselineDays,
+    timezone: READINESS_TIMEZONE,
+    confidence: current.confidence,
+    coveragePct: current.coveragePct,
+    provisional: current.provisional,
+    caveats: current.caveats,
     components: current.components,
     history,
   };
 }
 
 function hasAny(sv: SourceValues): boolean {
-  return sv != null && Object.values(sv).some((v) => v != null);
+  return sv != null && Object.values(sv).some((value) => sourceValue(value) != null);
 }
 
 function summarize(s: DayScore): string {
@@ -352,6 +450,8 @@ function summarize(s: DayScore): string {
   const lead =
     s.band === "primed" ? "Primed" : s.band === "compromised" ? "Compromised" : "Balanced";
   const parts: string[] = [];
+  const split = s.components.find((component) => component.disagreement);
+  if (split) parts.push(`${split.label.toLowerCase()} sources are split`);
   // Frame by RECOVERY contribution, not raw direction — "above/below
   // baseline" is wrong for inverted metrics (low breathing / RHR is good).
   if (best && (best.z ?? 0) >= 0.5) parts.push(`${best.label.toLowerCase()} is a bright spot`);

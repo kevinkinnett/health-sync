@@ -148,8 +148,9 @@ describe("detectAlerts", () => {
   it("triad fires on Eight Sleep's elevated HR even when Fitbit is flat", () => {
     // 40 baseline nights with BOTH sources flat, then 2 nights where only
     // Eight Sleep's HR + breathing are elevated (Fitbit stays at baseline).
-    // The fusion weights HR 65% toward Eight Sleep, so the fused signal
-    // still crosses the threshold — the sensitivity upgrade in action.
+    // Source-relative trends are fused equally while outcome calibration is
+    // rerun on repaired main sessions; the sustained mattress-side rise is
+    // still large enough for the fused signal to cross the threshold.
     const baseline: ReadinessDayInput[] = [];
     for (let i = 0; i < 40; i++) {
       baseline.push({

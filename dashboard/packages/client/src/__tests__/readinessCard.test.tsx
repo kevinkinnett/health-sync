@@ -5,21 +5,27 @@ import type { ReadinessScore } from "@health-dashboard/shared";
 
 function makeScore(over: Partial<ReadinessScore> = {}): ReadinessScore {
   return {
+    methodVersion: "readiness-v2-main-night",
     date: "2026-05-28",
     score: 72,
     band: "primed",
     summary: "Primed — hrv above your baseline.",
     baselineDays: 30,
+    timezone: "America/New_York",
+    confidence: "high",
+    coveragePct: 100,
+    provisional: false,
+    caveats: [],
     components: [
-      { metric: "hrv", label: "HRV", value: 65, baseline: 50, z: 1.4, contribution: 12, weightPct: 35, status: "good" },
-      { metric: "rhr", label: "Resting HR", value: 53, baseline: 60, z: 0.9, contribution: 6, weightPct: 25, status: "good" },
-      { metric: "breathing", label: "Breathing rate", value: 18, baseline: 14, z: -1.1, contribution: -4, weightPct: 10, status: "poor" },
-      { metric: "spo2", label: "Blood oxygen", value: 96, baseline: 96, z: 0.1, contribution: 0, weightPct: 8, status: "neutral" },
+      { metric: "hrv", label: "HRV", value: 65, baseline: 50, z: 1.4, contribution: 12, weightPct: 35, configuredWeight: 35, status: "good" },
+      { metric: "rhr", label: "Resting HR", value: 53, baseline: 60, z: 0.9, contribution: 6, weightPct: 25, configuredWeight: 25, status: "good" },
+      { metric: "breathing", label: "Breathing rate", value: 18, baseline: 14, z: -1.1, contribution: -4, weightPct: 10, configuredWeight: 10, status: "poor" },
+      { metric: "spo2", label: "Blood oxygen", value: 96, baseline: 96, z: 0.1, contribution: 0, weightPct: 8, configuredWeight: 8, status: "neutral" },
     ],
     history: [
-      { date: "2026-05-26", score: 60 },
-      { date: "2026-05-27", score: 68 },
-      { date: "2026-05-28", score: 72 },
+      { date: "2026-05-26", score: 60, methodVersion: "readiness-v2-main-night", confidence: "high", coveragePct: 100 },
+      { date: "2026-05-27", score: 68, methodVersion: "readiness-v2-main-night", confidence: "high", coveragePct: 100 },
+      { date: "2026-05-28", score: 72, methodVersion: "readiness-v2-main-night", confidence: "high", coveragePct: 100 },
     ],
     ...over,
   };

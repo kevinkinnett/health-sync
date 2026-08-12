@@ -87,6 +87,14 @@ pagination and raw persistence live behind separate collaborators in
 The `ingest_google_health.py` entry point coordinates those independently
 deployable collaborators and owns credentials and run lifecycle only.
 
+Eight Sleep ingestion applies the same functional-core boundary through
+`eight_sleep_points.py`. A declared `mainSessionId` wins; otherwise the longest
+session is selected. All nightly vitals and stages come from that one session,
+preventing a later nap from silently replacing the night. Both providers use
+the Eastern local wake date as the canonical nightly key. Google sleep rollups
+store main-session sleep and daytime nap minutes separately rather than adding
+them into one overnight total.
+
 Ingestion observability follows that same provider boundary. Run history is
 filtered to `google_health`, and historical coverage is derived from
 `google_health_data_point` rather than the retired Fitbit ingest-state table.
@@ -112,6 +120,15 @@ The scheduled alert evaluator checks this every two hours. A persisted monitor
 state emits one warning when ingestion becomes stale and one recovery notice
 when it becomes healthy again; both flow through the same dashboard-controlled
 Apprise policy as biometric alerts.
+
+Readiness method `readiness-v2-main-night` treats fusion as a comparison of
+source-relative trends, not permission to average unlike measurements. Each
+source keeps its raw reading, measurement definition, and same-regime baseline.
+Daily resting heart rate, non-REM sleeping heart rate, and average sleeping
+heart rate remain distinct raw values even when their standardized trends
+inform the same recovery component. The response reports effective coverage,
+confidence, provisional status, disagreement/mismatch explanations, timezone,
+and method version so partial or changing data is visible rather than hidden.
 
 Metric policy is separate from that pipeline heartbeat. `ingestPolicies.ts`
 classifies daily and sparse measurements independently, so an old user-entered

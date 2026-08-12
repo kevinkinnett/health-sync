@@ -72,6 +72,7 @@ export type { ApiLogEntry, ApiLogStats } from "./types/apiLog.js";
 export type {
   ReadinessBand,
   ReadinessComponentStatus,
+  ReadinessConfidence,
   ReadinessMetric,
   ReadinessDevice,
   ReadinessProvider,

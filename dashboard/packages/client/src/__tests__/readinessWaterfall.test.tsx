@@ -17,17 +17,24 @@ function comp(
     z,
     contribution,
     weightPct: 20,
+    configuredWeight: 20,
     status: z == null ? "unavailable" : z >= 0 ? "good" : "poor",
   };
 }
 
 function score(over: Partial<ReadinessScore> = {}): ReadinessScore {
   return {
+    methodVersion: "readiness-v2-main-night",
     date: "2026-06-13",
     score: 59,
     band: "balanced",
     summary: "",
     baselineDays: 30,
+    timezone: "America/New_York",
+    confidence: "high",
+    coveragePct: 100,
+    provisional: false,
+    caveats: [],
     history: [],
     // Realistic shape: raw contributions sum to +14 (linear term) while the
     // tanh-compressed score offset is +9 — same sign, so the rescale (k≈0.64)
