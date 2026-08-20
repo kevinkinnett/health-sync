@@ -4,6 +4,7 @@ import { ReadinessUseCase } from "../services/health/readinessUseCase.js";
 import { SensorAgreementService } from "../services/health/sensorAgreement.js";
 import { WeeklyInsightsService } from "../services/health/weeklyInsights.js";
 import { HeatmapService } from "../services/health/heatmap.js";
+import { NutritionWeightInsightsService } from "../services/health/nutritionWeightInsights.js";
 import { addDays } from "../services/userTz.js";
 
 const reader = <T>(rows: T[]) => ({ findLatest: async () => rows });
@@ -14,6 +15,42 @@ const rangeReader = <T extends { date: string }>(rows: T[]) => ({
 });
 
 describe("focused health use cases", () => {
+  it("joins nutrition, estimated expenditure, training, and weight through narrow readers", async () => {
+    const useCase = new NutritionWeightInsightsService(
+      rangeReader([{
+        date: "2026-08-18", caloriesIn: 1900, protein: 120, fiber: 24,
+      }] as never[]),
+      rangeReader([{ date: "2026-08-18", caloriesOut: 2400 }] as never[]),
+      rangeReader([{
+        logId: "1", date: "2026-08-18", time: "07:00:00",
+        weightKg: 89.8, bmi: null, fatPct: null, source: "google_health",
+        fetchedAt: "2026-08-18T12:00:00Z",
+      }] as never[]),
+      {
+        getSummary: async () => ({
+          days: [{ date: "2026-08-18", load: 34, minutes: 45 }],
+          sessions: [], totalByType: {}, sessionsPerWeek: 1,
+        }),
+      } as never,
+    );
+
+    const result = await useCase.get("2026-08-18", "2026-08-19", "2026-08-20");
+    expect(result.days[0]).toMatchObject({
+      date: "2026-08-18",
+      estimatedCaloriesOut: 2400,
+      estimatedEnergyGap: -500,
+      trainingLoad: 34,
+      trainingMinutes: 45,
+      dailyWeightMedianKg: 89.8,
+    });
+    expect(result.days[1]).toMatchObject({
+      food: null,
+      estimatedCaloriesOut: null,
+      estimatedEnergyGap: null,
+      trainingLoad: null,
+    });
+  });
+
   it("builds summary sparklines oldest-to-newest and converts sleep to hours", async () => {
     const useCase = new SummaryUseCase(
       reader([{ date: "2026-08-10", steps: 10 }, { date: "2026-08-09", steps: 9 }] as never[]),

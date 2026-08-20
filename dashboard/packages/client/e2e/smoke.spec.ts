@@ -55,6 +55,7 @@ test("every primary route renders without a crash", async ({ page }) => {
     "/analytics/sensors",
     "/analytics/unusual-days",
     "/analytics/nutrition",
+    "/analytics/weight",
     "/analytics/correlations",
     "/supplements",
     "/medications",
@@ -80,7 +81,7 @@ test("every primary route renders without a crash", async ({ page }) => {
   }
 });
 
-test("the nutrition screen shows the richer nutrient set", async ({ page }) => {
+test("the nutrition screen distinguishes coverage, missing days, and provisional data", async ({ page }) => {
   // Guards the change that motivated all of this: the Google Health
   // rollup's new columns have to survive shared type → repo → hook →
   // component and actually appear.
@@ -88,9 +89,28 @@ test("the nutrition screen shows the richer nutrient set", async ({ page }) => {
   await expect(page.getByText("Last logged day")).toBeVisible({
     timeout: 15_000,
   });
-  for (const label of ["Sugar", "Sat Fat", "Sodium", "Cholesterol", "Potassium"]) {
+  await expect(page.getByText("83%")).toBeVisible();
+  await expect(page.getByText("Today is provisional")).toBeVisible();
+  await expect(page.getByText(/Missing food logs remain unknown/i)).toBeVisible();
+  for (const label of ["Sugar", "Saturated fat", "Sodium", "Cholesterol", "Potassium"]) {
     await expect(page.getByText(label, { exact: true }).first()).toBeVisible();
   }
+});
+
+test("the weight screen preserves raw observations and avoids causal claims", async ({ page }) => {
+  const errors = collectErrors(page);
+  await page.goto("/analytics/weight");
+
+  await expect(page.getByText("Weight observations and trend")).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.getByText("2026-07-24 at 07:05")).toBeVisible();
+  await expect(page.getByText("2026-07-24 at 19:20")).toBeVisible();
+  await expect(page.getByText("5 total observations")).toBeVisible();
+  await expect(page.getByText(/not causation/i)).toBeVisible();
+  await expect(page.getByText(/context, not proof of an effect/i)).toBeVisible();
+
+  expect(significant(errors)).toEqual([]);
 });
 
 test("charts actually render marks, not just an empty frame", async ({ page }) => {
@@ -153,7 +173,8 @@ test("the timeline runs a before/after report and surfaces its caveat", async ({
   await expect(page.getByText("detected")).toBeVisible();
 
   await list.getByText("Eight Sleep Pod").click();
-  await expect(page.getByText("Weak evidence")).toBeVisible();
+  await expect(page.getByText("Observed change", { exact: true })).toBeVisible();
+  await expect(page.getByText("Limited estimate confidence", { exact: true })).toBeVisible();
 
   // The report leads with the effect-size plot, so "which of these moved"
   // is a glance rather than a scan of the table below it.
@@ -203,7 +224,7 @@ test("the home screen asks whether anything you changed worked", async ({ page }
   await expect(card).toContainText("+11.2");
 
   // A number without its caveat is worse than no number here.
-  await expect(card).toContainText("Weak evidence");
+  await expect(card).toContainText("Limited estimate confidence");
 
   // The verdict with nothing to report must say so rather than vanish.
   await expect(card).toContainText("Nothing moved meaningfully");

@@ -9,6 +9,8 @@ import { QueryBoundary } from "../QueryBoundary";
 import { SERIES, STATUS } from "../charts/chartPalette";
 import { EffectSizePlot } from "./EffectSizePlot";
 import { MetricSeriesPanels } from "./MetricSeriesPanels";
+import { EVIDENCE_EXPLANATION, EVIDENCE_LABEL } from "../evidence";
+import { Link } from "react-router-dom";
 
 /**
  * The "did it work?" report.
@@ -25,17 +27,17 @@ const CONFIDENCE: Record<
   { label: string; color: string; blurb: string }
 > = {
   strong: {
-    label: "Strong evidence",
+    label: "High estimate confidence",
     color: STATUS.good,
-    blurb: "Long windows on both sides, dense data, nothing else competing.",
+    blurb: "Long, dense comparison windows make this estimate relatively stable.",
   },
   moderate: {
-    label: "Moderate evidence",
+    label: "Moderate estimate confidence",
     color: SERIES[0],
     blurb: "Usable, but read the caveats below before acting on it.",
   },
   weak: {
-    label: "Weak evidence",
+    label: "Limited estimate confidence",
     color: STATUS.warning,
     blurb: "Something else could be producing this. Treat it as a hint.",
   },
@@ -70,6 +72,9 @@ function Report({ report }: { report: ExperimentReport }) {
     <div className="bg-surface-container rounded-xl p-5 space-y-5 border border-outline-variant/10">
       <div>
         <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[10px] uppercase tracking-wider px-2 py-1 rounded-full font-semibold bg-primary/10 text-primary">
+            {EVIDENCE_LABEL[report.evidence]}
+          </span>
           <span
             className="text-[10px] uppercase tracking-wider px-2 py-1 rounded-full font-semibold"
             style={{ color: conf.color, backgroundColor: `${conf.color}22` }}
@@ -85,6 +90,16 @@ function Report({ report }: { report: ExperimentReport }) {
           {report.summary}
         </h3>
         <p className="text-xs text-on-surface-variant mt-1">{conf.blurb}</p>
+        <p className="text-xs text-outline mt-1">{EVIDENCE_EXPLANATION[report.evidence]}</p>
+        {report.interventionCategory === "training" && (
+          <Link
+            to="/analytics/correlations"
+            className="mt-3 inline-flex items-center gap-1.5 text-xs font-bold text-primary hover:underline"
+          >
+            Compare repeated workout-day effects
+            <span className="material-symbols-outlined text-sm" aria-hidden="true">arrow_forward</span>
+          </Link>
+        )}
       </div>
 
       {/* The plot before the table: "which of these moved" should be a

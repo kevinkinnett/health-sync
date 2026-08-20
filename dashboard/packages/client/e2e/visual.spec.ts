@@ -102,6 +102,34 @@ test.describe("chart appearance", () => {
     await expect(card).toHaveScreenshot("nutrition-annotated.png");
   });
 
+  test("nutrition report, coverage and aligned energy context", async ({ page }) => {
+    await ready(page, "/analytics/nutrition");
+    const report = page
+      .getByRole("heading", { name: "Energy and logging summary" })
+      .locator("xpath=ancestor::section");
+    await expect(report).toBeVisible({ timeout: 15_000 });
+    await settle(page);
+    await expect(report).toHaveScreenshot("nutrition-report.png");
+
+    const chart = page.getByRole("heading", {
+      name: "Intake, estimated output, and training",
+    }).locator("..");
+    await expect(chart).toHaveScreenshot("nutrition-energy-context.png");
+  });
+
+  test("weight trend and raw local-time observations", async ({ page }) => {
+    await ready(page, "/analytics/weight");
+    const trend = page.getByRole("heading", { name: "Weight observations and trend" }).locator("..");
+    await expect(trend).toBeVisible({ timeout: 15_000 });
+    await settle(page);
+    await expect(trend).toHaveScreenshot("weight-trend.png");
+
+    const observations = page
+      .getByRole("heading", { name: "Raw observations" })
+      .locator("xpath=ancestor::div[contains(@class, 'bg-surface-container')]");
+    await expect(observations).toHaveScreenshot("weight-observations.png");
+  });
+
   test("sensor comparison — evidence card and night drill-down", async ({ page }) => {
     await ready(page, "/analytics/sensors");
     const card = page

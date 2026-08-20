@@ -1,14 +1,10 @@
 import type {
-  ExerciseLog,
-  ExerciseType,
-  TrainingLoadDay,
-  TrainingSession,
   TrainingSummary,
 } from "@health-dashboard/shared";
 import type { ExerciseLogRepository } from "../../repositories/exerciseLogRepo.js";
 import type { HeartRateRepository } from "../../repositories/heartRateRepo.js";
-import { classifyExercise } from "./exerciseClassifier.js";
-import { sessionLoad, sumByType } from "./trainingLoad.js";
+import { sumByType } from "./trainingLoad.js";
+import { buildTrainingDays, buildTrainingSessions } from "./trainingSessionBuilder.js";
 
 /**
  * Step-independent view of training.
@@ -36,27 +32,8 @@ export class TrainingService {
       heartRates.map((h) => [h.date, h.restingHeartRate]),
     );
 
-    const sessions = logs.map((log) =>
-      this.toSession(log, restingByDate.get(log.date) ?? null),
-    );
-
-    const byDate = new Map<string, TrainingSession[]>();
-    for (const s of sessions) {
-      const list = byDate.get(s.date);
-      if (list) list.push(s);
-      else byDate.set(s.date, [s]);
-    }
-
-    const days: TrainingLoadDay[] = [...byDate.entries()]
-      .map(([date, daySessions]) => ({
-        date,
-        load: round1(daySessions.reduce((sum, s) => sum + s.load, 0)),
-        sessions: daySessions.length,
-        minutes: Math.round(daySessions.reduce((sum, s) => sum + s.minutes, 0)),
-        byType: sumByType(daySessions),
-        estimated: daySessions.some((s) => s.estimated),
-      }))
-      .sort((a, b) => a.date.localeCompare(b.date));
+    const sessions = buildTrainingSessions(logs, restingByDate, this.maxHeartRate);
+    const days = buildTrainingDays(sessions);
 
     const spanDays = Math.max(1, dayCount(start, end));
     return {
@@ -67,33 +44,6 @@ export class TrainingService {
     };
   }
 
-  private toSession(log: ExerciseLog, restingHr: number | null): TrainingSession {
-    const minutes = log.durationMs != null ? log.durationMs / 60_000 : 0;
-    const type: ExerciseType = classifyExercise({
-      activityName: log.activityName,
-      steps: log.steps,
-      averageHeartRate: log.averageHeartRate,
-    });
-    const { load, estimated } = sessionLoad({
-      minutes,
-      averageHeartRate: log.averageHeartRate,
-      restingHeartRate: restingHr,
-      maxHeartRate: this.maxHeartRate,
-    });
-
-    return {
-      logId: log.logId,
-      date: log.date,
-      activityName: log.activityName,
-      type,
-      minutes: Math.round(minutes),
-      averageHeartRate: log.averageHeartRate,
-      steps: log.steps,
-      calories: log.calories,
-      load,
-      estimated,
-    };
-  }
 }
 
 function round1(n: number): number {

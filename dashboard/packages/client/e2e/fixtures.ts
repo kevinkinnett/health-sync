@@ -19,6 +19,7 @@ import type {
   Intervention,
   LlmModelSettings,
   NotificationSettings,
+  NutritionWeightReport,
   ReadinessScore,
   RecoveryAnomalyReport,
   RecordsData,
@@ -26,6 +27,7 @@ import type {
   SupplementIngredient,
   SupplementItem,
   WeeklyInsights,
+  WorkoutEffectsData,
 } from "@health-dashboard/shared";
 
 /**
@@ -189,6 +191,7 @@ const CORRELATIONS: CorrelationsData = {
       yLabel: "Sleep (min)",
       correlation: 0.31,
       lagDays: 1,
+      evidence: "exploratory_association",
       insight: "More steps is weakly associated with more sleep that night.",
       points: [
         { x: 5000, y: 410, date: "2026-07-20" },
@@ -203,6 +206,41 @@ const CORRELATIONS: CorrelationsData = {
     { label: "High (6k+)", days: 9, avgSleepMin: 446, avgDeepMin: 93, avgEfficiency: 92 },
   ],
   dataPoints: 25,
+};
+
+const WORKOUT_EFFECTS: WorkoutEffectsData = {
+  methodVersion: "workout-effects-v1-matched-days",
+  timezone: "America/New_York",
+  window: { start: "2026-05-01", end: TODAY },
+  sessions: 46,
+  workoutDays: 34,
+  effects: [
+    {
+      exposure: "all",
+      exposureLabel: "Any workout",
+      outcome: "sleep_duration",
+      outcomeLabel: "Sleep that night",
+      unit: "min",
+      betterDirection: "up",
+      workoutDays: 24,
+      matchedRestDays: 24,
+      workoutMean: 440,
+      matchedRestMean: 420,
+      adjustedDifference: 20,
+      confidenceInterval: { low: 5, high: 34 },
+      standardizedDifference: 0.3,
+      conclusion: "helped",
+      confidence: "moderate",
+      evidence: "adjusted_association",
+      interpretation: "Workout days were followed by 20 minutes more sleep than matched rest days.",
+    },
+  ],
+  matching: {
+    weekdayMatched: true,
+    maximumDayDistance: 84,
+    covariates: ["prior sleep", "morning recovery", "recent training load"],
+  },
+  caveats: ["Adjusted association only; unmeasured factors can still explain the difference."],
 };
 
 const SENSOR_AGREEMENT: SensorAgreementData = {
@@ -346,6 +384,93 @@ const FOOD: FoodLogDay[] = [
   foodCount: 6,
 }));
 
+/**
+ * Joined fixture intentionally includes an unlogged day, a provisional
+ * current day, and two weight readings on one local date.
+ */
+const NUTRITION_WEIGHT: NutritionWeightReport = {
+  window: {
+    start: "2026-07-20",
+    end: TODAY,
+    currentLocalDate: TODAY,
+    completedThrough: "2026-07-25",
+  },
+  days: Array.from({ length: 7 }, (_, index) => {
+    const date = `2026-07-${String(index + 20).padStart(2, "0")}`;
+    const foods: Record<string, FoodLogDay | null> = {
+      "2026-07-20": { ...FOOD[0], date, caloriesIn: 2050, protein: 126, fiber: 24 },
+      "2026-07-21": { ...FOOD[0], date, caloriesIn: 2180, protein: 134, fiber: 27 },
+      "2026-07-22": { ...FOOD[0], date, caloriesIn: 1940, protein: 119, fiber: 21 },
+      "2026-07-23": null,
+      "2026-07-24": FOOD[0],
+      "2026-07-25": FOOD[1],
+      [TODAY]: FOOD[2],
+    };
+    const weightObservations =
+      date === "2026-07-20"
+        ? [{ logId: "w-20", date, time: "07:10:00", weightKg: 80.6, bmi: null, fatPct: null, source: "google_health", fetchedAt: FETCHED }]
+        : date === "2026-07-22"
+          ? [{ logId: "w-22", date, time: "06:55:00", weightKg: 80.4, bmi: null, fatPct: null, source: "google_health", fetchedAt: FETCHED }]
+          : date === "2026-07-24"
+            ? [
+                { logId: "w-24-am", date, time: "07:05:00", weightKg: 80.3, bmi: null, fatPct: null, source: "google_health", fetchedAt: FETCHED },
+                { logId: "w-24-pm", date, time: "19:20:00", weightKg: 80.1, bmi: null, fatPct: null, source: "google_health", fetchedAt: FETCHED },
+              ]
+            : date === "2026-07-25"
+              ? [{ logId: "w-25", date, time: null, weightKg: 80.2, bmi: null, fatPct: null, source: "google_health", fetchedAt: FETCHED }]
+              : [];
+    const dailyWeightMedianKg =
+      date === "2026-07-20" ? 80.6
+        : date === "2026-07-22" ? 80.4
+          : date === "2026-07-24" || date === "2026-07-25" ? 80.2
+            : null;
+    return {
+      date,
+      provisional: date === TODAY,
+      food: foods[date] ?? null,
+      estimatedCaloriesOut: 2320 + index * 22,
+      estimatedEnergyGap: foods[date]?.caloriesIn != null
+        ? foods[date].caloriesIn! - (2320 + index * 22)
+        : null,
+      trainingLoad: index === 1 || index === 4 ? 42 + index : null,
+      trainingMinutes: index === 1 || index === 4 ? 45 : null,
+      weightObservations,
+      dailyWeightMedianKg,
+      weightTrendKg: index >= 4 && dailyWeightMedianKg != null ? 80.3 : null,
+    };
+  }),
+  foodCoverage: {
+    start: "2026-07-20",
+    end: "2026-07-25",
+    completedDays: 6,
+    loggedDays: 5,
+    unloggedDays: 1,
+    percent: 83,
+  },
+  weight: {
+    state: "ready",
+    latest: { logId: "w-25", date: "2026-07-25", time: null, weightKg: 80.2, bmi: null, fatPct: null, source: "google_health", fetchedAt: FETCHED },
+    observationCount: 5,
+    observedDates: 4,
+    currentTrendKg: 80.3,
+    change7dKg: null,
+    change30dKg: null,
+    reasons: ["Seven-day and 30-day changes need trend values on both comparison dates."],
+  },
+  readiness: {
+    state: "collecting",
+    observedSpanDays: 6,
+    foodLoggedDays: 5,
+    weightObservedDates: 4,
+    thresholds: { observedSpanDays: 42, foodLoggedDays: 30, weightObservedDates: 18 },
+    reasons: [
+      "Collect 42 completed span days.",
+      "Log food on 30 completed days.",
+      "Record weight on 18 distinct dates.",
+    ],
+  },
+};
+
 const INTERVENTIONS: Intervention[] = [
   {
     id: 1,
@@ -378,6 +503,8 @@ const INTERVENTIONS: Intervention[] = [
 const EXPERIMENT: ExperimentReport = {
   interventionId: 1,
   interventionName: "Eight Sleep Pod",
+  interventionCategory: "device",
+  evidence: "observed_change",
   changepoint: "2026-05-02",
   before: { start: "2026-02-11", end: "2026-05-01", days: 80, observedDays: 77 },
   after: { start: "2026-05-02", end: "2026-07-20", days: 80, observedDays: 80 },
@@ -535,8 +662,10 @@ const EXPERIMENT_SUMMARIES: ExperimentSummary[] = [
   {
     interventionId: 1,
     interventionName: "Eight Sleep Pod",
+    interventionCategory: "device",
     changepoint: "2026-05-02",
     confidence: "weak",
+    evidence: "observed_change",
     summary: "After the Eight Sleep Pod, sleep efficiency improved.",
     headline: {
       metric: "sleepEfficiency",
@@ -556,8 +685,10 @@ const EXPERIMENT_SUMMARIES: ExperimentSummary[] = [
   {
     interventionId: 4,
     interventionName: "Strength training 3x/week",
+    interventionCategory: "training",
     changepoint: "2026-07-06",
     confidence: "moderate",
+    evidence: "observed_change",
     summary: "Nothing moved meaningfully after strength training.",
     headline: null,
   },
@@ -750,10 +881,12 @@ const ROUTES: [RegExp, unknown][] = [
   [/\/api\/health\/insights\/weekly$/, WEEKLY],
   [/\/api\/health\/heatmap\/day-of-week$/, HEATMAP],
   [/\/api\/health\/correlations$/, CORRELATIONS],
+  [/\/api\/health\/workout-effects$/, WORKOUT_EFFECTS],
   [/\/api\/health\/sensor-agreement/, SENSOR_AGREEMENT],
   [/\/api\/health\/recovery-anomalies/, RECOVERY_ANOMALIES],
   [/\/api\/health\/records$/, RECORDS],
   [/\/api\/health\/driving$/, DRIVING],
+  [/\/api\/health\/nutrition-weight/, NUTRITION_WEIGHT],
   [/\/api\/health\/food/, FOOD],
   [/\/api\/health\/readiness/, READINESS],
   // Before the /interventions/ pattern — order in this table is matched

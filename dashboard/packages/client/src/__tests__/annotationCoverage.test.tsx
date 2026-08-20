@@ -10,7 +10,8 @@ const PAGES_DIR = join(__dirname, "..", "pages", "analytics");
 const CHARTS_DIR = join(__dirname, "..", "components", "charts");
 
 /**
- * Every daily time-series screen must draw dated-change markers.
+ * Outcome time-series screens draw dated-change markers when those changes
+ * can plausibly explain movement in the measured outcome.
  *
  * The audit asked for this and it was reported as done while only three of
  * eight screens had it — the kind of gap no runtime test catches, because
@@ -31,8 +32,16 @@ const SERIES_SCREENS = [
   "Nutrition.tsx",
   "EightSleep.tsx",
   "Exercises.tsx",
-  "Sensors.tsx",
 ];
+
+/**
+ * These screens retain interventions as drill-down context, but deliberately
+ * do not draw them over the chart because they do not answer the chart's
+ * primary question.
+ */
+const CONTEXT_ONLY = {
+  "Sensors.tsx": "interventions may explain physiology, not disagreement between sensors",
+};
 
 /**
  * Screens with no single date axis to anchor a vertical line to. Listed so
@@ -66,9 +75,20 @@ describe("intervention annotation coverage", () => {
     expect(notPassed, `fetched but never rendered: ${notPassed.join(", ")}`).toEqual([]);
   });
 
+  it("keeps interventions in sensor night context without overlaying comparison charts", () => {
+    const src = readFileSync(join(PAGES_DIR, "Sensors.tsx"), "utf8");
+    expect(src).toContain("useChartAnnotations");
+    expect(src).toMatch(/<SensorNightDetail[\s\S]*?annotations=\{marks\}/);
+    expect(src).not.toMatch(/<SensorAgreementChart[^>]*annotations=/);
+  });
+
   it("accounts for every analytics screen as either covered or exempt", () => {
     const all = readdirSync(PAGES_DIR).filter((f) => f.endsWith(".tsx"));
-    const accounted = new Set([...SERIES_SCREENS, ...Object.keys(EXEMPT)]);
+    const accounted = new Set([
+      ...SERIES_SCREENS,
+      ...Object.keys(CONTEXT_ONLY),
+      ...Object.keys(EXEMPT),
+    ]);
     const unaccounted = all.filter((f) => !accounted.has(f));
     expect(
       unaccounted,

@@ -5,6 +5,7 @@ import type {
   MetricEffect,
 } from "@health-dashboard/shared";
 import { STATUS, CHART_CHROME } from "./charts/chartPalette";
+import { EVIDENCE_LABEL } from "./evidence";
 
 /**
  * "Did anything you changed work?" — asked on the home screen, unprompted.
@@ -25,9 +26,9 @@ const CONFIDENCE_STYLE: Record<
   ExperimentConfidence,
   { label: string; color: string }
 > = {
-  strong: { label: "Strong evidence", color: STATUS.good },
-  moderate: { label: "Moderate evidence", color: STATUS.good },
-  weak: { label: "Weak evidence", color: STATUS.warning },
+  strong: { label: "High estimate confidence", color: STATUS.good },
+  moderate: { label: "Moderate estimate confidence", color: STATUS.good },
+  weak: { label: "Limited estimate confidence", color: STATUS.warning },
   insufficient: { label: "Not enough data", color: CHART_CHROME.axis },
 };
 
@@ -98,7 +99,7 @@ function VerdictRow({ summary }: { summary: ExperimentSummary }) {
             style={{ backgroundColor: conf.color }}
           />
           <span className="text-[10px] uppercase tracking-widest text-outline">
-            {conf.label}
+            {EVIDENCE_LABEL[summary.evidence]} · {conf.label}
           </span>
         </div>
       </Link>

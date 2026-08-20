@@ -47,6 +47,11 @@ describe("computeCorrelationPairs", () => {
     expect(pair.points[0]).toEqual({ x: 0, y: 0, date: "2026-05-01" });
     expect(pair.points[11].date).toBe("2026-05-12");
     expect(pair.correlation).toBe(1); // perfectly linear
+    expect(pair.spearman).toBe(1);
+    expect(pair.confidenceInterval).toEqual({ low: 1, high: 1 });
+    expect(pair.stability).toBe("mixed"); // fewer than 18 observations
+    expect(pair.adjustedPValue).toBe(1); // too short for a shift-based null
+    expect(pair.notableAfterCorrection).toBe(false);
     expect(pair.xLabel).toBe("A label");
     expect(pair.yLabel).toBe("B label");
     expect(pair.lagDays).toBe(0);
@@ -120,6 +125,16 @@ describe("computeCorrelationPairs", () => {
     );
     const [pair] = computeCorrelationPairs(reg, [{ x: "a", y: "b" }]);
     expect(pair.points.length).toBe(10);
+  });
+
+  it("flags a relationship that reverses direction across time as unstable", () => {
+    const ds = dates(24);
+    const reg = registryOf(
+      makeSeries("a", ds.map((date, index) => [date, index])),
+      makeSeries("b", ds.map((date, index) => [date, index < 12 ? index : 36 - index])),
+    );
+    const [pair] = computeCorrelationPairs(reg, [{ x: "a", y: "b" }]);
+    expect(pair.stability).toBe("unstable");
   });
 });
 

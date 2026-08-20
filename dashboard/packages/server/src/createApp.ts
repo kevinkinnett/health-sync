@@ -136,6 +136,7 @@ export async function createApp(pool: Pool, config: Config): Promise<Express> {
     eightSleepRepo,
     foodRepo,
     teslaDriveRepo,
+    { userTimezone: config.userTimezone },
   );
   const ingestService = new IngestService(ingestRepo, config.windmill);
   const supplementService = new SupplementService(supplementRepo);

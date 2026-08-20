@@ -100,6 +100,15 @@ export class HealthController {
     res.json(await this.service.getFood(start, end));
   }
 
+  async getNutritionWeight(req: Request, res: Response): Promise<void> {
+    const { start, end } = parseDateRange(req, this.tz);
+    res.json(await this.service.getNutritionWeight(
+      start,
+      end,
+      todayInTz(this.tz),
+    ));
+  }
+
   /**
    * Step-independent effort. The rest of this controller reports what
    * a pedometer sees; this reports what the heart did, so resistance
@@ -139,6 +148,10 @@ export class HealthController {
 
   async getCorrelations(_req: Request, res: Response): Promise<void> {
     res.json(await this.service.getCorrelations(todayInTz(this.tz)));
+  }
+
+  async getWorkoutEffects(_req: Request, res: Response): Promise<void> {
+    res.json(await this.service.getWorkoutEffects(todayInTz(this.tz)));
   }
 
   async getWeeklyInsights(_req: Request, res: Response): Promise<void> {

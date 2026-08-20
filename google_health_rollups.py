@@ -9,10 +9,25 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass, fields
-from datetime import date, datetime, timedelta, timezone
-from zoneinfo import ZoneInfo
+from datetime import date, timedelta
 
 import requests
+
+try:  # Windmill workspace import
+    from u.kevin.google_health_temporal import (
+        DEFAULT_USER_TIMEZONE,
+        TemporalResolutionError,
+        local_today,
+        resolve_point_time,
+    )
+except ModuleNotFoundError:  # Local tests / development
+    from google_health_temporal import (
+        DEFAULT_USER_TIMEZONE,
+        TemporalResolutionError,
+        local_today,
+        resolve_point_time,
+    )
+
 BASE = "https://health.googleapis.com/v4"
 
 
@@ -78,28 +93,17 @@ HRV_DAILY_MARK = json.dumps({"_src": "google_health", "method": "daily_hrv_v1"})
 SLEEP_MAIN_MARK = json.dumps({"_src": "google_health", "method": "main_sleep_v2"})
 # Must match the dashboard server's USER_TIMEZONE so rollup day buckets
 # line up with the legacy tables they replace.
-USER_TZ = "America/New_York"
+USER_TZ = DEFAULT_USER_TIMEZONE
 
 
 def _sleep_wake_date(fallback: date | str, interval: dict) -> date | str:
-    """Canonical sleep key: local wake date, respecting per-night DST offset."""
-    end = interval.get("endTime") if isinstance(interval, dict) else None
-    if not isinstance(end, str) or not end:
-        return fallback
+    """Compatibility wrapper around the shared canonical resolver."""
     try:
-        instant = datetime.fromisoformat(end.replace("Z", "+00:00"))
-    except ValueError:
+        resolved = resolve_point_time("sleep", {"interval": interval})
+    except TemporalResolutionError:
         return fallback
-    offset_text = interval.get("endUtcOffset")
-    if isinstance(offset_text, str) and offset_text.endswith("s"):
-        try:
-            return (
-                instant.astimezone(timezone.utc)
-                + timedelta(seconds=float(offset_text[:-1]))
-            ).date()
-        except ValueError:
-            pass
-    return instant.astimezone(ZoneInfo(USER_TZ)).date()
+    parsed = date.fromisoformat(resolved.analysis_date)
+    return parsed
 
 
 def _sql_rollups(
@@ -140,10 +144,10 @@ def _sql_rollups(
     cur.execute(tables.render("""
         INSERT INTO {heart_rate_daily}
             (date, zone_fat_burn_min, zone_cardio_min, zone_peak_min, raw_jsonb)
-        SELECT make_date(
+        SELECT COALESCE(source_local_date, make_date(
                  (value_jsonb->'activeZoneMinutes'->'interval'->'civilStartTime'->'date'->>'year')::int,
                  (value_jsonb->'activeZoneMinutes'->'interval'->'civilStartTime'->'date'->>'month')::int,
-                 (value_jsonb->'activeZoneMinutes'->'interval'->'civilStartTime'->'date'->>'day')::int),
+                 (value_jsonb->'activeZoneMinutes'->'interval'->'civilStartTime'->'date'->>'day')::int)),
                count(*) FILTER (WHERE value_jsonb->'activeZoneMinutes'->>'heartRateZone'='FAT_BURN'),
                count(*) FILTER (WHERE value_jsonb->'activeZoneMinutes'->>'heartRateZone'='CARDIO'),
                count(*) FILTER (WHERE value_jsonb->'activeZoneMinutes'->>'heartRateZone'='PEAK'),
@@ -179,17 +183,34 @@ def _sql_rollups(
         ON CONFLICT (date) DO UPDATE SET nightly_relative=EXCLUDED.nightly_relative, raw_jsonb=EXCLUDED.raw_jsonb, fetched_at=NOW()
     """), (MARK, since))
 
-    # HRV fallback — mean of overnight per-5-min RMSSD samples. The native
-    # daily record below supersedes this when Google publishes it; retaining
-    # the sample path keeps partial provider data first-class.
+    # HRV fallback — mean of overnight per-5-min RMSSD samples. Samples are
+    # assigned to the containing sleep session's WAKE date, never their UTC or
+    # local observation date. The native daily record below supersedes this
+    # when Google publishes it; retaining the sample path keeps partial
+    # provider data first-class.
     cur.execute(tables.render("""
         INSERT INTO {hrv_daily} (date, daily_rmssd, raw_jsonb)
-        SELECT point_date,
-               round(avg((value_jsonb->'heartRateVariability'->>'rootMeanSquareOfSuccessiveDifferencesMilliseconds')::numeric), 3), %s::jsonb
-        FROM {raw_points} WHERE data_type='heart-rate-variability' AND source_platform='FITBIT' AND point_date >= %s
-        GROUP BY point_date
+        SELECT sleep.point_date,
+               round(avg((sample.value_jsonb->'heartRateVariability'->>'rootMeanSquareOfSuccessiveDifferencesMilliseconds')::numeric), 3), %s::jsonb
+        FROM {raw_points} sample
+        JOIN LATERAL (
+            SELECT candidate.point_date
+            FROM {raw_points} candidate
+            WHERE candidate.data_type='sleep'
+              AND candidate.source_platform='FITBIT'
+              AND candidate.point_date >= %s
+              AND sample.start_time >= candidate.start_time
+              AND sample.start_time < candidate.end_time
+            ORDER BY candidate.end_time - candidate.start_time DESC,
+                     candidate.start_time DESC
+            LIMIT 1
+        ) sleep ON TRUE
+        WHERE sample.data_type='heart-rate-variability'
+          AND sample.source_platform='FITBIT'
+          AND sample.start_time >= %s::date - INTERVAL '1 day'
+        GROUP BY sleep.point_date
         ON CONFLICT (date) DO UPDATE SET daily_rmssd=EXCLUDED.daily_rmssd, raw_jsonb=EXCLUDED.raw_jsonb, fetched_at=NOW()
-    """), (HRV_SAMPLE_MARK, since))
+    """), (HRV_SAMPLE_MARK, since, since))
 
     # Native daily HRV carries Google's civil date, nightly RMSSD, deep-sleep
     # RMSSD, and non-REM heart rate.  The latter is a much closer comparator
@@ -261,16 +282,33 @@ def _sql_rollups(
             WHERE {hrv_daily_ref}.deep_rmssd IS NULL
     """), (MARK,))
 
-    # SpO2 — overnight avg/min/max, artifacts (<80%) filtered out.
+    # SpO2 — overnight avg/min/max, artifacts (<80%) filtered out. As with HRV,
+    # samples are keyed by the containing sleep session's wake date.
     cur.execute(tables.render("""
         INSERT INTO {spo2_daily} (date, avg_value, min_value, max_value, raw_jsonb)
         SELECT point_date, round(avg(p),2), round(min(p),2), round(max(p),2), %s::jsonb FROM (
-            SELECT point_date, (value_jsonb->'oxygenSaturation'->>'percentage')::numeric p
-            FROM {raw_points} WHERE data_type='oxygen-saturation' AND source_platform='FITBIT' AND point_date >= %s
+            SELECT sleep.point_date,
+                   (sample.value_jsonb->'oxygenSaturation'->>'percentage')::numeric p
+            FROM {raw_points} sample
+            JOIN LATERAL (
+                SELECT candidate.point_date
+                FROM {raw_points} candidate
+                WHERE candidate.data_type='sleep'
+                  AND candidate.source_platform='FITBIT'
+                  AND candidate.point_date >= %s
+                  AND sample.start_time >= candidate.start_time
+                  AND sample.start_time < candidate.end_time
+                ORDER BY candidate.end_time - candidate.start_time DESC,
+                         candidate.start_time DESC
+                LIMIT 1
+            ) sleep ON TRUE
+            WHERE sample.data_type='oxygen-saturation'
+              AND sample.source_platform='FITBIT'
+              AND sample.start_time >= %s::date - INTERVAL '1 day'
         ) s WHERE p BETWEEN 80 AND 100
         GROUP BY point_date
         ON CONFLICT (date) DO UPDATE SET avg_value=EXCLUDED.avg_value, min_value=EXCLUDED.min_value, max_value=EXCLUDED.max_value, raw_jsonb=EXCLUDED.raw_jsonb, fetched_at=NOW()
-    """), (MARK, since))
+    """), (MARK, since, since))
 
     # Steps — daily sum of intraday intervals, bucketed by the USER'S calendar
     # day. Deliberately WINDOWLESS and monotone, unlike every other rollup here.
@@ -291,7 +329,8 @@ def _sql_rollups(
     # whole. Verified 2026-07-26 — recomputing every day from raw lowered none.
     cur.execute(tables.render("""
         INSERT INTO {activity_daily} (date, steps, raw_jsonb)
-        SELECT (start_time AT TIME ZONE %s)::date, sum((value_jsonb->'steps'->>'count')::int), %s::jsonb
+        SELECT COALESCE(source_local_date, (start_time AT TIME ZONE %s)::date),
+               sum((value_jsonb->'steps'->>'count')::int), %s::jsonb
         FROM {raw_points} WHERE data_type='steps' AND source_platform='FITBIT'
               AND start_time IS NOT NULL
         GROUP BY 1
@@ -310,17 +349,22 @@ def _rollup_sleep(
     # session so Fitbit and Eight Sleep compare the same construct. Naps remain
     # visible in nap_minutes_asleep instead of contaminating readiness.
     cur.execute(tables.render("""
-        SELECT point_date, value_jsonb FROM {raw_points}
-        WHERE data_type='sleep' AND source_platform='FITBIT' AND point_date >= %s
-    """), (since,))
+        SELECT value_jsonb FROM {raw_points}
+        WHERE data_type='sleep' AND source_platform='FITBIT'
+    """))
     days = {}  # date -> {"sessions": [...], "best": {...}}
-    for pdate, vj in cur.fetchall():
+    for (vj,) in cur.fetchall():
         s = (vj or {}).get("sleep", {})
+        try:
+            wake_date = resolve_point_time("sleep", s).analysis_date
+        except TemporalResolutionError:
+            continue
+        if wake_date < since:
+            continue
         summ = s.get("summary", {})
         asleep = int(summ.get("minutesAsleep", 0) or 0)
         inbed = int(summ.get("minutesInSleepPeriod", 0) or 0)
         iv = s.get("interval", {})
-        wake_date = _sleep_wake_date(pdate, iv)
         day = days.setdefault(wake_date, {"all_asleep": 0, "records": 0, "best": None})
         day["all_asleep"] += asleep
         day["records"] += 1
@@ -334,6 +378,11 @@ def _rollup_sleep(
                 "rem": stages.get("REM"), "wake": stages.get("AWAKE"),
                 "start": iv.get("startTime"), "end": iv.get("endTime"),
             }
+    cur.execute(tables.render("""
+        DELETE FROM {sleep_daily}
+        WHERE date >= %s AND raw_jsonb->>'_src'='google_health'
+          AND NOT (date = ANY(%s::date[]))
+    """), (since, list(days)))
     n = 0
     for d, day in days.items():
         b = day["best"]
@@ -370,23 +419,35 @@ def _rollup_weight(
     # resource name instead. Derive a NEGATIVE synthetic id from the name
     # hash — real Fitbit log ids are positive, so the two can't collide.
     cur.execute(tables.render("""
-        SELECT point_date, name, value_jsonb FROM {raw_points}
+        SELECT name, value_jsonb FROM {raw_points}
         WHERE data_type='weight' AND source_platform='FITBIT'
-              AND point_date >= %s AND name IS NOT NULL
-    """), (since,))
+              AND name IS NOT NULL
+    """))
     n = 0
-    for pdate, name, vj in cur.fetchall():
+    for name, vj in cur.fetchall():
         w = (vj or {}).get("weight", {})
-        grams = w.get("grams")
+        try:
+            resolved = resolve_point_time("weight", w)
+        except TemporalResolutionError:
+            continue
+        pdate = resolved.analysis_date
+        local_time = resolved.source_local_time
+        if pdate < since:
+            continue
+        # Google Health's v4 wire field is ``weightGrams``. Retain ``grams``
+        # as a compatibility read for any early migration captures.
+        grams = w.get("weightGrams", w.get("grams"))
         if not grams:
             continue
         log_id = -(int(hashlib.md5(name.encode()).hexdigest()[:12], 16))
         cur.execute(tables.render("""
-            INSERT INTO {body_weight} (log_id, date, weight_kg, source, raw_jsonb)
-            VALUES (%s,%s,%s,'google_health',%s)
+            INSERT INTO {body_weight} (log_id, date, time, weight_kg, source, raw_jsonb)
+            VALUES (%s,%s,%s,%s,'google_health',%s)
             ON CONFLICT (log_id) DO UPDATE SET
-                date=EXCLUDED.date, weight_kg=EXCLUDED.weight_kg, raw_jsonb=EXCLUDED.raw_jsonb, fetched_at=NOW()
-        """), (log_id, pdate, round(grams / 1000.0, 2), MARK))
+                date=EXCLUDED.date, time=EXCLUDED.time,
+                weight_kg=EXCLUDED.weight_kg,
+                raw_jsonb=EXCLUDED.raw_jsonb, fetched_at=NOW()
+        """), (log_id, pdate, local_time, round(grams / 1000.0, 2), MARK))
         n += 1
     return n
 
@@ -419,12 +480,18 @@ def _rollup_food(
     # were in the payload all along). Water + calorie_goal are genuinely absent
     # from Google's payload, so those columns stay NULL post-cutover.
     cur.execute(tables.render("""
-        SELECT point_date, value_jsonb FROM {raw_points}
-        WHERE data_type='nutrition-log' AND source_platform='FITBIT' AND point_date >= %s
-    """), (since,))
+        SELECT value_jsonb FROM {raw_points}
+        WHERE data_type='nutrition-log' AND source_platform='FITBIT'
+    """))
     agg = {}
-    for pdate, vj in cur.fetchall():
+    for (vj,) in cur.fetchall():
         nl = (vj or {}).get("nutritionLog", {})
+        try:
+            pdate = resolve_point_time("nutrition-log", nl).analysis_date
+        except TemporalResolutionError:
+            continue
+        if pdate < since:
+            continue
         a = agg.setdefault(pdate, {"cal": 0.0, "carbs": 0.0, "fat": 0.0, "n": 0,
                                    "protein": 0.0, "fiber": 0.0, "sugar": 0.0,
                                    "saturated_fat": 0.0, "sodium": 0.0,
@@ -438,6 +505,11 @@ def _rollup_food(
                 col, mult = col_mult
                 a[col] += ((nut.get("quantity", {}) or {}).get("grams", 0) or 0) * mult
         a["n"] += 1
+    cur.execute(tables.render("""
+        DELETE FROM {food_log_daily}
+        WHERE date >= %s AND raw_jsonb->>'_src'='google_health'
+          AND NOT (date = ANY(%s::date[]))
+    """), (since, list(agg)))
     n = 0
     for d, a in agg.items():
         cur.execute(tables.render("""
@@ -475,20 +547,21 @@ def _rollup_exercise(
     cur.execute(tables.render("""
         SELECT name, value_jsonb FROM {raw_points}
         WHERE data_type='exercise' AND source_platform='FITBIT'
-              AND point_date >= %s AND name IS NOT NULL
-    """), (since,))
+              AND name IS NOT NULL
+    """))
     n = 0
     for name, vj in cur.fetchall():
         ex = (vj or {}).get("exercise", {})
-        iv = ex.get("interval", {}) or {}
-        start = iv.get("startTime")
-        if not start:
+        try:
+            resolved = resolve_point_time("exercise", ex)
+        except TemporalResolutionError:
             continue
+        local_date = resolved.analysis_date
+        start = resolved.start_time
+        if local_date < since or not start:
+            continue
+        iv = ex.get("interval", {}) or {}
         log_id = int(name.rsplit("/", 1)[-1])
-        # Legacy dated exercises by Fitbit's LOCAL start time, not UTC.
-        off = int(float(str(iv.get("startUtcOffset", "0s")).rstrip("s") or 0))
-        local_date = (datetime.fromisoformat(start.replace("Z", "+00:00"))
-                      + timedelta(seconds=off)).date()
         ms = ex.get("metricsSummary", {}) or {}
         dur = ex.get("activeDuration")
         mm = ms.get("distanceMillimeters")
@@ -550,7 +623,7 @@ def _rollup_activity_daily(
     active-minutes (r~=0.37), so it stays raw-only and is not rolled here.
     """
     h = {"Authorization": f"Bearer {token}"}
-    today = datetime.now(timezone.utc).date()
+    today = local_today(USER_TZ)
     # dailyRollUp caps each request at maxDurationDays=14, so the rollup_days
     # window is split into <=14-day closed-open spans.
     spans, s, end = [], today - timedelta(days=rollup_days), today + timedelta(days=1)
@@ -620,8 +693,9 @@ def run_rollups(
     token: str,
     rollup_days: int,
     tables: RollupStorageTables = LEGACY_ROLLUP_TABLES,
+    include_network_activity: bool = True,
 ) -> dict:
-    since = (datetime.now(timezone.utc).date() - timedelta(days=rollup_days)).isoformat()
+    since = (local_today(USER_TZ) - timedelta(days=rollup_days)).isoformat()
     cur = conn.cursor()
     _sql_rollups(cur, since, tables)
     sleep_n = _rollup_sleep(cur, since, tables)
@@ -630,14 +704,17 @@ def run_rollups(
     exercise_n = _rollup_exercise(cur, since, tables)
     conn.commit()  # lock in the SQL-sourced rollups before the network rollup
     activity: dict = {}
-    try:
-        activity["activity_days"] = _rollup_activity_daily(
-            token, cur, rollup_days, tables
-        )
-        conn.commit()
-    except Exception as exc:  # noqa: BLE001 — network rollup must not drop the committed SQL rollups
-        conn.rollback()
-        activity["activity_error"] = str(exc)[:200]
+    if include_network_activity:
+        try:
+            activity["activity_days"] = _rollup_activity_daily(
+                token, cur, rollup_days, tables
+            )
+            conn.commit()
+        except Exception as exc:  # noqa: BLE001 — network rollup must not drop the committed SQL rollups
+            conn.rollback()
+            activity["activity_error"] = str(exc)[:200]
+    else:
+        activity["activity_skipped"] = "disabled for raw-date repair"
     return {"since": since, "sleep_days": sleep_n, "food_days": food_n,
             "weight_logs": weight_n, "exercise_logs": exercise_n, **activity}
 
@@ -655,12 +732,17 @@ class GoogleHealthRollupWriter:
         self._access_token = access_token
         self._tables = tables
 
-    def write(self, rollup_days: int) -> dict:
+    def write(
+        self,
+        rollup_days: int,
+        include_network_activity: bool = True,
+    ) -> dict:
         return run_rollups(
             self._connection,
             self._access_token,
             rollup_days,
             self._tables,
+            include_network_activity,
         )
 
 

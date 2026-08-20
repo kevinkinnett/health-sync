@@ -29,8 +29,14 @@ class WeightCursor:
 
     @staticmethod
     def fetchall():
-        return [("2026-08-10", "users/me/dataTypes/weight/dataPoints/abc", {
-            "weight": {"grams": 84_500},
+        return [("users/me/dataTypes/weight/dataPoints/abc", {
+            "weight": {
+                "sampleTime": {
+                    "physicalTime": "2026-08-11T01:00:00Z",
+                    "utcOffset": "-14400s",
+                },
+                "weightGrams": 84_500,
+            },
         })]
 
 
@@ -73,14 +79,14 @@ class GoogleHealthRollupTests(unittest.TestCase):
 
     def test_sleep_rollup_keeps_naps_separate_from_main_sleep(self):
         cursor = RecordingCursor([
-            ("2026-08-10", {"sleep": {
+            ({"sleep": {
                 "summary": {"minutesAsleep": 420, "minutesInSleepPeriod": 460, "stagesSummary": []},
                 "interval": {"startTime": "2026-08-10T03:00:00Z", "endTime": "2026-08-10T11:00:00Z", "endUtcOffset": "-14400s"},
-            }}),
-            ("2026-08-10", {"sleep": {
+            }},),
+            ({"sleep": {
                 "summary": {"minutesAsleep": 45, "minutesInSleepPeriod": 60, "stagesSummary": []},
                 "interval": {"startTime": "2026-08-10T18:00:00Z", "endTime": "2026-08-10T19:00:00Z", "endUtcOffset": "-14400s"},
-            }}),
+            }},),
         ])
 
         self.assertEqual(rollups._rollup_sleep(cursor, "2026-08-01"), 1)
@@ -146,9 +152,7 @@ class GoogleHealthRollupTests(unittest.TestCase):
         rollups._sql_rollups(cursor, "2026-08-01", tables)
         executed.extend(sql for sql, _ in cursor.calls)
 
-        cursor = RecordingCursor([(
-            "2026-08-10",
-            {
+        cursor = RecordingCursor([({
                 "sleep": {
                     "summary": {
                         "minutesAsleep": 420,
@@ -166,17 +170,27 @@ class GoogleHealthRollupTests(unittest.TestCase):
         executed.extend(sql for sql, _ in cursor.calls)
 
         cursor = RecordingCursor([(
-            "2026-08-10",
             "users/me/dataTypes/weight/dataPoints/abc",
-            {"weight": {"grams": 84_500}},
+            {"weight": {
+                "sampleTime": {
+                    "physicalTime": "2026-08-10T12:00:00Z",
+                    "utcOffset": "-14400s",
+                },
+                "weightGrams": 84_500,
+            }},
         )])
         rollups._rollup_weight(cursor, "2026-08-01", tables)
         executed.extend(sql for sql, _ in cursor.calls)
 
-        cursor = RecordingCursor([(
-            "2026-08-10",
-            {"nutritionLog": {"energy": {"kcal": 500}}},
-        )])
+        cursor = RecordingCursor([({"nutritionLog": {
+            "interval": {
+                "startTime": "2026-08-10T12:00:00Z",
+                "endTime": "2026-08-10T12:10:00Z",
+                "startUtcOffset": "-14400s",
+                "endUtcOffset": "-14400s",
+            },
+            "energy": {"kcal": 500},
+        }},)])
         rollups._rollup_food(cursor, "2026-08-01", tables)
         executed.extend(sql for sql, _ in cursor.calls)
 
@@ -255,6 +269,27 @@ class GoogleHealthRollupTests(unittest.TestCase):
         self.assertEqual(result["activity_error"], "offline")
         self.assertEqual(result["sleep_days"], 2)
 
+    def test_raw_date_repair_can_skip_network_daily_rollups(self):
+        connection = Connection()
+        with (
+            patch.object(rollups, "_sql_rollups"),
+            patch.object(rollups, "_rollup_sleep", return_value=2),
+            patch.object(rollups, "_rollup_food", return_value=3),
+            patch.object(rollups, "_rollup_weight", return_value=4),
+            patch.object(rollups, "_rollup_exercise", return_value=5),
+            patch.object(rollups, "_rollup_activity_daily") as network_rollup,
+        ):
+            result = rollups.run_rollups(
+                connection,
+                "token",
+                1000,
+                include_network_activity=False,
+            )
+
+        network_rollup.assert_not_called()
+        self.assertEqual(result["activity_skipped"], "disabled for raw-date repair")
+        self.assertEqual(connection.commits, 1)
+
     def test_weight_rollup_uses_stable_negative_compatibility_id(self):
         cursor = WeightCursor()
 
@@ -262,8 +297,58 @@ class GoogleHealthRollupTests(unittest.TestCase):
 
         _, params = cursor.calls[-1]
         self.assertLess(params[0], 0)
-        self.assertEqual(params[2], 84.5)
-        self.assertEqual(params[3], rollups.MARK)
+        self.assertEqual(params[1], "2026-08-10")
+        self.assertEqual(params[2], "21:00:00")
+        self.assertEqual(params[3], 84.5)
+        self.assertEqual(params[4], rollups.MARK)
+
+    def test_weight_rollup_preserves_google_civil_clock_time(self):
+        cursor = RecordingCursor([(
+            "users/me/dataTypes/weight/dataPoints/civil",
+            {"weight": {
+                "sampleTime": {
+                    "physicalTime": "2026-08-11T01:15:00Z",
+                    "civilTime": {
+                        "date": {"year": 2026, "month": 8, "day": 10},
+                        "time": {"hours": 21, "minutes": 15},
+                    },
+                },
+                "weightGrams": 84_500,
+            }},
+        )])
+
+        self.assertEqual(rollups._rollup_weight(cursor, "2026-08-01"), 1)
+
+        _, params = cursor.calls[-1]
+        self.assertEqual(params[1], "2026-08-10")
+        self.assertEqual(params[2], "21:15:00")
+
+    def test_food_rollup_splits_entries_by_google_civil_date_not_utc_date(self):
+        def entry(local_day, start, kcal):
+            return ({"nutritionLog": {
+                "interval": {
+                    "startTime": start,
+                    "endTime": start,
+                    "civilStartTime": {"date": local_day},
+                    "civilEndTime": {"date": local_day},
+                },
+                "energy": {"kcal": kcal},
+            }},)
+
+        cursor = RecordingCursor([
+            entry({"year": 2026, "month": 8, "day": 13}, "2026-08-14T01:00:00Z", 1600),
+            entry({"year": 2026, "month": 8, "day": 14}, "2026-08-14T12:00:00Z", 1635),
+        ])
+
+        self.assertEqual(rollups._rollup_food(cursor, "2026-08-01"), 2)
+        inserts = [
+            params for sql, params in cursor.calls
+            if "INSERT INTO universe.fitbit_food_log_daily" in sql
+        ]
+        self.assertEqual([(params[0], params[1]) for params in inserts], [
+            ("2026-08-13", 1600),
+            ("2026-08-14", 1635),
+        ])
 
 
 if __name__ == "__main__":

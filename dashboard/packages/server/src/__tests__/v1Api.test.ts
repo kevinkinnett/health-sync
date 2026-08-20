@@ -39,6 +39,9 @@ function fakeServices(): V1Context {
       getHeartRate: vi.fn().mockResolvedValue([]),
       getHrv: vi.fn().mockResolvedValue([]),
       getWeight: vi.fn().mockResolvedValue([]),
+      getNutritionWeight: vi.fn().mockResolvedValue({
+        days: [], readiness: { state: "collecting" },
+      }),
       getExerciseLogs: vi.fn().mockResolvedValue([]),
       getWeeklyInsights: vi.fn().mockResolvedValue({ currentPeriod: { start: "x", end: "y" } }),
       getRecords: vi.fn().mockResolvedValue({ records: [], streaks: [] }),
@@ -146,6 +149,18 @@ describe("v1 router", () => {
     expect(ctx.healthDataService.getActivity).toHaveBeenCalledWith(
       "2026-04-01",
       "2026-04-30",
+    );
+  });
+
+  it("passes local date and range to the nutrition-weight report", async () => {
+    const { app, ctx } = buildApp();
+    await request(app)
+      .get("/api/v1/nutrition-weight?start=2026-04-01&end=2026-04-30")
+      .expect(200);
+    expect(ctx.healthDataService.getNutritionWeight).toHaveBeenCalledWith(
+      "2026-04-01",
+      "2026-04-30",
+      expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
     );
   });
 

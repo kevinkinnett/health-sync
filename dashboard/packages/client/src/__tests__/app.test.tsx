@@ -124,7 +124,7 @@ describe("App routing and layout", () => {
   it("redirects /explore to the analytics overview", () => {
     renderWithProviders("/explore");
     expect(screen.getByLabelText("Explore health view")).toHaveValue("/analytics/overview");
-    expect(screen.getByRole("option", { name: "Correlations" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Relationships" })).toBeInTheDocument();
   });
 
   it("renders Ingest page at /ingest", async () => {

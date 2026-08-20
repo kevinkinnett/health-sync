@@ -29,6 +29,8 @@ function summary(over: Partial<ExperimentSummary> = {}): ExperimentSummary {
   return {
     interventionId: 1,
     interventionName: "Eight Sleep Pod",
+    interventionCategory: "device",
+    evidence: "observed_change",
     changepoint: "2026-05-02",
     confidence: "weak",
     summary: "After the Eight Sleep Pod, sleep efficiency improved.",
@@ -61,7 +63,7 @@ describe("DidItWorkCard", () => {
     // people glance at. This is the same discipline that keeps a p-value
     // out of the full report.
     renderCard([summary({ confidence: "weak" })]);
-    expect(screen.getByText("Weak evidence")).toBeInTheDocument();
+    expect(screen.getByText(/Observed change · Limited estimate confidence/)).toBeInTheDocument();
   });
 
   it("marks a regression as worse, not just as a negative number", () => {

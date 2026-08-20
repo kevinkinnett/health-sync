@@ -1,8 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AnalyticsNutrition } from "../pages/analytics/Nutrition";
-import type { FoodLogDay } from "@health-dashboard/shared";
+import {
+  collectingNutritionWeightReport,
+  emptyNutritionWeightReport,
+} from "./fixtures/nutritionWeight";
 
 const apiFetchMock = vi.fn();
 vi.mock("../api/client", () => ({
@@ -10,60 +13,57 @@ vi.mock("../api/client", () => ({
 }));
 
 function renderScreen() {
-  const qc = new QueryClient({
+  const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   });
   return render(
-    <QueryClientProvider client={qc}>
+    <QueryClientProvider client={queryClient}>
       <AnalyticsNutrition />
     </QueryClientProvider>,
   );
 }
 
-const SAMPLE: FoodLogDay[] = [
-  {
-    date: "2026-05-29",
-    caloriesIn: 266,
-    carbs: 33,
-    fat: 12.75,
-    fiber: 2,
-    protein: 10.5,
-    sugar: 8,
-    saturatedFat: 3.5,
-    sodium: 180,
-    cholesterol: 25,
-    potassium: 400,
-    water: 0,
-    calorieGoal: null,
-    foodCount: 2,
-  },
-];
-
 describe("AnalyticsNutrition", () => {
-  beforeEach(() => apiFetchMock.mockReset());
-
-  it("renders the latest-day card + macro charts from real data", async () => {
-    apiFetchMock.mockImplementation((p?: string) =>
-      p?.includes("/health/food") ? Promise.resolve(SAMPLE) : Promise.resolve([]),
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+    apiFetchMock.mockImplementation((path?: string) =>
+      path?.includes("/health/nutrition-weight")
+        ? Promise.resolve(collectingNutritionWeightReport)
+        : Promise.resolve([]),
     );
-    renderScreen();
-    await waitFor(() => {
-      expect(screen.getByText("Last logged day")).toBeInTheDocument();
-      // Card shows the day's calories (unique value).
-      expect(screen.getByText("266")).toBeInTheDocument();
-      // Unique chart titles ("Carbs"/"Calories" are the card labels).
-      expect(screen.getByText("Calories In")).toBeInTheDocument();
-      expect(screen.getByText("Carbohydrates")).toBeInTheDocument();
-      // Protein appears as both a card label and a chart title.
-      expect(screen.getAllByText("Protein").length).toBeGreaterThanOrEqual(1);
-    });
   });
 
-  it("shows an empty state when nothing is logged in the window", async () => {
-    apiFetchMock.mockImplementation(() => Promise.resolve([]));
+  it("leads with coverage and energy while preserving missing and provisional days", async () => {
+    renderScreen();
+    expect(await screen.findByText("Energy and logging summary")).toBeInTheDocument();
+    expect(screen.getByText("29%")).toBeInTheDocument();
+    expect(screen.getByText("2 of 7 completed days")).toBeInTheDocument();
+    expect(screen.getByText("Today is provisional")).toBeInTheDocument();
+    expect(screen.getByText(/Missing food logs remain unknown/i)).toBeInTheDocument();
+    expect(screen.getByText(/does not establish cause and effect/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Protein" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Fiber" })).toBeInTheDocument();
+    expect(screen.getByText("More nutrient detail")).toBeInTheDocument();
+    expect(screen.getByText("Last logged day")).toBeInTheDocument();
+  });
+
+  it("shows the collection thresholds instead of long-window conclusions", async () => {
+    renderScreen();
+    expect(await screen.findByText("Building a useful history")).toBeInTheDocument();
+    expect(screen.getByText("7 / 42 days")).toBeInTheDocument();
+    expect(screen.getByText("2 / 30 days")).toBeInTheDocument();
+    expect(screen.getByText("2 / 18 dates")).toBeInTheDocument();
+  });
+
+  it("shows an empty state when no food is logged in the window", async () => {
+    apiFetchMock.mockImplementation((path?: string) =>
+      path?.includes("/health/nutrition-weight")
+        ? Promise.resolve(emptyNutritionWeightReport)
+        : Promise.resolve([]),
+    );
     renderScreen();
     await waitFor(() =>
-      expect(screen.getByText(/No food logged in this window/i)).toBeInTheDocument(),
+      expect(screen.getByText(/No food logs in this window yet/i)).toBeInTheDocument(),
     );
   });
 });

@@ -300,7 +300,7 @@ export class IngestService {
       method: "POST",
       body: JSON.stringify({
         db_resource_path: "u/kevin/universe_db",
-        max_pages: 3,
+        max_pages: 20,
         write_daily: true,
         rollup_days: 45,
       }),

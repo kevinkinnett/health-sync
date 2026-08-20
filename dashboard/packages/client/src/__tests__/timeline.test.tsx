@@ -10,13 +10,13 @@ vi.mock("../api/client", () => ({
   apiFetch: (path?: string, init?: RequestInit) => apiFetchMock(path, init),
 }));
 
-function renderScreen() {
+function renderScreen(path = "/timeline") {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   });
   return render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={[path]}>
         <Timeline />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -50,11 +50,26 @@ const INTERVENTIONS: Intervention[] = [
     createdAt: "2026-05-08T00:00:00.000Z",
     updatedAt: "2026-05-08T00:00:00.000Z",
   },
+  {
+    id: 3,
+    kind: "period",
+    category: "training",
+    name: "Strength training 3x/week",
+    startedOn: "2026-06-01",
+    endedOn: null,
+    source: "manual",
+    sourceRef: null,
+    detail: "Full-body program",
+    createdAt: "2026-06-01T00:00:00.000Z",
+    updatedAt: "2026-06-01T00:00:00.000Z",
+  },
 ];
 
 const REPORT: ExperimentReport = {
   interventionId: 1,
   interventionName: "Eight Sleep Pod",
+  interventionCategory: "device",
+  evidence: "observed_change",
   changepoint: "2026-05-02",
   before: { start: "2026-02-11", end: "2026-05-01", days: 80, observedDays: 77 },
   after: { start: "2026-05-02", end: "2026-07-20", days: 80, observedDays: 80 },
@@ -144,7 +159,15 @@ const REPORT: ExperimentReport = {
     'After "Eight Sleep Pod", time asleep improved — but something else could explain it.',
 };
 
+const TRAINING_REPORT: ExperimentReport = {
+  ...REPORT,
+  interventionId: 3,
+  interventionName: "Strength training 3x/week",
+  interventionCategory: "training",
+};
+
 function route(path?: string) {
+  if (path?.startsWith("/experiments/interventions/3")) return Promise.resolve(TRAINING_REPORT);
   if (path?.startsWith("/experiments")) return Promise.resolve(REPORT);
   if (path?.startsWith("/interventions")) return Promise.resolve(INTERVENTIONS);
   return Promise.resolve([]);
@@ -182,6 +205,35 @@ describe("Timeline", () => {
     await waitFor(() => expect(screen.getByText("detected")).toBeInTheDocument());
   });
 
+  it("filters directly to training changes and hands back to repeated workout effects", async () => {
+    renderScreen("/timeline?category=training");
+    await waitFor(() => expect(
+      within(screen.getByTestId("intervention-list")).getByText("Strength training 3x/week"),
+    ).toBeInTheDocument());
+    expect(screen.queryByText("Eight Sleep Pod")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Training programs" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("link", { name: /See repeated workout-day effects/ })).toHaveAttribute(
+      "href",
+      "/analytics/correlations",
+    );
+  });
+
+  it("links a training change report to the repeated workout-day analysis", async () => {
+    renderScreen("/timeline?category=training");
+    await screen.findByTestId("intervention-list");
+    const training = within(screen.getByTestId("intervention-list")).getByText(
+      "Strength training 3x/week",
+    );
+    fireEvent.click(training);
+    expect(await screen.findByRole("link", { name: /Compare repeated workout-day effects/ })).toHaveAttribute(
+      "href",
+      "/analytics/correlations",
+    );
+  });
+
   it("offers delete only on manual rows — derived ones own their source", async () => {
     renderScreen();
     await waitFor(listRow);
@@ -202,13 +254,14 @@ describe("Timeline", () => {
     );
   });
 
-  it("shows the confidence grade and the competing explanation", async () => {
+  it("separates the evidence grade from estimate confidence and shows the competing explanation", async () => {
     renderScreen();
     await waitFor(listRow);
     fireEvent.click(listRow());
 
     await waitFor(() => {
-      expect(screen.getByText("Weak evidence")).toBeInTheDocument();
+      expect(screen.getByText("Observed change")).toBeInTheDocument();
+      expect(screen.getByText("Limited estimate confidence")).toBeInTheDocument();
       // The confound must be visible, not buried — it is the reason the
       // headline number should not be trusted on its own.
       expect(screen.getByText(/too close to separate the two/i)).toBeInTheDocument();

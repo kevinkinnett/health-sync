@@ -14,6 +14,7 @@ export function createHealthRoutes(controller: HealthController): Router {
   router.get("/hrv", wrap((req, res) => controller.getHrv(req, res)));
   router.get("/insights/weekly", wrap((req, res) => controller.getWeeklyInsights(req, res)));
   router.get("/correlations", wrap((req, res) => controller.getCorrelations(req, res)));
+  router.get("/workout-effects", wrap((req, res) => controller.getWorkoutEffects(req, res)));
   router.get("/heatmap/day-of-week", wrap((req, res) => controller.getDayOfWeekHeatmap(req, res)));
   router.get("/records", wrap((req, res) => controller.getRecords(req, res)));
   router.get("/exercise-logs", wrap((req, res) => controller.getExerciseLogs(req, res)));
@@ -25,6 +26,10 @@ export function createHealthRoutes(controller: HealthController): Router {
   router.get("/sensor-agreement", wrap((req, res) => controller.getSensorAgreement(req, res)));
   router.get("/recovery-anomalies", wrap((req, res) => controller.getRecoveryAnomalies(req, res)));
   router.get("/food", wrap((req, res) => controller.getFood(req, res)));
+  router.get(
+    "/nutrition-weight",
+    wrap((req, res) => controller.getNutritionWeight(req, res)),
+  );
   router.get(
     "/training-load",
     wrap((req, res) => controller.getTrainingLoad(req, res)),

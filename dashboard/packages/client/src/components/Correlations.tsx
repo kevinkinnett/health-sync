@@ -136,6 +136,11 @@ export function Correlations({
           Based on {data.dataPoints} completed days
         </span>
       </div>
+      <p className="text-xs leading-relaxed text-on-surface-variant">
+        Each panel shows linear and rank agreement, a moving-block uncertainty range,
+        stability across time, and whether the signal holds after correcting for the
+        number of relationships examined.
+      </p>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {visiblePairs.map((pair) => (
@@ -147,6 +152,12 @@ export function Correlations({
             insight={pair.insight}
             correlation={pair.correlation}
             n={pair.points.length}
+            spearman={pair.spearman}
+            confidenceInterval={pair.confidenceInterval}
+            stability={pair.stability}
+            adjustedPValue={pair.adjustedPValue}
+            notableAfterCorrection={pair.notableAfterCorrection}
+            evidence={pair.evidence}
             points={pair.points}
             xAxisLabel={pair.xLabel}
             yAxisLabel={pair.yLabel}

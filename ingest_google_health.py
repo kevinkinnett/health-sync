@@ -13,6 +13,7 @@ import wmill
 
 from u.kevin.google_health_capture import GoogleHealthApi, RawPointStore, capture_types
 from u.kevin.google_health_rollups import GoogleHealthRollupWriter
+from u.kevin.google_health_temporal import GOOGLE_DATA_TYPES, local_capture_window
 from u.kevin.ingest_common import conn_kwargs, create_ingest_run, update_ingest_run
 
 PROVIDER = "google_health"
@@ -21,14 +22,10 @@ DEFAULT_OAUTH_RES = "u/kevin/google_health_oauth"
 DEFAULT_DB_RES = "u/kevin/universe_db"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 
-# Daily-only types such as total-calories are fetched by the rollup writer.
-TYPES = [
-    "daily-resting-heart-rate", "daily-respiratory-rate",
-    "daily-sleep-temperature-derivations", "oxygen-saturation",
-    "daily-heart-rate-variability", "heart-rate-variability",
-    "weight", "vo2-max", "steps", "distance",
-    "active-zone-minutes", "nutrition-log", "sleep", "exercise",
-]
+# Daily-only rollup types such as total-calories are fetched by the rollup
+# writer. Raw-list types come from the temporal registry so a new endpoint
+# cannot be captured without declaring its date semantics first.
+TYPES = list(GOOGLE_DATA_TYPES)
 
 
 def google_access_token(res_path: str) -> str:
@@ -53,25 +50,35 @@ def google_access_token(res_path: str) -> str:
     return creds["access_token"]
 
 
-def capture_raw(conn, token: str, max_pages: int) -> dict:
+def capture_raw(conn, token: str, max_pages: int, start_date, end_date) -> dict:
     """Adapt the independently testable capture collaborators for production."""
-    return capture_types(GoogleHealthApi(token), RawPointStore(conn), TYPES, max_pages)
+    store = RawPointStore(conn)
+    captured = capture_types(
+        GoogleHealthApi(token),
+        store,
+        TYPES,
+        max_pages,
+        start_date,
+        end_date,
+    )
+    return captured, store.temporal_audit(start_date, end_date)
 
 
 def main(
     creds_resource_path=None,
     db_resource_path=None,
     days_back: int = 3,
-    # An argless manual run retains the deep-capture budget. The four-hourly
-    # schedule passes max_pages=3 explicitly to keep routine runs light.
-    max_pages: int = 40,
+    # Bounded civil-time filters keep routine runs light. This is now only a
+    # safety ceiling; reaching it is reported as a partial ingest.
+    max_pages: int = 20,
     write_daily: bool = False,
     rollup_days: int = 45,
+    include_network_activity: bool = True,
 ):
-    # Kept for schedule compatibility; raw capture is coverage-driven.
-    _ = days_back if days_back is not None else 3
-    max_pages = max_pages if max_pages is not None else 40
+    days_back = days_back if days_back is not None else 3
+    max_pages = max_pages if max_pages is not None else 20
     rollup_days = rollup_days if rollup_days is not None else 45
+    start_date, end_date = local_capture_window(days_back)
 
     token = google_access_token(creds_resource_path or DEFAULT_OAUTH_RES)
     db = wmill.get_resource(db_resource_path or DEFAULT_DB_RES)
@@ -80,11 +87,17 @@ def main(
         run_id = create_ingest_run(conn, PROVIDER, JOB_NAME)
 
         captured: dict = {}
+        temporal_audit: list[dict] = []
         rolled = {"skipped": "write_daily=False (raw capture only)"}
         try:
-            captured = capture_raw(conn, token, max_pages)
+            captured, temporal_audit = capture_raw(
+                conn, token, max_pages, start_date, end_date
+            )
             if write_daily:
-                rolled = GoogleHealthRollupWriter(conn, token).write(rollup_days)
+                rolled = GoogleHealthRollupWriter(conn, token).write(
+                    rollup_days,
+                    include_network_activity,
+                )
         except Exception as exc:  # noqa: BLE001
             try:
                 conn.rollback()
@@ -101,7 +114,8 @@ def main(
         )
         errors = sum(
             1 for value in captured.values()
-            if isinstance(value, dict) and value.get("error")
+            if isinstance(value, dict)
+            and (value.get("error") or value.get("truncated"))
         )
         update_ingest_run(
             conn,
@@ -109,14 +123,28 @@ def main(
             "completed" if errors == 0 else "partial",
             total_points,
             errors,
-            {"captured": captured, "rolled": rolled},
+            {
+                "capture_window": {
+                    "start": start_date.isoformat(),
+                    "end_exclusive": end_date.isoformat(),
+                },
+                "temporal_audit": temporal_audit,
+                "captured": captured,
+                "rolled": rolled,
+            },
         )
 
     return {
-        "status": "ok",
+        "status": "ok" if errors == 0 else "partial",
         "raw_points": total_points,
         "errors": errors,
+        "capture_window": {
+            "start": start_date.isoformat(),
+            "end_exclusive": end_date.isoformat(),
+        },
+        "temporal_audit": temporal_audit,
         "write_daily": write_daily,
+        "include_network_activity": include_network_activity,
         "captured": captured,
         "rolled": rolled,
     }

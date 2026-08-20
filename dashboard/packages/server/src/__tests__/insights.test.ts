@@ -120,6 +120,14 @@ describe("buildHealthTools", () => {
     expect(adherence?.name).toBe("query_supplements_adherence");
   });
 
+  it("exposes the joined nutrition and weight report as a generated tool", () => {
+    const report = buildHealthTools().find((tool) =>
+      tool.endpoint.path === "/nutrition-weight",
+    );
+    expect(report?.name).toBe("query_nutrition_weight");
+    expect(report?.toolDef.function.description).toContain("Missing food stays unknown");
+  });
+
   it("propagates required-arg flags into the tool schema", () => {
     const tools = buildHealthTools();
     const corr = tools.find((t) =>

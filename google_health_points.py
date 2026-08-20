@@ -7,32 +7,19 @@ the ingestion job to import.
 
 import hashlib
 import json
-from datetime import datetime, timedelta, timezone
-from zoneinfo import ZoneInfo
 
-
-USER_TZ = "America/New_York"
-
-
-def _sleep_wake_date(interval: dict) -> str | None:
-    """Return Google's local wake date without assuming a fixed UTC offset."""
-    end = interval.get("endTime")
-    if not isinstance(end, str) or not end:
-        return None
-    try:
-        instant = datetime.fromisoformat(end.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    offset_text = interval.get("endUtcOffset")
-    if isinstance(offset_text, str) and offset_text.endswith("s"):
-        try:
-            return (
-                instant.astimezone(timezone.utc)
-                + timedelta(seconds=float(offset_text[:-1]))
-            ).date().isoformat()
-        except ValueError:
-            pass
-    return instant.astimezone(ZoneInfo(USER_TZ)).date().isoformat()
+try:  # Windmill workspace import
+    from u.kevin.google_health_temporal import (
+        TemporalResolutionError,
+        resolve_point_time,
+        spec_for,
+    )
+except ModuleNotFoundError:  # Local tests / development
+    from google_health_temporal import (
+        TemporalResolutionError,
+        resolve_point_time,
+        spec_for,
+    )
 
 
 def parse_point(data_type: str, point: dict) -> dict:
@@ -41,34 +28,20 @@ def parse_point(data_type: str, point: dict) -> dict:
     The fallback key is ordered from most to least granular. In particular,
     timestamped samples must not collapse into a single row for their date.
     """
-    value_key = next(
-        (key for key in point if key not in ("name", "dataSource")), None
-    )
-    value = point.get(value_key, {}) if value_key else {}
+    spec = spec_for(data_type)
+    value = point.get(spec.payload_key)
+    if not isinstance(value, dict):
+        raise TemporalResolutionError(
+            f"{data_type} point is missing payload key {spec.payload_key!r}"
+        )
     source = point.get("dataSource", {})
     platform = source.get("platform")
     app = (source.get("application") or {}).get("packageName")
     device = (source.get("device") or {}).get("displayName")
-    start = end = point_date = None
-
-    if isinstance(value, dict):
-        interval = value.get("interval")
-        sample_time = value.get("sampleTime")
-        civil_date = value.get("date")
-        if isinstance(interval, dict):
-            start, end = interval.get("startTime"), interval.get("endTime")
-            if data_type == "sleep":
-                point_date = _sleep_wake_date(interval)
-        elif isinstance(sample_time, dict):
-            start = end = sample_time.get("physicalTime")
-        if isinstance(civil_date, dict) and not point_date:
-            point_date = (
-                f"{civil_date['year']:04d}-{civil_date['month']:02d}-"
-                f"{civil_date['day']:02d}"
-            )
-
-    if not point_date and start:
-        point_date = start[:10]
+    resolved = resolve_point_time(data_type, value)
+    start = resolved.start_time
+    end = resolved.end_time
+    point_date = resolved.analysis_date
 
     key = point.get("name")
     if not key:
@@ -90,5 +63,7 @@ def parse_point(data_type: str, point: dict) -> dict:
         "start": start,
         "end": end,
         "pdate": point_date,
+        "source_date": resolved.source_local_date,
+        "date_basis": resolved.date_basis,
         "raw": point,
     }

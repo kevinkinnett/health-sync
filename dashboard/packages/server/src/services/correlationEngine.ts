@@ -1,6 +1,13 @@
 import type { CorrelationPair } from "@health-dashboard/shared";
 import { describeCorrelation, pearson } from "./stats.js";
 import { addDays } from "./userTz.js";
+import {
+  adjustFalseDiscoveryRate,
+  blockBootstrapCorrelationInterval,
+  circularShiftPValue,
+  correlationStability,
+  spearman,
+} from "./analysis/statistics.js";
 
 /**
  * Generalized cross-metric correlation engine.
@@ -82,6 +89,7 @@ export function computeCorrelationPairs(
   minN: number = MIN_OVERLAP_DAYS,
 ): CorrelationPair[] {
   const pairs: CorrelationPair[] = [];
+  const rawPValues: number[] = [];
 
   for (const spec of specs) {
     const xs = series.get(spec.x);
@@ -97,10 +105,10 @@ export function computeCorrelationPairs(
     }
     if (points.length < minN) continue;
 
-    const r = pearson(
-      points.map((p) => p.x),
-      points.map((p) => p.y),
-    );
+    const xValues = points.map((point) => point.x);
+    const yValues = points.map((point) => point.y);
+    const r = pearson(xValues, yValues);
+    rawPValues.push(circularShiftPValue(xValues, yValues));
     const suffix = spec.ySuffix ?? defaultLagSuffix(lag);
     const yLabel = lag > 0 ? `${ys.label} (${suffix})` : ys.label;
     const yNoun =
@@ -114,10 +122,22 @@ export function computeCorrelationPairs(
       points,
       insight: describeCorrelation(r, xs.noun, yNoun),
       lagDays: lag,
+      evidence: "exploratory_association",
+      spearman: spearman(xValues, yValues),
+      confidenceInterval: blockBootstrapCorrelationInterval(
+        xValues, yValues, `${spec.x}:${spec.y}:${lag}`,
+      ),
+      stability: correlationStability(xValues, yValues),
     });
   }
 
-  return pairs;
+  const adjusted = adjustFalseDiscoveryRate(rawPValues);
+  return pairs.map((pair, index) => ({
+    ...pair,
+    adjustedPValue: adjusted[index],
+    notableAfterCorrection:
+      adjusted[index] <= 0.1 && pair.stability !== "unstable",
+  }));
 }
 
 function defaultLagSuffix(lag: number): string {

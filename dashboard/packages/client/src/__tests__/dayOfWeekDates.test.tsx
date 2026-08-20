@@ -19,6 +19,17 @@ const DATA: DayOfWeekHeatmapData = {
 };
 
 describe("DayOfWeekHeatmap aggregate tooltips", () => {
+  it("explains that columns are long-term weekday averages", () => {
+    render(<DayOfWeekHeatmap data={DATA} />);
+
+    expect(screen.getByRole("heading", { name: "Typical Weekday Patterns" })).toBeInTheDocument();
+    expect(
+      screen.getByText(/long-term averages grouped by weekday across 7 completed days/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/not readings from one calendar week/i)).toBeInTheDocument();
+    expect(screen.getByText(/today’s in-progress data is excluded/i)).toBeInTheDocument();
+  });
+
   it("shows the completed sample count in each weekday header", () => {
     render(<DayOfWeekHeatmap data={DATA} />);
     expect(screen.getByTitle("1 completed Mon samples")).toBeInTheDocument();

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import type { Intervention, InterventionCategory } from "@health-dashboard/shared";
 import {
   useInterventions,
@@ -13,6 +13,7 @@ import { todayInTz } from "../lib/userTz";
 import { InterventionForm } from "../components/interventions/InterventionForm";
 import { ExperimentReportCard } from "../components/interventions/ExperimentReportCard";
 import { SERIES } from "../components/charts/chartPalette";
+import { PageHeader } from "../components/ui/PageHeader";
 
 /**
  * Timeline — the dated changes you've made, and what each one did.
@@ -49,12 +50,13 @@ export function Timeline() {
   // `?intervention=<id>` opens straight onto a verdict. The home card links
   // here that way, so "did the Eight Sleep help" lands on the answer rather
   // than on a list the reader then has to search.
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const linkedId = Number(searchParams.get("intervention"));
   const [selectedId, setSelectedId] = useState<number | null>(
     Number.isInteger(linkedId) && linkedId > 0 ? linkedId : null,
   );
   const [showForm, setShowForm] = useState(false);
+  const trainingOnly = searchParams.get("category") === "training";
   const refresh = useRefreshInterventions();
   // An ongoing period has no end date, so the overlap view needs to know
   // where "now" is to draw it as still running.
@@ -62,12 +64,11 @@ export function Timeline() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <p className="text-sm text-on-surface-variant max-w-2xl">
-          Every deliberate change you've made, on a date. Pick one to see what
-          moved after it — and what else might explain the difference.
-        </p>
-        <div className="flex gap-2 shrink-0">
+      <PageHeader
+        eyebrow="Changes"
+        title="Changes & Experiments"
+        description="Review what moved after a dated change, distinguish observations from controlled personal experiments, and inspect competing explanations."
+        action={<div className="flex gap-2 shrink-0">
           <button
             type="button"
             onClick={() => refresh.mutate()}
@@ -83,7 +84,37 @@ export function Timeline() {
           >
             {showForm ? "Cancel" : "Add change"}
           </button>
+        </div>}
+      />
+
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-surface-container-low p-3">
+        <div className="flex gap-2" role="group" aria-label="Change category">
+          <FilterButton
+            active={!trainingOnly}
+            onClick={() => {
+              setSelectedId(null);
+              setSearchParams({});
+            }}
+          >
+            All changes
+          </FilterButton>
+          <FilterButton
+            active={trainingOnly}
+            onClick={() => {
+              setSelectedId(null);
+              setSearchParams({ category: "training" });
+            }}
+          >
+            Training programs
+          </FilterButton>
         </div>
+        <Link
+          to="/analytics/correlations"
+          className="inline-flex items-center gap-1.5 text-xs font-bold text-primary hover:underline"
+        >
+          See repeated workout-day effects
+          <span className="material-symbols-outlined text-sm" aria-hidden="true">arrow_forward</span>
+        </Link>
       </div>
 
       {showForm && <InterventionForm onDone={() => setShowForm(false)} />}
@@ -98,10 +129,17 @@ export function Timeline() {
         }
         isEmpty={(d) => d.length === 0}
       >
-        {(items) => (
+        {(items) => {
+          const visibleItems = trainingOnly
+            ? items.filter((item) => item.category === "training")
+            : items;
+          if (visibleItems.length === 0) {
+            return <EmptyState icon="fitness_center" message="No training-program changes are recorded yet. Add the date a program began or changed to analyze longer-term adaptation." />;
+          }
+          return (
           <div className="space-y-4">
             <InterventionGantt
-              interventions={items}
+              interventions={visibleItems}
               today={today}
               selectedId={selectedId}
               onSelect={(id) => setSelectedId((cur) => (cur === id ? null : id))}
@@ -109,7 +147,7 @@ export function Timeline() {
             {/* Named, because the overlap bars above render the same
                 intervention names — a bare text query now matches both. */}
             <div className="space-y-3" data-testid="intervention-list">
-              {items.map((item) => (
+              {visibleItems.map((item) => (
                 <InterventionRow
                   key={item.id}
                   item={item}
@@ -121,11 +159,35 @@ export function Timeline() {
               ))}
             </div>
           </div>
-        )}
+          );
+        }}
       </QueryBoundary>
 
       {selectedId != null && <ExperimentReportCard interventionId={selectedId} />}
     </div>
+  );
+}
+
+function FilterButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`rounded-full px-3 py-1.5 text-xs font-bold transition-colors ${
+        active ? "bg-primary text-on-primary" : "bg-surface-container-high text-on-surface-variant"
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 

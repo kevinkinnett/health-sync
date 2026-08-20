@@ -62,7 +62,7 @@ export class RecoveryAnomalyService {
       const target = days[index];
       if (target.date < start || target.date > end || target.date >= currentDate) continue;
       const baseline = days.slice(Math.max(0, index - RECOVERY_BASELINE_DAYS), index);
-      const features = buildFeatures(target, baseline);
+      const features = recoveryFeaturesForDay(target, baseline);
       if (features.length < 3) continue;
       daysAnalyzed++;
       const anomaly = classifyDay(target.date, features);
@@ -88,7 +88,10 @@ export class RecoveryAnomalyService {
   }
 }
 
-function buildFeatures(target: ReadinessDayInput, baseline: ReadinessDayInput[]): RecoveryFeature[] {
+export function recoveryFeaturesForDay(
+  target: ReadinessDayInput,
+  baseline: ReadinessDayInput[],
+): RecoveryFeature[] {
   const out: RecoveryFeature[] = [];
   for (const definition of FUSIBLE_FEATURES) {
     const feature = fusedFeature(definition, target, baseline);
