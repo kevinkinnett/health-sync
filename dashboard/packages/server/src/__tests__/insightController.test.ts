@@ -114,7 +114,13 @@ class FakeChat {
   send = vi.fn(async (input: { conversationId?: string; message: string }) => ({
     conversationId: input.conversationId ?? "conv-new",
     message: { role: "assistant" as const, content: `Echo: ${input.message}` },
-    meta: { sanitized: false, placeholder: false, toolsCalled: [], rounds: 1 },
+    meta: {
+      sanitized: false,
+      placeholder: false,
+      toolsCalled: [],
+      rounds: 1,
+      exitReason: "answered",
+    },
     pendingActions: [],
   }));
   listPendingActions = vi.fn(async () => []);

@@ -11,7 +11,10 @@ import { formatLocalDateTimeInput, localDateTimeToUtc } from "../../lib/userTz";
 import { AutoGrowTextarea } from "../ui/AutoGrowTextarea";
 import { Card } from "../ui/Card";
 import { MarkdownContent } from "../ui/MarkdownContent";
-import { useInsightChat } from "./useInsightChat";
+import {
+  useInsightChat,
+  type ChatNotice as ChatNoticeValue,
+} from "./useInsightChat";
 
 const EXAMPLE_QUESTIONS = [
   "How is my sleep trending vs last month?",
@@ -163,7 +166,7 @@ function PendingRecoveryActionCard({ action }: { action: RecoveryPendingAction }
 function ChatNotice({
   notice,
 }: {
-  notice: { kind: "warning" | "error"; message: string };
+  notice: ChatNoticeValue;
 }) {
   const error = notice.kind === "error";
   return (
@@ -175,9 +178,7 @@ function ChatNotice({
           : "border-tertiary/30 bg-tertiary/10 text-on-surface-variant"
       }`}
     >
-      <span className="font-bold">
-        {error ? "Chat request failed. " : "Analysis limit reached. "}
-      </span>
+      <span className="font-bold">{notice.title} </span>
       {notice.message}
     </div>
   );

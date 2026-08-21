@@ -25,3 +25,13 @@ export function isSessionExpired(err: unknown): boolean {
     err instanceof LlmHttpError && err.status === 410 && /session_expired/.test(err.body)
   );
 }
+
+/** The proxy process is up, but its backing model session needs a login. */
+export function isLlmAuthenticationRequired(err: unknown): boolean {
+  if (!(err instanceof LlmHttpError)) return false;
+  return (
+    err.status === 401 ||
+    err.status === 403 ||
+    /not logged in|please run \/login/i.test(err.body)
+  );
+}
