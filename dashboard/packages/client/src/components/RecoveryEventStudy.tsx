@@ -31,8 +31,7 @@ const RECOVERY_OUTCOME_OPTIONS: Array<{ value: RecoveryEffectOutcome; label: str
   { value: "readiness", label: "Readiness" },
 ];
 
-const STATE_COPY: Record<RecoveryEventStudyData["evidenceState"], { title: string; body: string }> = {
-  collecting: { title: "Waiting for an aligned session", body: "Log a session and a completed main sleep to begin this timeline." },
+const STATE_COPY: Record<Exclude<RecoveryEventStudyData["evidenceState"], "collecting">, { title: string; body: string }> = {
   individual: { title: "Individual observation", body: "This shows what happened around one or two sessions. It is context, not evidence of a repeatable effect." },
   provisional: { title: "Provisional repeated pattern", body: "At least three eligible sessions can now be summarized, but effect conclusions remain hidden until ten matched pairs exist." },
   matched: { title: "Matched estimate available", body: "The ten-pair evidence floor is met. Review the adjusted estimate beside this descriptive timeline." },
@@ -84,7 +83,7 @@ function EventStudyContent({ data }: { data: RecoveryEventStudyData }) {
   const [exposureOffset, setExposureOffset] = useState(0);
   const [exposureMetric, setExposureMetric] = useState<"duration" | "timing">("duration");
   const selected = data.trajectories.find((trajectory) => trajectory.anchorDate === anchorDate) ?? data.trajectories[0];
-  const copy = STATE_COPY[data.evidenceState];
+  const copy = evidenceCopy(data);
   const chartData = useMemo(() => data.offsets.map((offsetDays) => {
     const selectedPoint = selected?.points.find((point) => point.offsetDays === offsetDays);
     const expectedLow = selectedPoint?.expectedRange?.low ?? null;
@@ -109,10 +108,19 @@ function EventStudyContent({ data }: { data: RecoveryEventStudyData }) {
         </p>
       </div>
       <p className="mt-1 text-xs leading-relaxed text-on-surface-variant">{copy.body}</p>
+      <p className="mt-2 text-[11px] leading-relaxed text-outline">
+        Analysis through {data.window.end ? formatDate(data.window.end) : "the latest completed sleep"}. A current wake date appears here only after its completed main sleep links to a session.
+      </p>
     </div>
 
     {data.trajectories.length === 0 ? (
-      <p className="rounded-lg bg-surface-container p-5 text-sm text-on-surface-variant">No completed sleep has been linked to this activity yet.</p>
+      <p className="rounded-lg bg-surface-container p-5 text-sm text-on-surface-variant">
+        {data.pendingSessions > 0
+          ? "The timeline will appear after the next completed main sleep can be linked."
+          : data.totalSessions > 0
+            ? "No logged session could be linked to a completed main sleep within 24 hours."
+            : "Log a session to begin this timeline."}
+      </p>
     ) : (
       <>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -179,6 +187,26 @@ function EventStudyContent({ data }: { data: RecoveryEventStudyData }) {
       <ul className="mt-2 list-disc space-y-1 pl-5 leading-relaxed">{data.caveats.map((caveat) => <li key={caveat}>{caveat}</li>)}</ul>
     </details>
   </div>;
+}
+
+function evidenceCopy(data: RecoveryEventStudyData): { title: string; body: string } {
+  if (data.evidenceState !== "collecting") return STATE_COPY[data.evidenceState];
+  if (data.pendingSessions > 0) {
+    return {
+      title: "Waiting for a completed main sleep",
+      body: `${data.pendingSessions} recent ${data.activityName} session${data.pendingSessions === 1 ? " is" : "s are"} waiting for the next completed main sleep. It will link automatically when an eligible sleep arrives.`,
+    };
+  }
+  if (data.totalSessions > 0) {
+    return {
+      title: "No aligned sleep found",
+      body: "The logged session could not be linked to a completed main sleep that began within 24 hours after it ended.",
+    };
+  }
+  return {
+    title: "Waiting for the first session",
+    body: "Log a session to begin this timeline. Its first eligible main sleep will link automatically.",
+  };
 }
 
 function ExposureResponsePanel({

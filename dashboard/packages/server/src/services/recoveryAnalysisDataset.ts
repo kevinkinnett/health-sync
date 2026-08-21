@@ -7,7 +7,7 @@ import type { EightSleepRepository } from "../repositories/eightSleepRepo.js";
 import type { ExerciseLogRepository } from "../repositories/exerciseLogRepo.js";
 import type { HealthDataService } from "./healthDataService.js";
 import { buildTrainingDays, buildTrainingSessions } from "./training/trainingSessionBuilder.js";
-import { addDays } from "./userTz.js";
+import { addDays, formatDateInTz } from "./userTz.js";
 import {
   alignRecoverySessions,
   type AlignedRecoveryPeriod,
@@ -22,6 +22,8 @@ export interface RecoveryAnalysisDataset {
   activities: RecoveryActivity[];
   sessions: RecoverySession[];
   periods: AlignedRecoveryPeriod[];
+  pendingSessionIds: Set<number>;
+  currentDayIncluded: boolean;
   measurementRegimes: { sleep: string | null; hrv: string | null };
 }
 
@@ -40,11 +42,11 @@ export class RecoveryAnalysisDatasetBuilder {
 
   async build(today: string): Promise<RecoveryAnalysisDataset> {
     const start = addDays(today, -RECOVERY_ANALYSIS_MAX_DAYS);
-    const end = addDays(today, -1);
+    const historicalEnd = addDays(today, -1);
     const [activities, sessions, rawSleep, rawHeartRate, rawHrv, rawEightSleep, rawExercise, readiness] =
       await Promise.all([
         this.recoveryRepo.listActivities(true),
-        this.recoveryRepo.listSessions(addDays(start, -1), end, undefined, this.timezone),
+        this.recoveryRepo.listSessions(addDays(start, -1), today, undefined, this.timezone),
         this.sleepRepo.findLatest(RECOVERY_ANALYSIS_MAX_DAYS + 10),
         this.heartRateRepo.findLatest(RECOVERY_ANALYSIS_MAX_DAYS + 10),
         this.hrvRepo.findLatest(RECOVERY_ANALYSIS_MAX_DAYS + 10),
@@ -53,13 +55,20 @@ export class RecoveryAnalysisDatasetBuilder {
         this.healthDataService.getReadiness(RECOVERY_ANALYSIS_MAX_DAYS),
       ]);
 
-    const completed = <T extends { date: string }>(rows: T[]) =>
+    const inContext = <T extends { date: string }>(rows: T[], end: string) =>
       rows.filter((row) => row.date >= addDays(start, -8) && row.date <= end);
-    const sleepAll = completed(rawSleep);
-    const hrvAll = completed(rawHrv);
-    const heartRate = completed(rawHeartRate);
-    const eightSleep = completed(rawEightSleep);
-    const exercise = completed(rawExercise);
+    const sleepThroughToday = inContext(rawSleep, today);
+    const eightSleepThroughToday = inContext(rawEightSleep, today);
+    const rawEightByDate = new Map(eightSleepThroughToday.map((day) => [day.date, day]));
+    const currentSleepIsComplete = sleepThroughToday.some((day) =>
+      day.date === today && isCompleteCurrentSleep(day, rawEightByDate.get(today))
+    );
+    const contextEnd = currentSleepIsComplete ? today : historicalEnd;
+    const sleepAll = sleepThroughToday.filter((day) => day.date <= contextEnd);
+    const hrvAll = inContext(rawHrv, contextEnd);
+    const heartRate = inContext(rawHeartRate, contextEnd);
+    const eightSleep = eightSleepThroughToday.filter((day) => day.date <= contextEnd);
+    const exercise = inContext(rawExercise, historicalEnd);
     const sleepRegime = latestRegime(sleepAll);
     const hrvRegime = latestRegime(hrvAll);
     const sleep = sleepRegime == null ? sleepAll : sleepAll.filter((row) => row.measurementMethod === sleepRegime);
@@ -76,11 +85,11 @@ export class RecoveryAnalysisDatasetBuilder {
     );
 
     const periods: RecoverySleepPeriod[] = sleep
-      .filter((day) => day.date >= start && day.date <= end)
+      .filter((day) => day.date >= start && day.date <= contextEnd)
       .flatMap((day) => {
         const eight = eightByDate.get(day.date);
         const sleepStartAt = day.mainSleepStartTime ?? eight?.sleepStart ?? null;
-        if (sleepStartAt == null) return [];
+        if (sleepStartAt == null || (day.date === today && !isCompleteCurrentSleep(day, eight))) return [];
         const priorDate = addDays(day.date, -1);
         let recentTrainingLoad7 = 0;
         for (let offset = 1; offset <= 7; offset++) {
@@ -105,15 +114,53 @@ export class RecoveryAnalysisDatasetBuilder {
         }];
       });
 
+    const alignedPeriods = alignRecoverySessions(sessions, periods);
+    const retainedPeriods = alignedPeriods.filter((period) => period.date !== today || period.sessions.length > 0);
+    const currentDayIncluded = retainedPeriods.some((period) => period.date === today);
+    const alignedSessionIds = new Set(
+      retainedPeriods.flatMap((period) => period.sessions.map((session) => session.id)),
+    );
+    const pendingSessionIds = new Set(
+      sessions
+        .filter((session) => !alignedSessionIds.has(session.id))
+        .filter((session) => isRecentLocalSession(session, today, this.timezone))
+        .filter((session) => !hasCompletedSleepAfterSession(session, periods))
+        .map((session) => session.id),
+    );
+
     return {
       timezone: this.timezone,
-      window: { start, end },
+      window: { start, end: currentDayIncluded ? today : historicalEnd },
       activities,
       sessions,
-      periods: alignRecoverySessions(sessions, periods),
+      periods: retainedPeriods,
+      pendingSessionIds,
+      currentDayIncluded,
       measurementRegimes: { sleep: sleepRegime, hrv: hrvRegime },
     };
   }
+}
+
+function isCompleteCurrentSleep(
+  day: { totalMinutesAsleep: number | null; mainSleepStartTime: string | null; mainSleepEndTime: string | null },
+  eight?: { sleepStart: string | null; sleepEnd: string | null },
+): boolean {
+  const start = day.mainSleepStartTime ?? eight?.sleepStart ?? null;
+  const end = day.mainSleepEndTime ?? eight?.sleepEnd ?? null;
+  if (day.totalMinutesAsleep == null || day.totalMinutesAsleep <= 0 || start == null || end == null) return false;
+  const startMs = Date.parse(start);
+  const endMs = Date.parse(end);
+  return Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs;
+}
+
+function isRecentLocalSession(session: RecoverySession, today: string, timezone: string): boolean {
+  const localDate = formatDateInTz(session.startedAt, timezone);
+  return localDate >= addDays(today, -1) && localDate <= today;
+}
+
+function hasCompletedSleepAfterSession(session: RecoverySession, periods: RecoverySleepPeriod[]): boolean {
+  const sessionEndMs = Date.parse(session.startedAt) + (session.durationMinutes ?? 0) * 60_000;
+  return periods.some((period) => Date.parse(period.sleepStartAt) >= sessionEndMs);
 }
 
 function latestRegime<T extends { date: string; measurementMethod: string }>(rows: T[]): string | null {

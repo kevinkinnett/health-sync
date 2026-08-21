@@ -32,6 +32,7 @@ export class RecoveryEffectsService {
         activityName: activity.name,
         sessions: activitySessions.length,
         alignedSessions: activitySessions.filter((session) => alignedSessionIds.has(session.id)).length,
+        pendingSessions: activitySessions.filter((session) => data.pendingSessionIds.has(session.id)).length,
         combinedExposures,
         matchedPairs: engine.matchedPairsByActivity.get(activity.id) ?? 0,
         requiredPairs: RECOVERY_MIN_MATCHES,
@@ -62,7 +63,9 @@ export class RecoveryEffectsService {
         "A session is assigned to the first main overnight sleep that starts after it ends, up to 24 hours later.",
         "Nights containing more than one recovery activity type are counted as combined exposures but excluded from single-activity estimates.",
         "Each outcome is matched separately, so missing sensor data can produce different sample counts.",
-        "The current Eastern calendar day is excluded because its sleep and recovery data may still be incomplete.",
+        data.currentDayIncluded
+          ? "Today's completed main sleep is included because it followed a logged recovery session; incomplete daytime outcomes remain missing."
+          : "The current Eastern calendar day is excluded unless a completed main sleep can be linked to a recovery session.",
       ],
     };
   }
