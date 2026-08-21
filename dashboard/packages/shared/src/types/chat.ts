@@ -37,6 +37,7 @@ export interface ChatConversationSummary {
 export interface ChatConversationResponse {
   conversationId: string;
   messages: ChatTurn[];
+  pendingActions: import("./recovery.js").RecoveryPendingAction[];
 }
 
 /** Request body for POST /api/insights/chat. */
@@ -60,4 +61,5 @@ export interface ChatSendResponse {
     toolsCalled: string[];
     rounds: number;
   };
+  pendingActions: import("./recovery.js").RecoveryPendingAction[];
 }

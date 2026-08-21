@@ -12,6 +12,12 @@ import {
 import type { ChatCompleter, ChatMessage, ModelSource } from "./llmClient.js";
 import { resolveModel } from "./llmClient.js";
 import { runAgenticLoop } from "./agenticLoop.js";
+import type { RecoveryActionService } from "./recoveryActionService.js";
+import {
+  buildRecoveryActionTools,
+  executeRecoveryActionTool,
+  PREPARE_RECOVERY_SESSION_TOOL,
+} from "./recoveryActionTools.js";
 
 /**
  * Short system prompt — kept lean because the local Claude proxy
@@ -25,6 +31,11 @@ Fitbit-device measurements imported through Google Health, Eight Sleep
 contact-sensor measurements, plus supplements and medications, through a registered set of
 read-only tools. Answer the user's questions about their own health
 data using those tools.
+
+You can also prepare recovery-session log actions for user confirmation.
+Never claim a session was saved when an action was only prepared. If the
+activity, local start time, or required duration is ambiguous, ask a
+follow-up question instead of guessing.
 
 When comparing sensors, join overnight readings by America/New_York local
 wake date and use the sensor-agreement tool. Treat the sensors as
@@ -54,6 +65,7 @@ export interface ChatTurnResult {
     toolsCalled: string[];
     rounds: number;
   };
+  pendingActions: import("@health-dashboard/shared").RecoveryPendingAction[];
 }
 
 /**
@@ -67,7 +79,7 @@ export class InsightChatService {
     private repo: InsightRepository,
     private llm: ChatCompleter,
     private v1Ctx: V1Context,
-    private opts: { model: ModelSource },
+    private opts: { model: ModelSource; recoveryActions?: RecoveryActionService },
   ) {}
 
   async send(input: {
@@ -75,7 +87,10 @@ export class InsightChatService {
     message: string;
   }): Promise<ChatTurnResult> {
     const conversationId = input.conversationId ?? randomUUID();
-    const tools = buildHealthTools().map((t) => t.toolDef);
+    const tools = [
+      ...buildHealthTools().map((t) => t.toolDef),
+      ...(this.opts.recoveryActions ? buildRecoveryActionTools() : []),
+    ];
 
     // Persist the user turn before running the loop so a crash mid-loop
     // doesn't lose what the user asked.
@@ -106,6 +121,12 @@ export class InsightChatService {
     }
     const messages: ChatMessage[] = [
       { role: "system", content: CHAT_SYSTEM_PROMPT },
+      ...(this.opts.recoveryActions
+        ? [{
+            role: "system" as const,
+            content: `Current local time is ${formatCurrentLocal(this.v1Ctx.userTimezone)} in ${this.v1Ctx.userTimezone}. A prepared recovery action still requires the user to press Log session.`,
+          }]
+        : []),
       ...replayed,
     ];
 
@@ -114,8 +135,17 @@ export class InsightChatService {
       model: await resolveModel(this.opts.model),
       messages,
       tools,
-      executeTool: (name, args) =>
-        executeHealthTool(name, args, this.v1Ctx),
+      executeTool: (name, args) => {
+        if (name === PREPARE_RECOVERY_SESSION_TOOL && this.opts.recoveryActions) {
+          return executeRecoveryActionTool(
+            name,
+            args,
+            conversationId,
+            this.opts.recoveryActions,
+          );
+        }
+        return executeHealthTool(name, args, this.v1Ctx);
+      },
       // Broad questions can legitimately inspect several recovery and
       // training signals. Tool executions have their own allowance, while
       // round 13 is reserved for a forced no-tools synthesis response.
@@ -165,6 +195,9 @@ export class InsightChatService {
       }
     }
 
+    const pendingActions = this.opts.recoveryActions
+      ? await this.opts.recoveryActions.listConversationActions(conversationId)
+      : [];
     return {
       conversationId,
       message: { role: "assistant", content: result.content },
@@ -174,7 +207,12 @@ export class InsightChatService {
         toolsCalled: result.toolsCalled,
         rounds: result.rounds,
       },
+      pendingActions,
     };
+  }
+
+  listPendingActions(conversationId: string) {
+    return this.opts.recoveryActions?.listConversationActions(conversationId) ?? Promise.resolve([]);
   }
 
   private toChatMessage(r: ChatRecord): ChatMessage {
@@ -217,4 +255,17 @@ export class InsightChatService {
     }
     return null;
   }
+}
+
+function formatCurrentLocal(timezone: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZoneName: "short",
+  }).format(new Date());
 }

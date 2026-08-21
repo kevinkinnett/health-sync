@@ -115,7 +115,9 @@ class FakeChat {
     conversationId: input.conversationId ?? "conv-new",
     message: { role: "assistant" as const, content: `Echo: ${input.message}` },
     meta: { sanitized: false, placeholder: false, toolsCalled: [], rounds: 1 },
+    pendingActions: [],
   }));
+  listPendingActions = vi.fn(async () => []);
 }
 
 function buildApp(repo: FakeRepo, jobs: FakeJobs, chat: FakeChat) {

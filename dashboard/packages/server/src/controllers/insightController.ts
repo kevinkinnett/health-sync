@@ -102,14 +102,19 @@ export class InsightController {
 
   async chatGetConversation(req: Request, res: Response): Promise<void> {
     try {
-      const rows = await this.repo.getDisplayConversation(String(req.params.conversationId));
+      const conversationId = String(req.params.conversationId);
+      const [rows, pendingActions] = await Promise.all([
+        this.repo.getDisplayConversation(conversationId),
+        this.chat.listPendingActions(conversationId),
+      ]);
       res.json({
-        conversationId: String(req.params.conversationId),
+        conversationId,
         messages: rows.map((r) => ({
           role: r.role,
           content: r.content,
           createdAt: r.createdAt,
         })),
+        pendingActions,
       });
     } catch (err) {
       logger.error({ err }, "Failed to fetch conversation");

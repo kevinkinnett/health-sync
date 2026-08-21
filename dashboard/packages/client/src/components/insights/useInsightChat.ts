@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { ChatTurn } from "@health-dashboard/shared";
+import type { ChatTurn, RecoveryPendingAction } from "@health-dashboard/shared";
 import {
   useChatConversation,
   useSendChatMessage,
@@ -34,6 +34,7 @@ export interface InsightChatState {
   historyOpen: boolean;
   isSending: boolean;
   messages: ChatTurn[];
+  pendingActions: RecoveryPendingAction[];
   notice: { kind: "warning" | "error"; message: string } | null;
   closeHistory: () => void;
   newChat: () => void;
@@ -96,6 +97,7 @@ export function useInsightChat(): InsightChatState {
     historyOpen,
     isSending: send.isPending,
     messages: [...persistedMessages, ...optimisticMessages],
+    pendingActions: conversation.data?.pendingActions ?? send.data?.pendingActions ?? [],
     notice,
     closeHistory: () => setHistoryOpen(false),
     newChat: () => {

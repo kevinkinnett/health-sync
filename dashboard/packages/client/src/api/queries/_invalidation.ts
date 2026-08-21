@@ -30,6 +30,11 @@ export function invalidateMedications(qc: QueryClient): void {
   qc.invalidateQueries({ queryKey: ["analytics", "medications"] });
 }
 
+export function invalidateRecovery(qc: QueryClient): void {
+  qc.invalidateQueries({ queryKey: ["recovery"] });
+  qc.invalidateQueries({ queryKey: ["analytics", "recovery"] });
+}
+
 /**
  * After a fresh ingest run, every health-metric series, weekly insight,
  * records leaderboard, day-of-week heatmap, and analytics correlation is

@@ -373,6 +373,56 @@ describe("Insights page", () => {
     expect(convId).toBe("conv-1");
   });
 
+  it("reviews and confirms a chat-prepared recovery session", async () => {
+    let status: "pending" | "confirmed" = "pending";
+    const action = () => ({
+      id: "action-1", conversationId: "conv-recovery", status,
+      proposal: {
+        activityId: 1, activityCode: "hot_blanket", activityName: "Hot blanket", activityCategory: "heat_therapy",
+        startedAt: "2026-08-21T01:00:00Z", durationMinutes: 30, intensity: null,
+        temperatureF: 125, massageType: null, notes: null,
+      },
+      sessionId: status === "confirmed" ? 44 : null,
+      expiresAt: "2026-08-22T01:00:00Z", createdAt: "2026-08-21T01:00:00Z", updatedAt: "2026-08-21T01:00:00Z",
+    });
+    apiFetchMock.mockImplementation((path: string, opts?: RequestInit) => {
+      if (path === "/config") return Promise.resolve({ userTimezone: "America/New_York" });
+      if (path === "/insights/chat/conversations") return Promise.resolve([]);
+      if (path === "/insights/chat" && opts?.method === "POST") return Promise.resolve({
+        conversationId: "conv-recovery",
+        message: { role: "assistant", content: "I prepared the session for review." },
+        meta: { sanitized: false, placeholder: false, toolsCalled: ["prepare_log_recovery_session"], rounds: 2 },
+        pendingActions: [action()],
+      });
+      if (path === "/insights/chat/conv-recovery") return Promise.resolve({
+        conversationId: "conv-recovery",
+        messages: [{ role: "assistant", content: "I prepared the session for review.", createdAt: new Date().toISOString() }],
+        pendingActions: [action()],
+      });
+      if (path === "/recovery/pending-actions/action-1/confirm" && opts?.method === "POST") {
+        status = "confirmed";
+        return Promise.resolve({ action: action(), session: { id: 44 } });
+      }
+      return Promise.resolve([]);
+    });
+    renderInsights();
+    fireEvent.click(screen.getByRole("tab", { name: /chat/i }));
+    const textarea = await screen.findByPlaceholderText(/ask about your health/i);
+    fireEvent.change(textarea, { target: { value: "Log 30 minutes in the hot blanket" } });
+    fireEvent.click(screen.getByRole("button", { name: /send message/i }));
+
+    const card = await screen.findByLabelText(/confirm hot blanket session/i);
+    expect(within(card).getByText(/not saved yet/i)).toBeInTheDocument();
+    fireEvent.click(within(card).getByRole("button", { name: "Edit" }));
+    fireEvent.change(within(card).getByLabelText("Proposed duration"), { target: { value: "45" } });
+    fireEvent.click(within(card).getByRole("button", { name: /log session/i }));
+    await waitFor(() => {
+      const call = apiFetchMock.mock.calls.find(([path]) => path === "/recovery/pending-actions/action-1/confirm");
+      expect(call).toBeDefined();
+      expect(JSON.parse(String(call![1].body)).durationMinutes).toBe(45);
+    });
+  });
+
   it("keeps a placeholder response visible and explains the analysis limit", async () => {
     const fallback =
       "Unable to produce a grounded answer because the analysis limit was reached.";

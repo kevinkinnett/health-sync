@@ -93,6 +93,7 @@ describe("createApp — composition root boots", () => {
     "/api/health/summary",
     "/api/supplements/items",
     "/api/medications/items",
+    "/api/recovery/activities",
     "/api/analytics/supplements/intake-by-day",
     "/api/alerts",
     "/api/settings/notifications",

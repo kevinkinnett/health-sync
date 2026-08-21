@@ -66,6 +66,7 @@ export const navSections: NavSectionDef[] = [
     items: [
       { to: "/supplements", label: "Supplements", icon: "edit_note" },
       { to: "/medications", label: "Medications", icon: "edit_note" },
+      { to: "/recovery", label: "Recovery", icon: "spa" },
     ],
   },
   {
