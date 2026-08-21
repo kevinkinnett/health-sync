@@ -54,6 +54,8 @@ export function toSummary(report: ExperimentReport): ExperimentSummary {
   return {
     interventionId: report.interventionId,
     interventionName: report.interventionName,
+    interventionCategory: report.interventionCategory,
+    evidence: report.evidence,
     changepoint: report.changepoint,
     confidence: report.confidence,
     summary: report.summary,

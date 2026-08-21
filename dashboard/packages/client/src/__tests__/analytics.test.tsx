@@ -76,6 +76,11 @@ describe("Analytics section", () => {
     expect(
       screen.getAllByText("Medications").length,
     ).toBeGreaterThanOrEqual(1);
+    expect(
+      screen
+        .getAllByRole("link", { name: /Nutrition/i })
+        .some((link) => link.getAttribute("href") === "/analytics/nutrition"),
+    ).toBe(true);
   });
 
   it("/explore redirects into /analytics", async () => {
@@ -83,7 +88,7 @@ describe("Analytics section", () => {
     await waitFor(() => {
       // After the redirect the analytics layout's sub-nav is visible.
       expect(
-        screen.getAllByText("Correlations").length,
+        screen.getAllByText("Relationships").length,
       ).toBeGreaterThanOrEqual(1);
     });
   });

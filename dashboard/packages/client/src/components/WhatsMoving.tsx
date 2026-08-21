@@ -75,7 +75,11 @@ export function WhatsMoving({ data }: { data: CorrelationsData }) {
   const [expanded, setExpanded] = useState(false);
 
   const ranked = data.pairs
-    .filter((p) => Math.abs(p.correlation) >= MIN_R && p.points.length >= MIN_N)
+    .filter((p) =>
+      Math.abs(p.correlation) >= MIN_R &&
+      p.points.length >= MIN_N &&
+      p.notableAfterCorrection !== false
+    )
     .sort((a, b) => strength(b) - strength(a));
 
   const visible = expanded ? ranked : ranked.slice(0, TOP_N);

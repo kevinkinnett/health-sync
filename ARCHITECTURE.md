@@ -60,6 +60,23 @@ respective assembly rules; `HealthDataService` remains a stable facade for
 controllers while delegating scoring, summary construction, records, heatmaps,
 weekly insights, and correlations.
 
+Personal-effect analysis follows a functional-core boundary under
+`services/analysis/`. A provider-neutral local-day builder aligns daytime
+training with wake-dated next-night outcomes. The pure workout engine matches
+each workout to one unused same-weekday rest day with similar prior sleep,
+morning recovery, recent load, and calendar proximity, then reports real-unit
+differences with deterministic moving-block bootstrap intervals. Repository
+orchestration and measurement-regime selection stay in the focused
+`WorkoutEffectsService`; training classification/load is shared through a pure
+session builder so the training screen and analysis cannot disagree.
+
+Cross-metric correlations remain exploratory, but now disclose Pearson and
+Spearman agreement, moving-block uncertainty, and time stability. A
+circular-shift null preserves within-series ordering, then Benjamini-Hochberg
+correction controls the false-discovery rate across the curated pair set. Only
+corrected, non-unstable relationships can reach headline surfaces; every plot
+remains available for inspection without being promoted as a conclusion.
+
 The dossier workflow follows the same shape. `DossierService` coordinates item
 lookup, model resolution, generation, usage accounting, and persistence through
 small storage, catalog-reader, and chat-completion capabilities. Pure modules
@@ -145,6 +162,13 @@ a recurrence after the cooldown becomes a new episode. Pipeline stale/recovery
 transitions resolve their opposite state. Read acknowledgement is independent
 of resolution and can be applied to one episode or the whole inbox.
 
+The possible-illness/under-recovery detector preserves the focused two-day
+resting-HR/breathing/skin-temperature rule and adds a conservative broader
+path over provider-neutral recovery features. That path requires at least
+three strained domains on both days, two of the same domains to persist, and a
+core cardiovascular or respiratory signal; isolated poor sleep or one noisy
+sensor therefore cannot create an illness alert.
+
 Versioned schema changes live under `dashboard/packages/server/migrations/`.
 `20260809_retire_fitbit_ingest_state.sql` transactionally renames the obsolete
 Fitbit Web API state table to a read-only archive. It is idempotent and refuses
@@ -173,6 +197,17 @@ The dashboard shell follows a workflow-first information architecture:
   lives at `/alerts`, separates current episodes from resolved history and
   health signals from pipeline incidents, and attaches a relevant next action
   and acknowledgement control to every event.
+- Relationships leads with the concrete question “Is working out helping?” and
+  labels matched-day results as adjusted associations, never proven causes.
+  Real-unit differences, uncertainty ranges, sample size, and estimate
+  confidence remain visible on every card; raw correlation panels separately
+  disclose rank agreement, stability, and multiple-comparison status.
+- Relationships and Changes & Experiments share an explicit evidence ladder:
+  exploratory association, adjusted association, observed change, and
+  controlled personal experiment. Evidence grade describes study design;
+  estimate confidence separately describes how stable the numerical result is.
+  Training-program changes deep-link between the two screens so repeated
+  workout-day effects are not confused with longer-term before/after changes.
 - Fonts and symbols are bundled locally so the installed PWA does not rely on
   Google Fonts being reachable.
 - Page modules are lazy-loaded so charting and insight code are downloaded only

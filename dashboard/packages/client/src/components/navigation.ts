@@ -27,7 +27,7 @@ export const analyzeNavItems: NavLinkDef[] = [
   { to: "/analytics/weight", label: "Weight", icon: "scale", description: "Body-weight changes and longer-term direction.", dateRange: true },
   { to: "/analytics/exercises", label: "Exercises", icon: "exercise", description: "Completed workouts, duration, distance, and training patterns.", dateRange: true },
   { to: "/analytics/records", label: "Records", icon: "emoji_events", description: "Personal bests and standout values across your health history." },
-  { to: "/analytics/correlations", label: "Correlations", icon: "scatter_plot", description: "Explore how two health signals move together over time." },
+  { to: "/analytics/correlations", label: "Relationships", icon: "scatter_plot", description: "See repeated workout effects and explore which health signals move together." },
   { to: "/analytics/supplements", label: "Supplement Trends", icon: "medication", description: "Compare supplement timing with sleep, readiness, and recovery.", dateRange: true },
   { to: "/analytics/medications", label: "Medication Trends", icon: "prescriptions", description: "Compare medication timing with sleep, readiness, and recovery.", dateRange: true },
   { to: "/insights", label: "AI Insights", icon: "auto_awesome" },
@@ -57,7 +57,7 @@ export const navSections: NavSectionDef[] = [
   {
     header: "Changes",
     items: [
-      { to: "/timeline", label: "Experiments", icon: "timeline" },
+      { to: "/timeline", label: "Changes & Experiments", icon: "timeline" },
       ...analyze("/analytics/correlations", "/insights"),
     ],
   },

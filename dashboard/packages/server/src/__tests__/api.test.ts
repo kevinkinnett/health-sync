@@ -218,6 +218,29 @@ describe("Health API endpoints", () => {
     expect(res.body).toEqual([]);
   });
 
+  it("GET /api/health/nutrition-weight returns the joined local-day report", async () => {
+    const res = await request(app)
+      .get("/api/health/nutrition-weight?start=2026-04-01&end=2026-04-01")
+      .expect(200);
+
+    expect(res.body).toMatchObject({
+      window: { start: "2026-04-01", end: "2026-04-01" },
+      days: [{
+        date: "2026-04-01",
+        food: null,
+        estimatedCaloriesOut: 2200,
+        estimatedEnergyGap: null,
+      }],
+      readiness: { state: "collecting" },
+    });
+  });
+
+  it("nutrition-weight uses shared date validation", async () => {
+    await request(app)
+      .get("/api/health/nutrition-weight?start=garbage&end=nonsense")
+      .expect(400);
+  });
+
   it("defaults to 30-day range when no dates provided", async () => {
     const res = await request(app).get("/api/health/activity").expect(200);
     expect(res.body).toBeInstanceOf(Array);

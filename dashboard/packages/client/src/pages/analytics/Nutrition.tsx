@@ -1,170 +1,185 @@
-import type { FoodLogDay } from "@health-dashboard/shared";
-import { useFood } from "../../api/queries";
+import type { FoodLogDay, NutritionWeightReport } from "@health-dashboard/shared";
+import { useNutritionWeight } from "../../api/queries";
+import { useChartAnnotations } from "../../components/charts/annotations";
+import { METRIC_COLOR } from "../../components/charts/chartPalette";
 import {
   MetricLineChart,
   type MetricPoint,
 } from "../../components/charts/MetricLineChart";
+import { CollectionReadiness } from "../../components/nutritionWeight/CollectionReadiness";
+import { EnergyContextChart } from "../../components/nutritionWeight/EnergyContextChart";
+import { EnergySummary } from "../../components/nutritionWeight/EnergySummary";
 import { EmptyState, QueryBoundary } from "../../components/QueryBoundary";
-import { METRIC_COLOR } from "../../components/charts/chartPalette";
-import { useChartAnnotations } from "../../components/charts/annotations";
 
-/**
- * Nutrition / food-intake screen. Calorie + nutrient data rolled up from
- * Google Health's nutrition-log (manual or AI photo logging) by
- * ingest_google_health.
- *
- * Only days the user actually logged food appear — gaps mean "unlogged",
- * not zero intake — so the empty state and the copy lean on that.
- */
 export function AnalyticsNutrition() {
-  const q = useFood();
+  const query = useNutritionWeight();
   return (
     <div className="space-y-4">
-      <p className="text-sm text-on-surface-variant">
-        Calorie and macronutrient intake from the days you logged food in
-        Google Health from the Fitbit app (AI photo logging counts too). Only logged
-        days show here — a gap means nothing was logged, not zero.
+      <p className="text-sm text-on-surface-variant max-w-4xl">
+        Logged nutrition alongside estimated energy output and training on the same local calendar
+        dates. Missing food days remain unknown, and today stays provisional until it is complete.
       </p>
       <QueryBoundary
-        query={q}
+        query={query}
         empty={
           <EmptyState
             icon="restaurant"
-            message="No food logged in this window yet — log a meal (the photo logger is quickest) and it'll appear here."
+            message="No food logs in this window yet. Log a meal and it will appear here after the next sync."
           />
         }
-        isEmpty={(d) => d.length === 0}
+        isEmpty={(report) => !report.days.some((day) => day.food != null)}
       >
-        {(data) => <NutritionBody data={data} />}
+        {(report) => <NutritionBody report={report} />}
       </QueryBoundary>
     </div>
   );
 }
 
-function NutritionBody({ data }: { data: FoodLogDay[] }) {
-  const latest = data[data.length - 1];
-  // Dated changes drawn onto every series, so a shift in intake can be
-  // read against what was happening at the time.
-  const marks = useChartAnnotations(data.map((d) => d.date));
+function NutritionBody({ report }: { report: NutritionWeightReport }) {
+  const foodDays = report.days.filter(
+    (day): day is typeof day & { food: FoodLogDay } => day.food != null,
+  );
+  const latest = foodDays.at(-1)?.food;
+  const marks = useChartAnnotations(report.days.map((day) => day.date));
+  const points = (read: (food: FoodLogDay) => number | null): MetricPoint[] =>
+    report.days.map((day) => ({ date: day.date, value: day.food ? read(day.food) : null }));
+
   return (
     <div className="space-y-4">
+      <EnergySummary report={report} />
+      <EnergyContextChart report={report} annotations={marks} />
+
       {latest && <LatestDayCard day={latest} />}
 
-      <MetricLineChart
-        annotations={marks}
-        title="Calories In"
-        description="Total calories logged per day. Pair with your activity / calories-out for energy balance."
-        unit="cal"
-        color={METRIC_COLOR.caloriesIn}
-        digits={0}
-        data={data.map((d): MetricPoint => ({ date: d.date, value: d.caloriesIn }))}
-      />
-      <MetricLineChart
-        annotations={marks}
-        title="Protein"
-        description="Grams of protein logged per day."
-        unit="g"
-        color={METRIC_COLOR.protein}
-        digits={0}
-        data={data.map((d): MetricPoint => ({ date: d.date, value: d.protein }))}
-      />
-      <MetricLineChart
-        annotations={marks}
-        title="Carbohydrates"
-        description="Grams of carbohydrate logged per day."
-        unit="g"
-        color={METRIC_COLOR.carbs}
-        digits={0}
-        data={data.map((d): MetricPoint => ({ date: d.date, value: d.carbs }))}
-      />
-      <MetricLineChart
-        annotations={marks}
-        title="Fat"
-        description="Grams of fat logged per day."
-        unit="g"
-        color={METRIC_COLOR.fat}
-        digits={0}
-        data={data.map((d): MetricPoint => ({ date: d.date, value: d.fat }))}
-      />
-      <MetricLineChart
-        annotations={marks}
-        title="Fiber"
-        description="Grams of fiber logged per day."
-        unit="g"
-        color={METRIC_COLOR.fiber}
-        digits={0}
-        data={data.map((d): MetricPoint => ({ date: d.date, value: d.fiber }))}
-      />
-      <MetricLineChart
-        annotations={marks}
-        title="Sugar"
-        description="Grams of sugar logged per day (a subset of carbohydrates)."
-        unit="g"
-        color={METRIC_COLOR.sugar}
-        digits={0}
-        data={data.map((d): MetricPoint => ({ date: d.date, value: d.sugar }))}
-      />
-      <MetricLineChart
-        annotations={marks}
-        title="Sodium"
-        description="Milligrams of sodium logged per day."
-        unit="mg"
-        color={METRIC_COLOR.sodium}
-        digits={0}
-        data={data.map((d): MetricPoint => ({ date: d.date, value: d.sodium }))}
-      />
+      <div className="grid xl:grid-cols-2 gap-4">
+        <MetricLineChart
+          annotations={marks}
+          title="Protein"
+          description="Logged protein per day. Gaps are unlogged days."
+          unit="g"
+          color={METRIC_COLOR.protein}
+          digits={0}
+          data={points((food) => food.protein)}
+        />
+        <MetricLineChart
+          annotations={marks}
+          title="Fiber"
+          description="Logged fiber per day. Gaps are unlogged days."
+          unit="g"
+          color={METRIC_COLOR.fiber}
+          digits={0}
+          data={points((food) => food.fiber)}
+        />
+      </div>
+
+      <details className="group bg-surface-container rounded-xl border border-outline-variant/10">
+        <summary className="list-none cursor-pointer p-5 flex items-center justify-between gap-4">
+          <span>
+            <span className="block text-sm font-headline font-semibold text-on-surface">
+              More nutrient detail
+            </span>
+            <span className="block text-xs text-outline mt-1">
+              Carbohydrates, fat, sugar, and sodium
+            </span>
+          </span>
+          <span
+            className="material-symbols-outlined text-outline transition-transform group-open:rotate-180"
+            aria-hidden="true"
+          >
+            expand_more
+          </span>
+        </summary>
+        <div className="grid xl:grid-cols-2 gap-4 p-4 pt-0">
+          <MetricLineChart
+            annotations={marks}
+            title="Carbohydrates"
+            unit="g"
+            color={METRIC_COLOR.carbs}
+            digits={0}
+            data={points((food) => food.carbs)}
+          />
+          <MetricLineChart
+            annotations={marks}
+            title="Fat"
+            unit="g"
+            color={METRIC_COLOR.fat}
+            digits={0}
+            data={points((food) => food.fat)}
+          />
+          <MetricLineChart
+            annotations={marks}
+            title="Sugar"
+            unit="g"
+            color={METRIC_COLOR.sugar}
+            digits={0}
+            data={points((food) => food.sugar)}
+          />
+          <MetricLineChart
+            annotations={marks}
+            title="Sodium"
+            unit="mg"
+            color={METRIC_COLOR.sodium}
+            digits={0}
+            data={points((food) => food.sodium)}
+          />
+        </div>
+      </details>
+
+      <CollectionReadiness readiness={report.readiness} />
     </div>
   );
 }
 
 function LatestDayCard({ day }: { day: FoodLogDay }) {
-  const g = (v: number | null) => (v != null ? `${Math.round(v)} g` : "—");
-  const mg = (v: number | null) => (v != null ? `${Math.round(v)} mg` : "—");
-  const stats: { label: string; value: string | number }[] = [
+  const g = (value: number | null) => (value != null ? `${Math.round(value)} g` : "Unknown");
+  const mg = (value: number | null) => (value != null ? `${Math.round(value)} mg` : "Unknown");
+  const stats: Array<{ label: string; value: string | number }> = [
     {
       label: "Calories",
       value:
         day.caloriesIn != null
           ? `${Math.round(day.caloriesIn)}${day.calorieGoal ? ` / ${Math.round(day.calorieGoal)}` : ""}`
-          : "—",
+          : "Unknown",
     },
     { label: "Protein", value: g(day.protein) },
-    { label: "Carbs", value: g(day.carbs) },
-    { label: "Sugar", value: g(day.sugar) },
-    { label: "Fat", value: g(day.fat) },
-    { label: "Sat Fat", value: g(day.saturatedFat) },
     { label: "Fiber", value: g(day.fiber) },
+    { label: "Carbs", value: g(day.carbs) },
+    { label: "Fat", value: g(day.fat) },
+    { label: "Sugar", value: g(day.sugar) },
+    { label: "Saturated fat", value: g(day.saturatedFat) },
     { label: "Sodium", value: mg(day.sodium) },
     { label: "Cholesterol", value: mg(day.cholesterol) },
     { label: "Potassium", value: mg(day.potassium) },
-    { label: "Items", value: day.foodCount ?? "—" },
+    { label: "Items", value: day.foodCount ?? "Unknown" },
   ];
   return (
-    <div className="bg-surface-container rounded-xl p-5">
-      <h3 className="text-sm font-headline font-semibold text-on-surface flex items-baseline justify-between">
+    <section aria-labelledby="latest-food-heading" className="bg-surface-container rounded-xl p-5">
+      <h2
+        id="latest-food-heading"
+        className="text-sm font-headline font-semibold text-on-surface flex items-baseline justify-between"
+      >
         <span className="flex items-center gap-2">
           <span
             className="material-symbols-outlined text-primary text-base"
             style={{ fontVariationSettings: "'FILL' 1" }}
+            aria-hidden="true"
           >
             restaurant
           </span>
           Last logged day
         </span>
         <span className="text-[11px] text-outline tabular-nums">{day.date}</span>
-      </h3>
-      <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 mt-4">
-        {stats.map((s) => (
-          <div key={s.label}>
-            <div className="text-xl font-bold font-headline tabular-nums text-on-surface">
-              {s.value}
+      </h2>
+      <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-6 gap-3 mt-4">
+        {stats.map((stat) => (
+          <div key={stat.label} className="min-w-0">
+            <div className="text-lg font-bold font-headline tabular-nums text-on-surface break-words">
+              {stat.value}
             </div>
-            <div className="text-[10px] uppercase tracking-widest text-outline">
-              {s.label}
-            </div>
+            <div className="text-[10px] uppercase tracking-wider text-outline">{stat.label}</div>
           </div>
         ))}
       </div>
-    </div>
+    </section>
   );
 }

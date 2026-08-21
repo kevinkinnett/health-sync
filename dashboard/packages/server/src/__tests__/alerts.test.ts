@@ -108,6 +108,29 @@ describe("detectAlerts", () => {
     expect(run(days).find((a) => a.kind === "illness_triad")).toBeUndefined();
   });
 
+  it("recognizes persistent multi-signal recovery strain beyond the classic triad", () => {
+    const baseline = toInputs(baseDays(40)).map((day, index) => ({
+      ...day,
+      restlessness: 9 + (index % 2),
+    }));
+    const strained = (offset: number): ReadinessDayInput => ({
+      date: new Date(Date.UTC(2026, 0, 41 + offset)).toISOString().slice(0, 10),
+      hrv: { fitbit: 32 },
+      rhr: { fitbit: 60 },
+      sleepMin: { fitbit: 300 },
+      breathing: { fitbit: 14 },
+      spo2: { fitbit: 96 },
+      skinTemp: 0,
+      restlessness: 24,
+    });
+    const days = [...baseline, strained(0), strained(1)];
+    const alert = detectAlerts(days, computeReadiness(days)).find(
+      (candidate) => candidate.kind === "illness_triad",
+    );
+    expect(alert).toBeDefined();
+    expect(alert!.detail).toMatch(/HRV|Sleep|Restlessness/);
+  });
+
   it("fires low_spo2 as an alert below the hard floor", () => {
     const days = withTail(baseDays(40), [{ spo2: 88 }]);
     const a = run(days).find((x) => x.kind === "low_spo2");

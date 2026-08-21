@@ -87,6 +87,7 @@ export const METRIC_COLOR: Record<string, string> = {
   // Body / intake
   weight: SERIES[1],
   caloriesIn: SERIES[3],
+  estimatedCaloriesOut: SERIES[0],
   protein: SERIES[2],
   carbs: SERIES[0],
   fat: SERIES[4],

@@ -27,6 +27,8 @@ function summary(over: Partial<ExperimentSummary> = {}): ExperimentSummary {
   return {
     interventionId: 1,
     interventionName: "Eight Sleep Pod",
+    interventionCategory: "device",
+    evidence: "observed_change",
     changepoint: "2026-05-02",
     confidence: "moderate",
     summary: "…",

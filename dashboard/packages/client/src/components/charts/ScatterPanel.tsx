@@ -11,6 +11,8 @@ import { useChartTheme } from "../../stores/themeStore";
 import { CorrelationBadge } from "./CorrelationBadge";
 import { formatNumber } from "./tooltipFormat";
 import { DEFAULT_SERIES } from "./chartPalette";
+import type { PersonalEvidenceGrade } from "@health-dashboard/shared";
+import { EVIDENCE_LABEL } from "../evidence";
 
 export interface ScatterPanelPoint {
   x: number;
@@ -31,6 +33,12 @@ export interface ScatterPanelProps {
   correlation: number | null;
   /** Optional sample-size pill ("n = 23 days") rendered next to the badge. */
   n?: number;
+  spearman?: number;
+  confidenceInterval?: { low: number; high: number };
+  stability?: "stable" | "mixed" | "unstable";
+  adjustedPValue?: number;
+  notableAfterCorrection?: boolean;
+  evidence?: PersonalEvidenceGrade;
   /** Sorted by date so tooltip ordering is stable. */
   points: ScatterPanelPoint[];
   /** Axis labels — used for both the axis ticks and the chart legend. */
@@ -49,6 +57,12 @@ export function ScatterPanel({
   insight,
   correlation,
   n,
+  spearman,
+  confidenceInterval,
+  stability,
+  adjustedPValue,
+  notableAfterCorrection,
+  evidence,
   points,
   xAxisLabel,
   yAxisLabel,
@@ -71,6 +85,29 @@ export function ScatterPanel({
         </div>
       </div>
       <p className="text-xs text-on-surface-variant mb-3">{insight}</p>
+      {evidence != null && (
+        <p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-primary">
+          {EVIDENCE_LABEL[evidence]}
+        </p>
+      )}
+      {(spearman != null || confidenceInterval != null || stability != null) && (
+        <div className="mb-3 flex flex-wrap gap-1.5 text-[10px] font-bold uppercase tracking-wide text-outline">
+          {spearman != null && <span className="rounded-full bg-surface-container-high px-2 py-1">Rank ρ {spearman.toFixed(2)}</span>}
+          {confidenceInterval != null && (
+            <span className="rounded-full bg-surface-container-high px-2 py-1">
+              95% r {confidenceInterval.low.toFixed(2)} to {confidenceInterval.high.toFixed(2)}
+            </span>
+          )}
+          {stability != null && <span className="rounded-full bg-surface-container-high px-2 py-1">{stability} over time</span>}
+          {adjustedPValue != null && (
+            <span className={`rounded-full px-2 py-1 ${
+              notableAfterCorrection ? "bg-secondary/10 text-secondary" : "bg-surface-container-high"
+            }`}>
+              {notableAfterCorrection ? "holds after correction" : `exploratory · q ${adjustedPValue.toFixed(2)}`}
+            </span>
+          )}
+        </div>
+      )}
       {correlation === null ? (
         <div className="h-48 flex items-center justify-center rounded-lg bg-surface-container-low">
           <p className="text-xs text-outline text-center px-6">

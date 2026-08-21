@@ -12,11 +12,9 @@ function fmt(value: number | null, digits = 2): string {
 
 function AgreementCard({
   series,
-  annotations,
   onSelectDate,
 }: {
   series: SensorAgreementSeries;
-  annotations: ReturnType<typeof useChartAnnotations>;
   onSelectDate: (date: string) => void;
 }) {
   const latest = series.points.at(-1);
@@ -62,7 +60,7 @@ function AgreementCard({
         ) : null}
       </div>
 
-      <SensorAgreementChart series={series} annotations={annotations} onSelectDate={onSelectDate} />
+      <SensorAgreementChart series={series} onSelectDate={onSelectDate} />
       <p className="mt-1 text-center text-[10px] text-outline">Select a chart point or gap below to inspect that night.</p>
 
       <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-[10px] text-outline">
@@ -146,7 +144,6 @@ export function AnalyticsSensors() {
                 <AgreementCard
                   key={series.metric}
                   series={series}
-                  annotations={marks}
                   onSelectDate={setSelectedDate}
                 />
               ))}

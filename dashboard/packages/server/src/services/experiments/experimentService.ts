@@ -102,6 +102,8 @@ export class ExperimentService {
     return {
       interventionId: intervention.id,
       interventionName: intervention.name,
+      interventionCategory: intervention.category,
+      evidence: "observed_change",
       changepoint: intervention.startedOn,
       before: withObserved(windows.before, beforeObserved),
       after: withObserved(windows.after, afterObserved),

@@ -84,10 +84,16 @@ export function DayOfWeekHeatmap({ data }: { data: DayOfWeekHeatmapData }) {
   const units = useUnits();
   return (
     <div className="bg-surface-container rounded-xl overflow-hidden">
-      <div className="p-6 border-b border-outline-variant/10 flex items-center justify-between">
-        <h2 className="font-headline font-semibold text-lg text-on-surface">
-          Weekday Pattern Heatmap
-        </h2>
+      <div className="p-6 border-b border-outline-variant/10 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="font-headline font-semibold text-lg text-on-surface">
+            Typical Weekday Patterns
+          </h2>
+          <p className="mt-1 max-w-2xl text-sm text-outline">
+            Long-term averages grouped by weekday across {data.totalDays} completed days—not readings
+            from one calendar week. Today’s in-progress data is excluded.
+          </p>
+        </div>
         <div className="flex items-center gap-2">
           <div className="flex gap-1">
             <div className="w-3 h-3 bg-primary/20 rounded-sm" />

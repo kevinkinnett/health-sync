@@ -11,16 +11,12 @@ import {
 import type { SensorAgreementSeries } from "@health-dashboard/shared";
 import { useChartTheme } from "../../stores/themeStore";
 import { SOURCE_COLOR } from "./chartPalette";
-import type { ChartAnnotation } from "./annotations";
-import { annotationMarkers } from "./annotationMarkers";
 
 export function SensorAgreementChart({
   series,
-  annotations = [],
   onSelectDate,
 }: {
   series: SensorAgreementSeries;
-  annotations?: ChartAnnotation[];
   onSelectDate?: (date: string) => void;
 }) {
   const ct = useChartTheme();
@@ -41,7 +37,6 @@ export function SensorAgreementChart({
             if (onSelectDate && typeof state?.activeLabel === "string") onSelectDate(state.activeLabel);
           }}
         >
-          {annotationMarkers(annotations)}
           <CartesianGrid stroke={ct.grid} strokeDasharray="3 3" vertical={false} />
           <XAxis dataKey="date" tick={ct.tick} tickFormatter={(value: string) => value.slice(5)} minTickGap={24} />
           <YAxis

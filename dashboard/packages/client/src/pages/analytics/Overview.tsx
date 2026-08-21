@@ -42,7 +42,13 @@ const jumpCards: Array<{
     to: "../weight",
     label: "Weight",
     icon: "scale",
-    description: "Body mass over time.",
+    description: "Check-ins, rolling median, and energy context.",
+  },
+  {
+    to: "../nutrition",
+    label: "Nutrition",
+    icon: "restaurant",
+    description: "Logging coverage, nutrients, and energy context.",
   },
   {
     to: "../sensors",
@@ -64,9 +70,9 @@ const jumpCards: Array<{
   },
   {
     to: "../correlations",
-    label: "Correlations",
+    label: "Relationships",
     icon: "scatter_plot",
-    description: "Cross-metric relationships and insights.",
+    description: "Workout effects and corrected cross-metric relationships.",
   },
   {
     to: "../supplements",

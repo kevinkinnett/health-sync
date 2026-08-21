@@ -12,6 +12,7 @@ import {
   type ReadinessSource,
   type SourceValues,
 } from "./signalFusion.js";
+import { recoveryFeaturesForDay } from "./health/recoveryAnomalies.js";
 
 /**
  * Deterministic anomaly detection over the recovery signals. Pure (no
@@ -134,6 +135,23 @@ function triadHitsAt(
   return hits;
 }
 
+/**
+ * Broader provider-neutral strain signals. Unlike the legacy triad this can
+ * recognize the common HRV-down + poor-sleep + restlessness pattern, while
+ * still requiring several independent physiological domains to persist.
+ */
+function recoveryStrainHitsAt(days: ReadinessDayInput[], idx: number): string[] {
+  const baseline = days.slice(Math.max(0, idx - 42), idx);
+  return recoveryFeaturesForDay(days[idx], baseline)
+    .filter((feature) => feature.recoveryZ <= -1.5)
+    .map((feature) => feature.label);
+}
+
+function hasCoreStrain(hits: string[]): boolean {
+  const core = new Set(["HRV", "Resting HR", "Breathing rate", "Blood oxygen", "Skin temperature"]);
+  return hits.some((label) => core.has(label));
+}
+
 export function detectAlerts(
   daysIn: ReadinessDayInput[],
   readiness: ReadinessScore,
@@ -150,17 +168,30 @@ export function detectAlerts(
   const date = days[idx].date;
   const out: DetectedAlert[] = [];
 
-  // 1) Illness / over-reaching triad — ≥2 hits today AND ≥2 yesterday.
+  // 1) Illness / over-reaching strain. Preserve the focused legacy triad
+  // (≥2 classic illness signals for 2 days), and also recognize a broader
+  // provider-neutral pattern when ≥3 domains are strained on both days.
   if (config.kinds.illnessTriad) {
     const todayHits = triadHitsAt(days, idx, config.illnessSigma, config.skinTempWarm);
     const prevHits =
       idx > 0 ? triadHitsAt(days, idx - 1, config.illnessSigma, config.skinTempWarm) : [];
-    if (todayHits.length >= 2 && prevHits.length >= 2) {
+    const todayStrain = recoveryStrainHitsAt(days, idx);
+    const prevStrain = idx > 0 ? recoveryStrainHitsAt(days, idx - 1) : [];
+    const persistentStrain = todayStrain.filter((label) => prevStrain.includes(label));
+    const legacyTriad = todayHits.length >= 2 && prevHits.length >= 2;
+    const broadStrain =
+      todayStrain.length >= 3 &&
+      prevStrain.length >= 3 &&
+      persistentStrain.length >= 2 &&
+      hasCoreStrain(todayStrain) &&
+      hasCoreStrain(prevStrain);
+    if (legacyTriad || broadStrain) {
+      const displayed = legacyTriad ? todayHits : todayStrain;
       out.push({
         kind: "illness_triad",
         severity: "alert",
         title: "Possible illness or under-recovery",
-        detail: `${todayHits.join(", ")} have been elevated above your baseline for 2+ days. Consider easing off and prioritising rest.`,
+        detail: `${displayed.join(", ")} have shown a worse-than-usual pattern for 2+ days. This can reflect illness, hard training, stress, alcohol, or another recovery cost; consider easing off and prioritising rest.`,
         metric: "recovery",
         date,
       });

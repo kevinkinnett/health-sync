@@ -269,6 +269,21 @@ export function buildV1Endpoints(): V1EndpointDef[] {
         return ctx.healthDataService.getFood(start, end);
       },
     },
+    {
+      path: "/nutrition-weight",
+      summary: "Nutrition, energy, training, and weight report",
+      description:
+        "Coverage-aware local-day report joining logged nutrition, estimated wearable calories out, training load, and raw plus seven-day-median weight. Missing food stays unknown rather than zero. The current local date is provisional, and long-window readiness requires 42 completed span days, 30 food-logged days, and 18 weight dates. Estimated energy gap is not a measured physiological deficit and the report does not claim calories caused weight change.",
+      parameters: dateRangeParams,
+      handler: async (args, ctx) => {
+        const { start, end } = resolveDateRange(args, ctx.userTimezone);
+        return ctx.healthDataService.getNutritionWeight(
+          start,
+          end,
+          todayInTz(ctx.userTimezone),
+        );
+      },
+    },
 
     {
       path: "/training-load",

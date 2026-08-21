@@ -1,6 +1,7 @@
 import unittest
 
 from google_health_points import parse_point
+from google_health_temporal import TemporalResolutionError
 
 
 class ParsePointTests(unittest.TestCase):
@@ -41,7 +42,15 @@ class ParsePointTests(unittest.TestCase):
         point = {
             "name": "users/me/dataTypes/steps/dataPoints/abc",
             "dataSource": {"platform": "FITBIT"},
-            "steps": {"date": {"year": 2026, "month": 8, "day": 9}},
+            "steps": {
+                "interval": {
+                    "startTime": "2026-08-09T12:00:00Z",
+                    "endTime": "2026-08-09T12:01:00Z",
+                    "startUtcOffset": "-14400s",
+                    "endUtcOffset": "-14400s",
+                },
+                "count": "40",
+            },
         }
 
         parsed = parse_point("steps", point)
@@ -57,7 +66,14 @@ class ParsePointTests(unittest.TestCase):
                 "device": {"displayName": "Pixel Watch"},
             },
             "oxygenSaturation": {
-                "sampleTime": {"physicalTime": "2026-08-09T02:15:00Z"},
+                "sampleTime": {
+                    "physicalTime": "2026-08-09T02:15:00Z",
+                    "utcOffset": "-14400s",
+                    "civilTime": {
+                        "date": {"year": 2026, "month": 8, "day": 8},
+                        "time": {"hours": 22, "minutes": 15},
+                    },
+                },
                 "percentage": 96.4,
             },
         }
@@ -71,7 +87,8 @@ class ParsePointTests(unittest.TestCase):
         )
         self.assertEqual(parsed["start"], "2026-08-09T02:15:00Z")
         self.assertEqual(parsed["end"], "2026-08-09T02:15:00Z")
-        self.assertEqual(parsed["pdate"], "2026-08-09")
+        self.assertEqual(parsed["pdate"], "2026-08-08")
+        self.assertEqual(parsed["date_basis"], "google_civil_sample")
         self.assertEqual(parsed["device"], "Pixel Watch")
 
     def test_date_only_summaries_get_one_key_per_day(self):
@@ -89,14 +106,11 @@ class ParsePointTests(unittest.TestCase):
             parsed["key"], "daily-resting-heart-rate|FITBIT||2026-08-09"
         )
 
-    def test_content_hash_keeps_undated_unnamed_points_deterministic(self):
+    def test_undeclared_types_fail_closed_instead_of_guessing_a_utc_day(self):
         point = {"dataSource": {"platform": "FITBIT"}, "metadata": {"b": 2, "a": 1}}
 
-        first = parse_point("metadata", point)
-        second = parse_point("metadata", point)
-
-        self.assertEqual(first["key"], second["key"])
-        self.assertRegex(first["key"], r"^metadata\|FITBIT\|\|\|[0-9a-f]{10}$")
+        with self.assertRaises(TemporalResolutionError):
+            parse_point("metadata", point)
 
 
 if __name__ == "__main__":

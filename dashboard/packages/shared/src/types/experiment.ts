@@ -1,3 +1,6 @@
+import type { InterventionCategory } from "./intervention.js";
+import type { PersonalEvidenceGrade } from "./evidence.js";
+
 /**
  * The "did it work?" report: a before/after comparison anchored on an
  * intervention.
@@ -12,7 +15,8 @@
  * which violates the independence assumption of the obvious tests and
  * would make any p-value look far more decisive than the evidence
  * warrants. Effect size, sample sizes, spread and an explicit confounds
- * list carry the uncertainty honestly instead. See `ExperimentConfidence`.
+ * list carry the uncertainty honestly instead. `PersonalEvidenceGrade`
+ * describes the design; `ExperimentConfidence` describes estimate stability.
  */
 
 export interface ExperimentWindow {
@@ -82,7 +86,9 @@ export interface Confound {
 }
 
 /**
- * How much weight the report deserves.
+ * How stable and usable the numerical estimate is. This is deliberately
+ * separate from evidence grade: a dense uncontrolled before/after comparison
+ * can be estimated precisely without becoming causal evidence.
  *  - `strong`       — long windows, dense data, no serious confound
  *  - `moderate`     — usable, but something is imperfect
  *  - `weak`         — a serious confound or a very short window
@@ -135,8 +141,8 @@ export interface MetricSeries {
  * A one-line verdict per intervention, for surfaces that must ASK the
  * question rather than wait to be asked it.
  *
- * The full report lives two clicks deep behind a nav item named after a
- * noun ("Timeline"), which meant the answer to "did the Eight Sleep help?"
+ * The full report lives behind Changes & Experiments. The answer to
+ * "did the Eight Sleep help?"
  * existed for weeks without ever being seen. This is the shape that lets
  * the home screen lead with the answer and link to the working.
  *
@@ -147,6 +153,8 @@ export interface ExperimentSummary {
   interventionId: number;
   interventionName: string;
   changepoint: string;
+  interventionCategory: InterventionCategory;
+  evidence: PersonalEvidenceGrade;
   confidence: ExperimentConfidence;
   summary: string;
   headline: MetricEffect | null;
@@ -155,6 +163,8 @@ export interface ExperimentSummary {
 export interface ExperimentReport {
   interventionId: number;
   interventionName: string;
+  interventionCategory: InterventionCategory;
+  evidence: PersonalEvidenceGrade;
   /** The date the comparison pivots on (the intervention's start). */
   changepoint: string;
   before: ExperimentWindow;

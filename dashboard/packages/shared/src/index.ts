@@ -12,6 +12,14 @@ export type { SkinTempDay } from "./types/skinTemp.js";
 export type { CardioScoreDay } from "./types/cardioScore.js";
 export type { EightSleepDay } from "./types/eightSleep.js";
 export type { FoodLogDay } from "./types/food.js";
+export type {
+  CollectionState,
+  NutritionWeightDay,
+  FoodLoggingCoverage,
+  WeightTrendSummary,
+  NutritionWeightReadiness,
+  NutritionWeightReport,
+} from "./types/nutritionWeight.js";
 export type { DrivingDay, DrivingSummary } from "./types/driving.js";
 export type {
   SensorAgreementMetric,
@@ -61,6 +69,12 @@ export type {
   CorrelationPair,
   ActivityBucket,
   CorrelationsData,
+  WorkoutEffectExposure,
+  WorkoutEffectOutcome,
+  WorkoutEffectConclusion,
+  WorkoutEffectConfidence,
+  WorkoutEffectEstimate,
+  WorkoutEffectsData,
 } from "./types/correlations.js";
 export type {
   DayOfWeekHeatmapMetric,
@@ -164,6 +178,7 @@ export type {
   IntakeCorrelations,
 } from "./types/analytics.js";
 export type { AppConfig } from "./types/config.js";
+export type { PersonalEvidenceGrade } from "./types/evidence.js";
 
 // NOTE: this package is TYPES-ONLY at runtime. It ships as raw `.ts`
 // source (no build step) and is consumed by the server as compiled JS,

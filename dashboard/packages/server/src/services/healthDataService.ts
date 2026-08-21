@@ -7,6 +7,8 @@ import type {
   DrivingSummary,
   ReadinessScore,
   SensorAgreementData,
+  WorkoutEffectsData,
+  NutritionWeightReport,
 } from "@health-dashboard/shared";
 import type { ActivityRepository } from "../repositories/activityRepo.js";
 import type { SleepRepository } from "../repositories/sleepRepo.js";
@@ -31,6 +33,9 @@ import { SummaryUseCase } from "./health/summaryUseCase.js";
 import { ReadinessUseCase } from "./health/readinessUseCase.js";
 import { SensorAgreementService } from "./health/sensorAgreement.js";
 import { RecoveryAnomalyService } from "./health/recoveryAnomalies.js";
+import { WorkoutEffectsService } from "./health/workoutEffects.js";
+import { NutritionWeightInsightsService } from "./health/nutritionWeightInsights.js";
+import { TrainingService } from "./training/trainingService.js";
 
 /**
  * Read-side facade over the health repositories.
@@ -57,6 +62,8 @@ export class HealthDataService {
   private readonly readiness: ReadinessUseCase;
   private readonly sensorAgreement: SensorAgreementService;
   private readonly recoveryAnomalies: RecoveryAnomalyService;
+  private readonly workoutEffects: WorkoutEffectsService;
+  private readonly nutritionWeight: NutritionWeightInsightsService;
 
   constructor(
     private activityRepo: ActivityRepository,
@@ -72,6 +79,7 @@ export class HealthDataService {
     private eightSleepRepo: EightSleepRepository,
     private foodRepo: FoodRepository,
     private teslaDriveRepo: TeslaDriveRepository,
+    opts: { userTimezone: string } = { userTimezone: "America/New_York" },
   ) {
     this.summary = new SummaryUseCase(activityRepo, sleepRepo, heartRateRepo, weightRepo);
     this.readiness = new ReadinessUseCase(
@@ -83,6 +91,16 @@ export class HealthDataService {
     );
     this.recoveryAnomalies = new RecoveryAnomalyService(
       (limit) => this.readiness.inputs(limit),
+    );
+    this.workoutEffects = new WorkoutEffectsService(
+      exerciseLogRepo, sleepRepo, heartRateRepo, hrvRepo, eightSleepRepo,
+      opts.userTimezone,
+    );
+    this.nutritionWeight = new NutritionWeightInsightsService(
+      foodRepo,
+      activityRepo,
+      weightRepo,
+      new TrainingService(exerciseLogRepo, heartRateRepo),
     );
     this.records = new RecordsService(activityRepo, sleepRepo, heartRateRepo);
     this.heatmap = new HeatmapService(activityRepo, sleepRepo, heartRateRepo);
@@ -157,6 +175,14 @@ export class HealthDataService {
     return this.foodRepo.findByDateRange(start, end);
   }
 
+  async getNutritionWeight(
+    start: string,
+    end: string,
+    currentLocalDate: string,
+  ): Promise<NutritionWeightReport> {
+    return this.nutritionWeight.get(start, end, currentLocalDate);
+  }
+
   // --- Readiness ----------------------------------------------------------
 
   /**
@@ -187,6 +213,10 @@ export class HealthDataService {
 
   async getRecoveryAnomalies(start: string, end: string, currentDate: string) {
     return this.recoveryAnomalies.get(start, end, currentDate);
+  }
+
+  async getWorkoutEffects(today: string): Promise<WorkoutEffectsData> {
+    return this.workoutEffects.get(today);
   }
 
   // --- Driving ------------------------------------------------------------

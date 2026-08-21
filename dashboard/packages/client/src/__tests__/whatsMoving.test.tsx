@@ -11,6 +11,7 @@ function pair(over: Partial<CorrelationPair> & { n: number }): CorrelationPair {
     xLabel: "X",
     yLabel: "Y",
     correlation: 0.5,
+    evidence: "exploratory_association",
     insight: "insight",
     points: Array.from({ length: n }, (_, i) => ({ x: i, y: i, date: `d${i}` })),
     ...rest,
@@ -44,6 +45,7 @@ describe("WhatsMoving", () => {
         data={data([
           pair({ xLabel: "Weak", correlation: 0.1, n: 100 }), // |r| too low
           pair({ xLabel: "Thin", correlation: 0.9, n: 8 }), // n too low
+          pair({ xLabel: "Multiple-test fluke", correlation: 0.8, n: 100, notableAfterCorrection: false }),
           pair({ xLabel: "Real", correlation: 0.4, n: 50 }), // qualifies
         ])}
       />,

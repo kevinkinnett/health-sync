@@ -4,6 +4,7 @@ import type {
   HealthSummary,
   WeeklyInsights,
   CorrelationsData,
+  WorkoutEffectsData,
   DayOfWeekHeatmapData,
   RecordsData,
   ActivityDay,
@@ -24,6 +25,7 @@ import type {
   RecoveryAnomalyReport,
   MedicationIntake,
   SupplementIntake,
+  NutritionWeightReport,
 } from "@health-dashboard/shared";
 import { apiFetch } from "../client";
 import { useDateRangeStore } from "../../stores/dateRangeStore";
@@ -68,6 +70,14 @@ export function useCorrelations() {
   });
 }
 
+export function useWorkoutEffects() {
+  return useQuery<WorkoutEffectsData>({
+    queryKey: ["health", "workout-effects"],
+    queryFn: () => apiFetch("/health/workout-effects"),
+    staleTime: 10 * 60 * 1000,
+  });
+}
+
 export function useActivity() {
   const { start, end } = useDateRangeStore();
   return useQuery<ActivityDay[]>({
@@ -97,6 +107,19 @@ export function useWeight() {
   return useQuery<WeightEntry[]>({
     queryKey: ["health", "weight", start, end],
     queryFn: () => apiFetch(`/health/weight?start=${start}&end=${end}`),
+  });
+}
+
+/**
+ * One joined report powers both Nutrition and Weight. Keeping the date
+ * range in the cache key lets the pages share a response without hiding
+ * a range change behind stale data.
+ */
+export function useNutritionWeight() {
+  const { start, end } = useDateRangeStore();
+  return useQuery<NutritionWeightReport>({
+    queryKey: ["health", "nutrition-weight", start, end],
+    queryFn: () => apiFetch(`/health/nutrition-weight?start=${start}&end=${end}`),
   });
 }
 
