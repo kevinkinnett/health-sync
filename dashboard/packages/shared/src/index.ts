@@ -96,6 +96,7 @@ export type {
   ChatConversationResponse,
   ChatSendRequest,
   ChatSendResponse,
+  ChatExitReason,
 } from "./types/chat.js";
 export type { ApiLogEntry, ApiLogStats } from "./types/apiLog.js";
 export type {

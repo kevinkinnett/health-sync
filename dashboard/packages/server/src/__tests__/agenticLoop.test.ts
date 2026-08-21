@@ -69,6 +69,7 @@ describe("runAgenticLoop — proxy session-expiry recovery", () => {
     expect(calls).toBe(2); // first 410 → restart → second succeeds
     expect(result.content).toBe("grounded answer");
     expect(result.placeholder).toBe(false);
+    expect(result.exitReason).toBe("answered");
   });
 
   it("gives up with a placeholder when the session expires again after the one allowed restart", async () => {
@@ -90,6 +91,8 @@ describe("runAgenticLoop — proxy session-expiry recovery", () => {
 
     expect(calls).toBe(2); // initial attempt + one restart, both 410
     expect(result.placeholder).toBe(true);
+    expect(result.exitReason).toBe("session-expired");
+    expect(result.content).toMatch(/session expired/i);
   });
 
   it("does not restart on an ordinary 500 (that path emits a placeholder)", async () => {
@@ -110,6 +113,30 @@ describe("runAgenticLoop — proxy session-expiry recovery", () => {
 
     expect(calls).toBe(1); // no replay for non-session-expiry errors
     expect(result.placeholder).toBe(true);
+    expect(result.exitReason).toBe("llm-error");
+    expect(result.content).toMatch(/AI service could not complete/i);
+  });
+
+  it("reports an expired proxy login as an authentication failure", async () => {
+    const llm = scripted(async () => {
+      throw new LlmHttpError(
+        500,
+        '{"error":{"message":"Not logged in · Please run /login"}}',
+      );
+    });
+
+    const result = await runAgenticLoop({
+      llm,
+      model: "sonnet",
+      messages: [{ role: "user", content: "ask" }],
+      tools: [],
+      executeTool: async () => "{}",
+      task: "chat",
+    });
+
+    expect(result.placeholder).toBe(true);
+    expect(result.exitReason).toBe("auth-required");
+    expect(result.content).toMatch(/login has expired/i);
   });
 });
 
@@ -206,6 +233,7 @@ describe("runAgenticLoop — tool budget and reserved synthesis", () => {
     });
 
     expect(result.placeholder).toBe(true);
+    expect(result.exitReason).toBe("round-limit");
     expect(result.transcript.at(-1)).toEqual({
       role: "assistant",
       content: result.content,

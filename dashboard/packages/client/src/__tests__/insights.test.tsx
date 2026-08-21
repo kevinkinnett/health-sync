@@ -345,7 +345,7 @@ describe("Insights page", () => {
         return Promise.resolve({
           conversationId: convId,
           message: { role: "assistant", content: "Sleep averaged 6h45m." },
-          meta: { sanitized: false, placeholder: false, toolsCalled: ["query_sleep"], rounds: 2 },
+          meta: { sanitized: false, placeholder: false, toolsCalled: ["query_sleep"], rounds: 2, exitReason: "answered" },
         });
       }
       if (path?.startsWith("/insights/chat/conv-1")) {
@@ -391,7 +391,7 @@ describe("Insights page", () => {
       if (path === "/insights/chat" && opts?.method === "POST") return Promise.resolve({
         conversationId: "conv-recovery",
         message: { role: "assistant", content: "I prepared the session for review." },
-        meta: { sanitized: false, placeholder: false, toolsCalled: ["prepare_log_recovery_session"], rounds: 2 },
+        meta: { sanitized: false, placeholder: false, toolsCalled: ["prepare_log_recovery_session"], rounds: 2, exitReason: "answered" },
         pendingActions: [action()],
       });
       if (path === "/insights/chat/conv-recovery") return Promise.resolve({
@@ -437,6 +437,7 @@ describe("Insights page", () => {
             placeholder: true,
             toolsCalled: ["query_sleep"],
             rounds: 13,
+            exitReason: "round-limit",
           },
         });
       }
@@ -470,6 +471,40 @@ describe("Insights page", () => {
     expect(screen.getByRole("status")).toHaveTextContent(/analysis limit reached/i);
   });
 
+  it("identifies an expired model login instead of reporting an analysis limit", async () => {
+    apiFetchMock.mockImplementation((path: string, opts?: RequestInit) => {
+      if (path === "/insights/chat/conversations") return Promise.resolve([]);
+      if (path === "/insights/chat" && opts?.method === "POST") {
+        return Promise.resolve({
+          conversationId: "outage-1",
+          message: {
+            role: "assistant",
+            content: "The AI service could not complete this request.",
+          },
+          meta: {
+            sanitized: false,
+            placeholder: true,
+            toolsCalled: [],
+            rounds: 1,
+            exitReason: "auth-required",
+          },
+        });
+      }
+      return Promise.resolve(null);
+    });
+
+    renderInsights();
+    fireEvent.click(screen.getByRole("tab", { name: /chat/i }));
+    const textarea = await screen.findByPlaceholderText(/ask about your health/i);
+    fireEvent.change(textarea, { target: { value: "Log my hot blanket session" } });
+    fireEvent.click(screen.getByRole("button", { name: /send message/i }));
+
+    await screen.findByText(/AI service login required/i);
+    const notice = screen.getByRole("status");
+    expect(notice).toHaveTextContent(/AI service login required/i);
+    expect(notice).not.toHaveTextContent(/analysis limit reached/i);
+  });
+
   it("shows chat request failures and restores the unsent draft", async () => {
     apiFetchMock.mockImplementation((path: string, opts?: RequestInit) => {
       if (path === "/insights/chat/conversations") return Promise.resolve([]);
@@ -500,7 +535,7 @@ describe("Insights page", () => {
         return Promise.resolve({
           conversationId: "c1",
           message: { role: "assistant", content: "ok" },
-          meta: { sanitized: false, placeholder: false, toolsCalled: [], rounds: 1 },
+          meta: { sanitized: false, placeholder: false, toolsCalled: [], rounds: 1, exitReason: "answered" },
         });
       }
       if (path?.startsWith("/insights/chat/c1")) {

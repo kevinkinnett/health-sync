@@ -127,6 +127,7 @@ describe("InsightChatService", () => {
     expect(repo.rows[0]?.role).toBe("user");
     expect(repo.rows[0]?.content).toBe("How was my sleep?");
     expect(result.meta.placeholder).toBe(true);
+    expect(result.meta.exitReason).toBe("llm-error");
     expect(repo.rows.at(-1)).toMatchObject({
       role: "assistant",
       content: result.message.content,

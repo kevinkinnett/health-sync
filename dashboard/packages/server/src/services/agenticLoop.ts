@@ -1,3 +1,4 @@
+import type { ChatExitReason } from "@health-dashboard/shared";
 import {
   type ChatMessage,
   type ChatCompletionResponse,
@@ -6,6 +7,7 @@ import {
   type ToolChoice,
   type ToolCall,
   type ToolDef,
+  isLlmAuthenticationRequired,
   isSessionExpired,
 } from "./llmClient.js";
 import {
@@ -124,18 +126,13 @@ export interface AgenticLoopResult {
   rounds: number;
   /** True if the sanitizer stripped suspect content from the final text. */
   sanitized: boolean;
-  /** True if the loop bailed early (stuck/nag-exhausted/round-cap). */
+  /** True if the loop returned a fallback instead of a grounded answer. */
   placeholder: boolean;
+  /** Machine-readable reason the loop stopped, for accurate caller UX. */
+  exitReason: AgenticExitReason;
 }
 
-type AgenticExitReason =
-  | "answered"
-  | "wall-time"
-  | "llm-error"
-  | "session-expired"
-  | "stuck"
-  | "missing-tools"
-  | "round-limit";
+export type AgenticExitReason = ChatExitReason;
 
 /**
  * Run the loop. Pure function: doesn't touch the database, doesn't
@@ -173,7 +170,7 @@ export async function runAgenticLoop(
   const bail = (missing: string[], reason: AgenticExitReason): void => {
     placeholder = true;
     exitReason = reason;
-    finalContent = placeholderMessage(missing);
+    finalContent = placeholderMessage(missing, reason);
     // The placeholder is a real user-visible assistant turn. Keeping it in
     // the transcript ensures chat persistence and history refetches cannot
     // make the response disappear after the POST succeeds.
@@ -266,7 +263,11 @@ export async function runAgenticLoop(
       );
       bail(
         tools.missing(),
-        isSessionExpired(err) ? "session-expired" : "llm-error",
+        isSessionExpired(err)
+          ? "session-expired"
+          : isLlmAuthenticationRequired(err)
+            ? "auth-required"
+            : "llm-error",
       );
       break;
     }
@@ -457,6 +458,7 @@ export async function runAgenticLoop(
     rounds: roundsRun,
     sanitized,
     placeholder,
+    exitReason,
   };
 }
 
@@ -471,11 +473,26 @@ function parseArgs(call: ToolCall): Record<string, unknown> {
   }
 }
 
-function placeholderMessage(missing: string[]): string {
-  const tail =
-    missing.length > 0
-      ? ` The model did not call the required tools (${missing.join(", ")}) ` +
-        `and tried to fabricate the answer. Try regenerating, or refine the prompt.`
-      : ` The model exhausted its round budget without producing a final answer.`;
-  return `_Unable to produce a grounded answer for this section._${tail}`;
+function placeholderMessage(
+  missing: string[],
+  reason: AgenticExitReason,
+): string {
+  switch (reason) {
+    case "auth-required":
+      return `_Unable to produce a grounded answer because the AI service login has expired._ Your message was saved. Sign in to the model service, then retry the request.`;
+    case "llm-error":
+      return `_Unable to produce a grounded answer because the AI service could not complete this request._ Your message was saved. Retry after the model service is available.`;
+    case "session-expired":
+      return `_Unable to produce a grounded answer because the AI service session expired._ Your message was saved. Retry the request.`;
+    case "wall-time":
+      return `_Unable to produce a grounded answer before the analysis timed out._ Your message was saved. Try again or narrow the request.`;
+    case "stuck":
+      return `_Unable to produce a grounded answer because the model repeated the same tool requests${missing.length > 0 ? ` (${missing.join(", ")})` : ""}._ Try again or narrow the request.`;
+    case "missing-tools":
+      return `_Unable to produce a grounded answer for this section._ The model did not call the required tools (${missing.join(", ")}). Try again or refine the prompt.`;
+    case "round-limit":
+      return `_Unable to produce a grounded answer for this section._ The model exhausted its round budget without producing a final answer.`;
+    case "answered":
+      return `_Unable to produce a grounded answer for this section._`;
+  }
 }

@@ -47,6 +47,17 @@ export interface ChatSendRequest {
   message: string;
 }
 
+/** Why the server-side agentic loop stopped. */
+export type ChatExitReason =
+  | "answered"
+  | "auth-required"
+  | "wall-time"
+  | "llm-error"
+  | "session-expired"
+  | "stuck"
+  | "missing-tools"
+  | "round-limit";
+
 /**
  * Response from POST /api/insights/chat. `meta` exposes loop-level
  * telemetry so the UI can warn the user when the model bailed (placeholder)
@@ -60,6 +71,7 @@ export interface ChatSendResponse {
     placeholder: boolean;
     toolsCalled: string[];
     rounds: number;
+    exitReason: ChatExitReason;
   };
   pendingActions: import("./recovery.js").RecoveryPendingAction[];
 }

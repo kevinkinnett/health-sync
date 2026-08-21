@@ -43,9 +43,10 @@ describe("LLM retry policy", () => {
     });
   });
 
-  it("does not retry caller, protocol, or session-expiry failures", async () => {
+  it("does not retry caller, authentication, protocol, or session-expiry failures", async () => {
     for (const error of [
       new LlmHttpError(400, "bad request"),
+      new LlmHttpError(500, '{"message":"Not logged in · Please run /login"}'),
       new LlmHttpError(410, '{"type":"session_expired"}'),
       new LlmStreamError("protocol_error", "bad event", false),
     ]) {

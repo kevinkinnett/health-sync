@@ -11,7 +11,10 @@ import {
 } from "./healthTools.js";
 import type { ChatCompleter, ChatMessage, ModelSource } from "./llmClient.js";
 import { resolveModel } from "./llmClient.js";
-import { runAgenticLoop } from "./agenticLoop.js";
+import {
+  runAgenticLoop,
+  type AgenticExitReason,
+} from "./agenticLoop.js";
 import type { RecoveryActionService } from "./recoveryActionService.js";
 import {
   buildRecoveryActionTools,
@@ -64,6 +67,7 @@ export interface ChatTurnResult {
     placeholder: boolean;
     toolsCalled: string[];
     rounds: number;
+    exitReason: AgenticExitReason;
   };
   pendingActions: import("@health-dashboard/shared").RecoveryPendingAction[];
 }
@@ -206,6 +210,7 @@ export class InsightChatService {
         placeholder: result.placeholder,
         toolsCalled: result.toolsCalled,
         rounds: result.rounds,
+        exitReason: result.exitReason,
       },
       pendingActions,
     };

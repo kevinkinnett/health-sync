@@ -1,5 +1,9 @@
 import { useMemo, useState } from "react";
-import type { ChatTurn, RecoveryPendingAction } from "@health-dashboard/shared";
+import type {
+  ChatExitReason,
+  ChatTurn,
+  RecoveryPendingAction,
+} from "@health-dashboard/shared";
 import {
   useChatConversation,
   useSendChatMessage,
@@ -35,13 +39,78 @@ export interface InsightChatState {
   isSending: boolean;
   messages: ChatTurn[];
   pendingActions: RecoveryPendingAction[];
-  notice: { kind: "warning" | "error"; message: string } | null;
+  notice: ChatNotice | null;
   closeHistory: () => void;
   newChat: () => void;
   selectConversation: (id: string) => void;
   sendMessage: () => Promise<void>;
   setDraft: (value: string) => void;
   toggleHistory: () => void;
+}
+
+export interface ChatNotice {
+  kind: "warning" | "error";
+  title: string;
+  message: string;
+}
+
+function placeholderNotice(reason: ChatExitReason | undefined): ChatNotice {
+  switch (reason) {
+    case "auth-required":
+      return {
+        kind: "warning",
+        title: "AI service login required.",
+        message:
+          "Your message was saved. Sign in to the model service, then retry the request.",
+      };
+    case "llm-error":
+      return {
+        kind: "warning",
+        title: "AI service unavailable.",
+        message:
+          "Your message was saved, but the model service could not complete it. Retry after the service reconnects.",
+      };
+    case "session-expired":
+      return {
+        kind: "warning",
+        title: "AI session expired.",
+        message: "Your message was saved. Retry it to start a fresh model session.",
+      };
+    case "wall-time":
+      return {
+        kind: "warning",
+        title: "Analysis timed out.",
+        message: "Your message was saved. Try again or narrow the request.",
+      };
+    case "stuck":
+      return {
+        kind: "warning",
+        title: "Analysis stalled.",
+        message:
+          "The model repeated the same data requests. Try again or narrow the request.",
+      };
+    case "missing-tools":
+      return {
+        kind: "warning",
+        title: "Required data was not used.",
+        message:
+          "The fallback response was saved. Try again or make the requested data more specific.",
+      };
+    case "round-limit":
+      return {
+        kind: "warning",
+        title: "Analysis limit reached.",
+        message:
+          "The fallback response was saved; try a narrower follow-up if you need more detail.",
+      };
+    case "answered":
+    default:
+      return {
+        kind: "warning",
+        title: "Incomplete response.",
+        message: "The fallback response was saved. Try the request again.",
+      };
+  }
 }
 
 export function useInsightChat(): InsightChatState {
@@ -82,13 +151,13 @@ export function useInsightChat(): InsightChatState {
   };
 
   const notice = send.error
-    ? { kind: "error" as const, message: send.error.message }
+    ? {
+        kind: "error" as const,
+        title: "Chat request failed.",
+        message: send.error.message,
+      }
     : send.data?.meta.placeholder
-      ? {
-          kind: "warning" as const,
-          message:
-            "The fallback response was saved; try a narrower follow-up if you need more detail.",
-        }
+      ? placeholderNotice(send.data.meta.exitReason)
       : null;
 
   return {

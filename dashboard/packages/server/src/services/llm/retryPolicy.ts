@@ -1,4 +1,8 @@
-import { LlmHttpError, LlmStreamError } from "./errors.js";
+import {
+  isLlmAuthenticationRequired,
+  LlmHttpError,
+  LlmStreamError,
+} from "./errors.js";
 
 const TRANSIENT_BACKOFF_MS = [500, 1500, 4000] as const;
 
@@ -15,7 +19,9 @@ export interface RetryOptions {
 }
 
 export function isTransientLlmError(error: unknown): boolean {
-  if (error instanceof LlmHttpError) return error.status >= 500;
+  if (error instanceof LlmHttpError) {
+    return error.status >= 500 && !isLlmAuthenticationRequired(error);
+  }
   return error instanceof LlmStreamError && error.retryable;
 }
 
