@@ -112,7 +112,8 @@ export class ReadinessUseCase {
   }
 
   async execute(historyDays?: number): Promise<ReadinessScore> {
-    return computeReadiness(await this.inputs(), historyDays);
+    const inputDays = historyDays == null ? 90 : Math.max(90, historyDays + 30);
+    return computeReadiness(await this.inputs(inputDays), historyDays);
   }
 }
 

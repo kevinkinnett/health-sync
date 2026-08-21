@@ -63,6 +63,13 @@ function fakeServices(): V1Context {
       listItems: vi.fn().mockResolvedValue([]),
       listIntakes: vi.fn().mockResolvedValue([]),
     } as never,
+    recoveryService: {
+      listActivities: vi.fn().mockResolvedValue([]),
+      listSessions: vi.fn().mockResolvedValue([]),
+    } as never,
+    recoveryEffectsService: {
+      get: vi.fn().mockResolvedValue({ methodVersion: "test", coverage: [], effects: [] }),
+    } as never,
   };
 }
 
@@ -160,6 +167,15 @@ describe("v1 router", () => {
     expect(ctx.healthDataService.getNutritionWeight).toHaveBeenCalledWith(
       "2026-04-01",
       "2026-04-30",
+      expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+    );
+  });
+
+  it("exposes recovery effects through the read-only v1 registry", async () => {
+    const { app, ctx } = buildApp();
+    const res = await request(app).get("/api/v1/recovery/effects").expect(200);
+    expect(res.body.data.methodVersion).toBe("test");
+    expect(ctx.recoveryEffectsService.get).toHaveBeenCalledWith(
       expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
     );
   });

@@ -124,7 +124,11 @@ export function useSendChatMessage() {
               createdAt: new Date().toISOString(),
             });
           }
-          return { conversationId: data.conversationId, messages };
+          return {
+            conversationId: data.conversationId,
+            messages,
+            pendingActions: data.pendingActions,
+          };
         },
       );
       queryClient.invalidateQueries({ queryKey: ["insights", "chat", "list"] });

@@ -3,6 +3,8 @@ import type { AnalyticsUseCases } from "../../services/analytics/contracts.js";
 import type { SupplementService } from "../../services/supplementService.js";
 import type { MedicationService } from "../../services/medicationService.js";
 import type { TrainingService } from "../../services/training/trainingService.js";
+import type { RecoveryService } from "../../services/recoveryService.js";
+import type { RecoveryEffectsService } from "../../services/recoveryEffectsService.js";
 import { todayInTz, addDays } from "../../services/userTz.js";
 
 /**
@@ -50,6 +52,8 @@ export interface V1Context {
   supplementService: SupplementService;
   medicationService: MedicationService;
   trainingService: TrainingService;
+  recoveryService: RecoveryService;
+  recoveryEffectsService: RecoveryEffectsService;
 }
 
 // ---------------------------------------------------------------------------
@@ -354,6 +358,46 @@ export function buildV1Endpoints(): V1EndpointDef[] {
         "Per-day-of-week averages for each tracked metric — a calendar pattern view of how metrics drift across Mon–Sun.",
       handler: async (_args, ctx) =>
         ctx.healthDataService.getDayOfWeekHeatmap(todayInTz(ctx.userTimezone)),
+    },
+
+    // -----------------------------------------------------------------
+    // Recovery sessions
+    // -----------------------------------------------------------------
+    {
+      path: "/recovery/activities",
+      summary: "Recovery activity library",
+      description: "Application-owned recovery activities such as Hot blanket and Massage, including configured default durations and active status.",
+      parameters: {
+        type: "object",
+        properties: {
+          includeInactive: { type: "boolean", description: "Include archived recovery activities.", default: false },
+        },
+      },
+      handler: async (args, ctx) => ctx.recoveryService.listActivities(Boolean(args.includeInactive)),
+    },
+    {
+      path: "/recovery/sessions",
+      summary: "Recovery session log",
+      description: "Timestamped, application-owned recovery sessions. Times are UTC instants and can be filtered by America/New_York local date or activity.",
+      parameters: {
+        type: "object",
+        properties: {
+          start: { type: "string", description: "Start local date YYYY-MM-DD." },
+          end: { type: "string", description: "End local date YYYY-MM-DD." },
+          activityId: { type: "integer", description: "Optional recovery activity id." },
+        },
+      },
+      handler: async (args, ctx) => {
+        const { start, end } = resolveDateRange(args, ctx.userTimezone);
+        return ctx.recoveryService.listSessions(start, end, asId(args.activityId) ?? undefined);
+      },
+    },
+    {
+      path: "/recovery/effects",
+      summary: "Recovery activity effects",
+      description: "Matched-period estimates comparing nights after one recovery activity with unused control nights on the same weekday and similar prior sleep, resting heart rate, HRV, training load, and calendar proximity. Results are adjusted associations, not proof of causation.",
+      handler: async (_args, ctx) =>
+        ctx.recoveryEffectsService.get(todayInTz(ctx.userTimezone)),
     },
 
     // -----------------------------------------------------------------

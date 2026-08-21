@@ -1,9 +1,13 @@
-import { useEffect, useRef } from "react";
-import type { ChatTurn } from "@health-dashboard/shared";
+import { useEffect, useRef, useState } from "react";
+import type { ChatTurn, RecoveryPendingAction } from "@health-dashboard/shared";
 import {
+  useCancelRecoveryAction,
   useChatConversations,
+  useConfirmRecoveryAction,
   useDeleteConversation,
+  useUserTimezone,
 } from "../../api/queries";
+import { formatLocalDateTimeInput, localDateTimeToUtc } from "../../lib/userTz";
 import { AutoGrowTextarea } from "../ui/AutoGrowTextarea";
 import { Card } from "../ui/Card";
 import { MarkdownContent } from "../ui/MarkdownContent";
@@ -68,6 +72,8 @@ export function ChatTab() {
         onExample={chat.setDraft}
       />
 
+      <PendingRecoveryActions actions={chat.pendingActions} />
+
       {chat.notice && <ChatNotice notice={chat.notice} />}
 
       <ChatInput
@@ -78,6 +84,80 @@ export function ChatTab() {
       />
     </Card>
   );
+}
+
+function PendingRecoveryActions({ actions }: { actions: RecoveryPendingAction[] }) {
+  const visible = actions.filter((action) => action.status !== "cancelled");
+  if (visible.length === 0) return null;
+  return <div className="max-h-64 overflow-y-auto border-t border-outline-variant/10 bg-surface-container-low/35 p-3 space-y-2">
+    {visible.map((action) => <PendingRecoveryActionCard key={action.id} action={action} />)}
+  </div>;
+}
+
+function PendingRecoveryActionCard({ action }: { action: RecoveryPendingAction }) {
+  const timezone = useUserTimezone();
+  const confirm = useConfirmRecoveryAction();
+  const cancel = useCancelRecoveryAction();
+  const [editing, setEditing] = useState(false);
+  const [startedLocal, setStartedLocal] = useState(() => formatLocalDateTimeInput(action.proposal.startedAt, timezone));
+  const [duration, setDuration] = useState(String(action.proposal.durationMinutes));
+  const [intensity, setIntensity] = useState(action.proposal.intensity?.toString() ?? "");
+  const [temperature, setTemperature] = useState(action.proposal.temperatureF?.toString() ?? "");
+  const [massageType, setMassageType] = useState(action.proposal.massageType ?? "");
+  const [notes, setNotes] = useState(action.proposal.notes ?? "");
+  const [localError, setLocalError] = useState<string | null>(null);
+  const formatted = new Intl.DateTimeFormat([], {
+    timeZone: timezone, month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short",
+  }).format(new Date(action.proposal.startedAt));
+
+  if (action.status === "confirmed") {
+    return <div className="rounded-xl border border-secondary/20 bg-secondary/10 px-3 py-2 text-xs text-on-surface-variant">
+      <span className="font-bold text-on-surface">Logged {action.proposal.activityName}</span> · {formatted} · {action.proposal.durationMinutes} min
+    </div>;
+  }
+
+  const save = async () => {
+    setLocalError(null);
+    try {
+      const parsedDuration = Number(duration);
+      if (editing && (!Number.isInteger(parsedDuration) || parsedDuration <= 0)) {
+        setLocalError("Duration must be a positive whole number of minutes.");
+        return;
+      }
+      const body = editing ? {
+        startedAt: localDateTimeToUtc(startedLocal, timezone),
+        durationMinutes: parsedDuration,
+        intensity: intensity ? Number(intensity) : null,
+        temperatureF: temperature ? Number(temperature) : null,
+        massageType: massageType.trim() || null,
+        notes: notes.trim() || null,
+      } : {};
+      await confirm.mutateAsync({ id: action.id, body });
+    } catch (error) {
+      setLocalError(error instanceof Error ? error.message : "Could not log this session.");
+    }
+  };
+
+  return <section aria-label={`Confirm ${action.proposal.activityName} session`} className="rounded-xl border border-primary/25 bg-surface-container-high p-3">
+    <div className="flex items-start gap-3">
+      <span className="material-symbols-outlined text-secondary" aria-hidden="true">{action.proposal.activityCategory === "heat_therapy" ? "heat" : "spa"}</span>
+      <div className="min-w-0 flex-1"><p className="font-headline text-sm font-bold text-on-surface">Log {action.proposal.activityName}?</p><p className="text-xs text-on-surface-variant">{formatted} · {action.proposal.durationMinutes} min</p><p className="text-[10px] uppercase tracking-wider text-outline mt-1">Review required · not saved yet</p></div>
+    </div>
+    {editing && <div className="grid grid-cols-2 gap-2 mt-3">
+      <label className="col-span-2"><span className="text-[10px] uppercase font-bold text-outline">Started at</span><input aria-label="Proposed start time" type="datetime-local" value={startedLocal} onChange={(e) => setStartedLocal(e.target.value)} className="w-full rounded-lg bg-surface-container-lowest border border-outline-variant/20 px-2 py-2 text-xs text-on-surface" /></label>
+      <label><span className="text-[10px] uppercase font-bold text-outline">Minutes</span><input aria-label="Proposed duration" type="number" min="1" value={duration} onChange={(e) => setDuration(e.target.value)} className="w-full rounded-lg bg-surface-container-lowest border border-outline-variant/20 px-2 py-2 text-xs text-on-surface" /></label>
+      <label><span className="text-[10px] uppercase font-bold text-outline">Intensity</span><select aria-label="Proposed intensity" value={intensity} onChange={(e) => setIntensity(e.target.value)} className="w-full rounded-lg bg-surface-container-lowest border border-outline-variant/20 px-2 py-2 text-xs text-on-surface"><option value="">None</option>{[1,2,3,4,5].map((n) => <option key={n}>{n}</option>)}</select></label>
+      {action.proposal.activityCategory === "heat_therapy" && <label><span className="text-[10px] uppercase font-bold text-outline">Temperature °F</span><input aria-label="Proposed temperature" type="number" value={temperature} onChange={(e) => setTemperature(e.target.value)} className="w-full rounded-lg bg-surface-container-lowest border border-outline-variant/20 px-2 py-2 text-xs text-on-surface" /></label>}
+      {action.proposal.activityCategory === "massage" && <label><span className="text-[10px] uppercase font-bold text-outline">Massage type</span><input aria-label="Proposed massage type" value={massageType} onChange={(e) => setMassageType(e.target.value)} className="w-full rounded-lg bg-surface-container-lowest border border-outline-variant/20 px-2 py-2 text-xs text-on-surface" /></label>}
+      <label className="col-span-2"><span className="text-[10px] uppercase font-bold text-outline">Notes</span><input aria-label="Proposed notes" value={notes} onChange={(e) => setNotes(e.target.value)} className="w-full rounded-lg bg-surface-container-lowest border border-outline-variant/20 px-2 py-2 text-xs text-on-surface" /></label>
+    </div>}
+    {(localError || confirm.error) && <p role="alert" className="text-xs text-error mt-2">{localError ?? confirm.error?.message}</p>}
+    <div className="grid grid-cols-3 gap-2 mt-3">
+      <button type="button" onClick={() => { if (editing) setEditing(false); else void cancel.mutateAsync(action.id); }} className="px-2 py-2 rounded-lg text-xs font-bold text-outline hover:bg-surface-container-highest">{editing ? "Done" : "Cancel"}</button>
+      <button type="button" onClick={() => setEditing(true)} className="px-2 py-2 rounded-lg text-xs font-bold text-on-surface bg-surface-container-highest">Edit</button>
+      <button type="button" disabled={confirm.isPending} onClick={() => void save()} className="px-2 py-2 rounded-lg text-xs font-bold bg-primary text-on-primary-fixed disabled:opacity-50">{confirm.isPending ? "Logging…" : "Log session"}</button>
+    </div>
+  </section>;
 }
 
 function ChatNotice({

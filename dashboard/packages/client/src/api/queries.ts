@@ -16,6 +16,7 @@ export * from "./queries/alerts.js";
 export * from "./queries/settings.js";
 export * from "./queries/supplements.js";
 export * from "./queries/medications.js";
+export * from "./queries/recovery.js";
 export * from "./queries/dossier.js";
 export * from "./queries/analytics.js";
 export * from "./queries/insights.js";

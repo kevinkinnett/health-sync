@@ -6,7 +6,9 @@ const budgets = {
   entry: 225 * KiB,
   chunk: 260 * KiB,
   javascriptTotal: 1500 * KiB,
-  css: 70 * KiB,
+  // Recovery logging and matched-effect reporting add a full responsive
+  // workflow. Keep only a narrow 1.3 KiB margin above the measured bundle.
+  css: 72 * KiB,
 };
 
 const assets = resolve(process.cwd(), "dist/assets");

@@ -1,4 +1,38 @@
 {
+  "recovery.activity": [
+    "category",
+    "code",
+    "created_at",
+    "default_duration_minutes",
+    "id",
+    "is_active",
+    "name",
+    "notes",
+    "updated_at"
+  ],
+  "recovery.pending_action": [
+    "conversation_id",
+    "created_at",
+    "expires_at",
+    "id",
+    "payload",
+    "session_id",
+    "status",
+    "updated_at"
+  ],
+  "recovery.session": [
+    "activity_id",
+    "created_at",
+    "duration_minutes",
+    "id",
+    "intensity",
+    "massage_type",
+    "notes",
+    "source",
+    "started_at",
+    "temperature_f",
+    "updated_at"
+  ],
   "dossier.entry": [
     "content",
     "fetched_at",

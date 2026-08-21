@@ -128,6 +128,12 @@ describe("buildHealthTools", () => {
     expect(report?.toolDef.function.description).toContain("Missing food stays unknown");
   });
 
+  it("exposes recovery activities and sessions as read-only query tools", () => {
+    const names = buildHealthTools().map((tool) => tool.name);
+    expect(names).toContain("query_recovery_activities");
+    expect(names).toContain("query_recovery_sessions");
+  });
+
   it("propagates required-arg flags into the tool schema", () => {
     const tools = buildHealthTools();
     const corr = tools.find((t) =>

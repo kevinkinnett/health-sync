@@ -6,7 +6,7 @@ const primaryPaths = navSections.flatMap((section) => section.items.map((item) =
 describe("navigation grouping", () => {
   it("keeps primary navigation short and free of duplicate routes", () => {
     expect(new Set(primaryPaths).size).toBe(primaryPaths.length);
-    expect(primaryPaths.length).toBeLessThanOrEqual(11);
+    expect(primaryPaths.length).toBeLessThanOrEqual(12);
   });
 
   it("keeps every top-level workflow reachable", () => {

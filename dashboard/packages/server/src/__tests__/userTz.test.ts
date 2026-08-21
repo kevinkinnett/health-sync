@@ -5,6 +5,8 @@ import {
   addDays,
   tzDayStartUtc,
   tzDayEndUtc,
+  localDateTimeToUtc,
+  LocalDateTimeError,
 } from "../services/userTz.js";
 
 const NY = "America/New_York";
@@ -110,5 +112,33 @@ describe("tzDayEndUtc", () => {
     // April 26 in the same zone.
     const end = tzDayEndUtc("2026-04-26", NY);
     expect(formatDateInTz(end, NY)).toBe("2026-04-26");
+  });
+});
+
+describe("localDateTimeToUtc", () => {
+  it("uses EST and EDT offsets from the IANA timezone", () => {
+    expect(localDateTimeToUtc("2026-01-15T20:30", NY)).toBe(
+      "2026-01-16T01:30:00.000Z",
+    );
+    expect(localDateTimeToUtc("2026-07-15T20:30", NY)).toBe(
+      "2026-07-16T00:30:00.000Z",
+    );
+  });
+
+  it("rejects a nonexistent spring-forward wall time", () => {
+    expect(() => localDateTimeToUtc("2026-03-08T02:30", NY)).toThrow(
+      LocalDateTimeError,
+    );
+    try {
+      localDateTimeToUtc("2026-03-08T02:30", NY);
+    } catch (error) {
+      expect((error as LocalDateTimeError).code).toBe("nonexistent");
+    }
+  });
+
+  it("rejects an ambiguous fall-back wall time", () => {
+    expect(() => localDateTimeToUtc("2026-11-01T01:30", NY)).toThrow(
+      /occurs twice/,
+    );
   });
 });

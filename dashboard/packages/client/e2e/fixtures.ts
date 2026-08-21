@@ -22,6 +22,7 @@ import type {
   NutritionWeightReport,
   ReadinessScore,
   RecoveryAnomalyReport,
+  RecoveryEffectsData,
   RecordsData,
   SensorAgreementData,
   SupplementIngredient,
@@ -241,6 +242,33 @@ const WORKOUT_EFFECTS: WorkoutEffectsData = {
     covariates: ["prior sleep", "morning recovery", "recent training load"],
   },
   caveats: ["Adjusted association only; unmeasured factors can still explain the difference."],
+};
+
+const RECOVERY_EFFECTS: RecoveryEffectsData = {
+  methodVersion: "recovery-effects-v1-matched-sleep-periods",
+  timezone: "America/New_York",
+  window: { start: "2026-05-01", end: TODAY },
+  coverage: [
+    {
+      activityId: 1,
+      activityCode: "hot_blanket",
+      activityName: "Hot blanket",
+      sessions: 6,
+      alignedSessions: 5,
+      combinedExposures: 0,
+      matchedPairs: 4,
+      requiredPairs: 10,
+    },
+  ],
+  effects: [],
+  matching: {
+    weekdayMatched: true,
+    maximumDayDistance: 84,
+    maximumSessionToSleepHours: 24,
+    minimumMatchedPairs: 10,
+    covariates: ["prior sleep", "prior RHR", "prior HRV", "recent training load"],
+  },
+  caveats: ["Adjusted association only; unmeasured factors can still explain a difference."],
 };
 
 const SENSOR_AGREEMENT: SensorAgreementData = {
@@ -882,6 +910,7 @@ const ROUTES: [RegExp, unknown][] = [
   [/\/api\/health\/heatmap\/day-of-week$/, HEATMAP],
   [/\/api\/health\/correlations$/, CORRELATIONS],
   [/\/api\/health\/workout-effects$/, WORKOUT_EFFECTS],
+  [/\/api\/recovery\/effects$/, RECOVERY_EFFECTS],
   [/\/api\/health\/sensor-agreement/, SENSOR_AGREEMENT],
   [/\/api\/health\/recovery-anomalies/, RECOVERY_ANOMALIES],
   [/\/api\/health\/records$/, RECORDS],

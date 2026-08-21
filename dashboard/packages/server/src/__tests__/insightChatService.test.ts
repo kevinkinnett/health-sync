@@ -8,6 +8,7 @@ import type {
   ChatCompletionResponse,
   LlmClient,
 } from "../services/llmClient.js";
+import type { RecoveryPendingAction } from "@health-dashboard/shared";
 
 /**
  * Why this exists: `InsightChatService` is 200+ lines of subtle
@@ -249,5 +250,45 @@ describe("InsightChatService", () => {
     expect(concatenated).toContain("Q1");
     expect(concatenated).toContain("First answer.");
     expect(concatenated).toContain("Q2");
+  });
+
+  it("dispatches recovery preparation separately and returns pending actions", async () => {
+    const action = {
+      id: "action-1",
+      conversationId: "00000000-0000-0000-0000-000000000001",
+      status: "pending",
+      proposal: {
+        activityId: 1, activityCode: "hot_blanket", activityName: "Hot blanket", activityCategory: "heat_therapy",
+        startedAt: "2026-08-21T01:00:00Z", durationMinutes: 30, intensity: null,
+        temperatureF: null, massageType: null, notes: null,
+      },
+      sessionId: null,
+      expiresAt: "2026-08-22T01:00:00Z",
+      createdAt: "2026-08-21T01:00:00Z",
+      updatedAt: "2026-08-21T01:00:00Z",
+    } satisfies RecoveryPendingAction;
+    const recoveryActions = {
+      prepare: vi.fn().mockResolvedValue(action),
+      listConversationActions: vi.fn().mockResolvedValue([action]),
+    };
+    const llm = makeLlm([
+      toolCallResponse("call-action", "prepare_log_recovery_session", {
+        activity: "hot_blanket", startedLocal: "2026-08-20T21:00", durationMinutes: 30,
+      }),
+      textResponse("I prepared that session for your review."),
+    ]);
+    const service = new InsightChatService(
+      repo as unknown as InsightRepository,
+      llm,
+      { userTimezone: "America/New_York" } as never,
+      { model: "test-model", recoveryActions: recoveryActions as never },
+    );
+    const result = await service.send({
+      conversationId: action.conversationId,
+      message: "Log 30 minutes in the hot blanket last night at 9",
+    });
+    expect(recoveryActions.prepare).toHaveBeenCalled();
+    expect(result.meta.toolsCalled).toContain("prepare_log_recovery_session");
+    expect(result.pendingActions).toEqual([action]);
   });
 });

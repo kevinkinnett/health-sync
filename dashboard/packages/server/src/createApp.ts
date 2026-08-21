@@ -21,6 +21,7 @@ import { TeslaDriveRepository } from "./repositories/teslaDriveRepo.js";
 import { IngestRepository } from "./repositories/ingestRepo.js";
 import { SupplementRepository } from "./repositories/supplementRepo.js";
 import { MedicationRepository } from "./repositories/medicationRepo.js";
+import { RecoveryRepository } from "./repositories/recoveryRepo.js";
 import { DossierRepository } from "./repositories/dossierRepo.js";
 import { ApiLogRepository } from "./repositories/apiLogRepo.js";
 import { InsightRepository } from "./repositories/insightRepo.js";
@@ -56,6 +57,9 @@ import { IngestService } from "./services/ingestService.js";
 import { IngestHealthMonitor } from "./services/ingestHealthMonitor.js";
 import { SupplementService } from "./services/supplementService.js";
 import { MedicationService } from "./services/medicationService.js";
+import { RecoveryService } from "./services/recoveryService.js";
+import { RecoveryActionService } from "./services/recoveryActionService.js";
+import { RecoveryEffectsService } from "./services/recoveryEffectsService.js";
 import { LlmClient } from "./services/llmClient.js";
 import { DossierService } from "./services/dossierService.js";
 import { CatalogDossierItemReader } from "./services/dossierItemReader.js";
@@ -64,12 +68,14 @@ import { HealthController } from "./controllers/healthController.js";
 import { IngestController } from "./controllers/ingestController.js";
 import { SupplementController } from "./controllers/supplementController.js";
 import { MedicationController } from "./controllers/medicationController.js";
+import { RecoveryController } from "./controllers/recoveryController.js";
 import { DossierController } from "./controllers/dossierController.js";
 import { AnalyticsController } from "./controllers/analyticsController.js";
 import { createHealthRoutes } from "./routes/health.js";
 import { createIngestRoutes } from "./routes/ingest.js";
 import { createSupplementRoutes } from "./routes/supplement.js";
 import { createMedicationRoutes } from "./routes/medication.js";
+import { createRecoveryRoutes } from "./routes/recovery.js";
 import { createDossierRoutes } from "./routes/dossier.js";
 import { createAnalyticsRoutes } from "./routes/analytics.js";
 import { createConfigRoutes } from "./routes/config.js";
@@ -114,6 +120,7 @@ export async function createApp(pool: Pool, config: Config): Promise<Express> {
   const ingestRepo = new IngestRepository(pool);
   const supplementRepo = new SupplementRepository(pool);
   const medicationRepo = new MedicationRepository(pool);
+  const recoveryRepo = new RecoveryRepository(pool);
   const dossierRepo = new DossierRepository(pool);
   const apiLogRepo = new ApiLogRepository(pool);
   const insightRepo = new InsightRepository(pool);
@@ -141,6 +148,22 @@ export async function createApp(pool: Pool, config: Config): Promise<Express> {
   const ingestService = new IngestService(ingestRepo, config.windmill);
   const supplementService = new SupplementService(supplementRepo);
   const medicationService = new MedicationService(medicationRepo);
+  const recoveryService = new RecoveryService(recoveryRepo, config.userTimezone);
+  const recoveryActionService = new RecoveryActionService(
+    recoveryRepo,
+    recoveryService,
+    config.userTimezone,
+  );
+  const recoveryEffectsService = new RecoveryEffectsService(
+    recoveryRepo,
+    sleepRepo,
+    heartRateRepo,
+    hrvRepo,
+    eightSleepRepo,
+    exerciseLogRepo,
+    healthDataService,
+    config.userTimezone,
+  );
   const llmClient = new LlmClient({
     baseUrl: config.llm.baseUrl,
     apiKey: config.llm.apiKey,
@@ -180,6 +203,12 @@ export async function createApp(pool: Pool, config: Config): Promise<Express> {
   const ingestController = new IngestController(ingestService);
   const supplementController = new SupplementController(supplementService);
   const medicationController = new MedicationController(medicationService);
+  const recoveryController = new RecoveryController(
+    recoveryService,
+    recoveryActionService,
+    recoveryEffectsService,
+    config.userTimezone,
+  );
   const dossierController = new DossierController(dossierService);
   const analyticsController = new AnalyticsController(analyticsService, {
     userTimezone: config.userTimezone,
@@ -207,6 +236,7 @@ export async function createApp(pool: Pool, config: Config): Promise<Express> {
   app.use("/api/ingest", createIngestRoutes(ingestController));
   app.use("/api/supplements", createSupplementRoutes(supplementController));
   app.use("/api/medications", createMedicationRoutes(medicationController));
+  app.use("/api/recovery", createRecoveryRoutes(recoveryController));
   app.use("/api/dossier", createDossierRoutes(dossierController));
   app.use("/api/analytics", createAnalyticsRoutes(analyticsController));
   app.use("/api/admin/api-logs", createApiLogRoutes(apiLogRepo));
@@ -273,6 +303,8 @@ export async function createApp(pool: Pool, config: Config): Promise<Express> {
     analyticsService,
     supplementService,
     medicationService,
+    recoveryService,
+    recoveryEffectsService,
     trainingService,
   };
   const insightService = new InsightService(insightRepo, llmClient, v1Ctx, {
@@ -282,7 +314,10 @@ export async function createApp(pool: Pool, config: Config): Promise<Express> {
     insightRepo,
     llmClient,
     v1Ctx,
-    { model: () => settingService.getLlmModelSettings().then((m) => m.chat) },
+    {
+      model: () => settingService.getLlmModelSettings().then((m) => m.chat),
+      recoveryActions: recoveryActionService,
+    },
   );
   const insightJobs = new InsightJobManager(insightService);
   const insightController = new InsightController(

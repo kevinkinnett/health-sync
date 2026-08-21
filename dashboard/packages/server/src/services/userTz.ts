@@ -81,6 +81,85 @@ export function tzDayEndUtc(date: string, tz: string): string {
   return new Date(startNextDay.getTime() - 1).toISOString();
 }
 
+export class LocalDateTimeError extends Error {
+  constructor(
+    message: string,
+    public readonly code: "invalid" | "nonexistent" | "ambiguous",
+  ) {
+    super(message);
+    this.name = "LocalDateTimeError";
+  }
+}
+
+/**
+ * Resolve an offset-free local wall-clock value in an IANA timezone.
+ * The round-trip search catches both DST gaps and repeated fall-back times.
+ */
+export function localDateTimeToUtc(local: string, tz: string): string {
+  const match = local.match(
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/,
+  );
+  if (!match) {
+    throw new LocalDateTimeError(
+      "Local date and time must use YYYY-MM-DDTHH:mm or YYYY-MM-DDTHH:mm:ss",
+      "invalid",
+    );
+  }
+  const [, ys, ms, ds, hs, mins, ss = "00"] = match;
+  const parts = [ys, ms, ds, hs, mins, ss].map(Number);
+  const [year, month, day, hour, minute, second] = parts;
+  const naive = Date.UTC(year, month - 1, day, hour, minute, second);
+  const valid = new Date(naive);
+  if (
+    valid.getUTCFullYear() !== year ||
+    valid.getUTCMonth() !== month - 1 ||
+    valid.getUTCDate() !== day ||
+    valid.getUTCHours() !== hour ||
+    valid.getUTCMinutes() !== minute ||
+    valid.getUTCSeconds() !== second
+  ) {
+    throw new LocalDateTimeError("Local date and time is invalid", "invalid");
+  }
+
+  const expected = `${ys}-${ms}-${ds}T${hs}:${mins}:${ss}`;
+  const matches: Date[] = [];
+  for (let offsetMinutes = -14 * 60; offsetMinutes <= 14 * 60; offsetMinutes += 15) {
+    const candidate = new Date(naive - offsetMinutes * 60_000);
+    if (formatLocalDateTime(candidate, tz) === expected) matches.push(candidate);
+  }
+  const unique = [...new Map(matches.map((value) => [value.toISOString(), value])).values()];
+  if (unique.length === 0) {
+    throw new LocalDateTimeError(
+      `${local} does not exist in ${tz} because of a daylight-saving transition`,
+      "nonexistent",
+    );
+  }
+  if (unique.length > 1) {
+    throw new LocalDateTimeError(
+      `${local} occurs twice in ${tz}; include an explicit UTC offset`,
+      "ambiguous",
+    );
+  }
+  return unique[0].toISOString();
+}
+
+function formatLocalDateTime(instant: Date, tz: string): string {
+  const formatted = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    hour12: false,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).formatToParts(instant);
+  const get = (type: string) =>
+    formatted.find((part) => part.type === type)?.value ?? "00";
+  const hour = String(Number(get("hour")) % 24).padStart(2, "0");
+  return `${get("year")}-${get("month")}-${get("day")}T${hour}:${get("minute")}:${get("second")}`;
+}
+
 /**
  * Resolves "midnight on `date` in `tz`" to a real `Date` (UTC instant).
  *

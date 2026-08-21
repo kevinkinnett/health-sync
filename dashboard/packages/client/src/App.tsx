@@ -13,6 +13,7 @@ const ApiConsole = lazy(() => import("./pages/ApiConsole").then((m) => ({ defaul
 const Insights = lazy(() => import("./pages/Insights").then((m) => ({ default: m.Insights })));
 const Supplements = lazy(() => import("./pages/Supplements").then((m) => ({ default: m.Supplements })));
 const Medications = lazy(() => import("./pages/Medications").then((m) => ({ default: m.Medications })));
+const Recovery = lazy(() => import("./pages/Recovery").then((m) => ({ default: m.Recovery })));
 const Alerts = lazy(() => import("./pages/Alerts").then((m) => ({ default: m.Alerts })));
 const AnalyticsOverview = lazy(() => import("./pages/analytics/Overview").then((m) => ({ default: m.AnalyticsOverview })));
 const AnalyticsActivity = lazy(() => import("./pages/analytics/Activity").then((m) => ({ default: m.AnalyticsActivity })));
@@ -76,6 +77,7 @@ export default function App() {
             <Route path="/ingest" element={<Ingest />} />
             <Route path="/supplements" element={<Supplements />} />
             <Route path="/medications" element={<Medications />} />
+            <Route path="/recovery" element={<Recovery />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/api-console" element={<ApiConsole />} />
             <Route path="/insights" element={<Insights />} />
