@@ -3,10 +3,15 @@ import { z } from "zod";
 import type { RecoveryService } from "../services/recoveryService.js";
 import type { RecoveryActionService } from "../services/recoveryActionService.js";
 import type { RecoveryEffectsService } from "../services/recoveryEffectsService.js";
+import type { RecoveryEventStudyService } from "../services/recoveryEventStudyService.js";
 import { todayInTz } from "../services/userTz.js";
 import { parseId } from "./_params.js";
 
 const category = z.enum(["heat_therapy", "massage", "other"]);
+const effectOutcome = z.enum([
+  "sleep_duration", "sleep_efficiency", "resting_heart_rate",
+  "hrv", "restlessness", "readiness",
+]);
 const activityCreate = z.object({
   code: z.string().trim().regex(/^[a-z][a-z0-9_]*$/),
   name: z.string().trim().min(1),
@@ -47,6 +52,7 @@ export class RecoveryController {
     private readonly actions?: RecoveryActionService,
     private readonly effects?: RecoveryEffectsService,
     private readonly timezone = "America/New_York",
+    private readonly eventStudies?: RecoveryEventStudyService,
   ) {}
 
   async listActivities(req: Request, res: Response): Promise<void> {
@@ -84,6 +90,12 @@ export class RecoveryController {
   async getEffects(_req: Request, res: Response): Promise<void> {
     if (!this.effects) throw new Error("Recovery effects service is unavailable");
     res.json(await this.effects.get(todayInTz(this.timezone)));
+  }
+  async getEventStudy(req: Request, res: Response): Promise<void> {
+    if (!this.eventStudies) throw new Error("Recovery event-study service is unavailable");
+    const activityId = parseId(req.query.activityId, "activityId");
+    const outcome = effectOutcome.parse(req.query.outcome);
+    res.json(await this.eventStudies.get(todayInTz(this.timezone), activityId, outcome));
   }
   async confirmPendingAction(req: Request, res: Response): Promise<void> {
     if (!this.actions) throw new Error("Recovery action service is unavailable");

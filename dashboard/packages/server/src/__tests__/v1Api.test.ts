@@ -70,6 +70,9 @@ function fakeServices(): V1Context {
     recoveryEffectsService: {
       get: vi.fn().mockResolvedValue({ methodVersion: "test", coverage: [], effects: [] }),
     } as never,
+    recoveryEventStudyService: {
+      get: vi.fn().mockResolvedValue({ methodVersion: "event-test", trajectories: [] }),
+    } as never,
   };
 }
 
@@ -178,6 +181,18 @@ describe("v1 router", () => {
     expect(ctx.recoveryEffectsService.get).toHaveBeenCalledWith(
       expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
     );
+  });
+
+  it("validates and exposes recovery event studies through the read-only registry", async () => {
+    const { app, ctx } = buildApp();
+    const res = await request(app)
+      .get("/api/v1/recovery/event-study?activityId=2&outcome=hrv")
+      .expect(200);
+    expect(res.body.data.methodVersion).toBe("event-test");
+    expect(ctx.recoveryEventStudyService.get).toHaveBeenCalledWith(
+      expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), 2, "hrv",
+    );
+    await request(app).get("/api/v1/recovery/event-study?activityId=2&outcome=invalid").expect(400);
   });
 
   it("returns 400 when a required arg is missing", async () => {

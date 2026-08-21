@@ -73,6 +73,36 @@ export function blockBootstrapCorrelationInterval(
   return percentileInterval(estimates, 3);
 }
 
+/** Deterministic paired bootstrap for robust statistics such as Theil-Sen slopes. */
+export function pairedBootstrapInterval(
+  xs: number[],
+  ys: number[],
+  seed: string,
+  statistic: (sampleXs: number[], sampleYs: number[]) => number | null,
+  iterations = 600,
+): ConfidenceInterval {
+  const fallback = statistic(xs, ys) ?? 0;
+  if (xs.length !== ys.length || xs.length < 2) {
+    return { low: round(fallback, 2), high: round(fallback, 2) };
+  }
+  const rng = seededRandom(seed);
+  const estimates: number[] = [];
+  for (let iteration = 0; iteration < iterations; iteration++) {
+    const sampleXs: number[] = [];
+    const sampleYs: number[] = [];
+    for (let index = 0; index < xs.length; index++) {
+      const selected = Math.floor(rng() * xs.length);
+      sampleXs.push(xs[selected]);
+      sampleYs.push(ys[selected]);
+    }
+    const estimate = statistic(sampleXs, sampleYs);
+    if (estimate != null && Number.isFinite(estimate)) estimates.push(estimate);
+  }
+  return estimates.length === 0
+    ? { low: round(fallback, 2), high: round(fallback, 2) }
+    : percentileInterval(estimates);
+}
+
 export function correlationStability(xs: number[], ys: number[]): "stable" | "mixed" | "unstable" {
   if (xs.length < 18 || xs.length !== ys.length) return "mixed";
   const chunk = Math.floor(xs.length / 3);

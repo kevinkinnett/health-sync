@@ -15,6 +15,7 @@ export function createRecoveryRoutes(controller: RecoveryController): Router {
   router.patch("/sessions/:id", wrap((req, res) => controller.updateSession(req, res)));
   router.delete("/sessions/:id", wrap((req, res) => controller.deleteSession(req, res)));
   router.get("/effects", wrap((req, res) => controller.getEffects(req, res)));
+  router.get("/event-study", wrap((req, res) => controller.getEventStudy(req, res)));
   router.post("/pending-actions/:id/confirm", wrap((req, res) => controller.confirmPendingAction(req, res)));
   router.post("/pending-actions/:id/cancel", wrap((req, res) => controller.cancelPendingAction(req, res)));
   return router;

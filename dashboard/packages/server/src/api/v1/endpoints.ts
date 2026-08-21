@@ -5,6 +5,8 @@ import type { MedicationService } from "../../services/medicationService.js";
 import type { TrainingService } from "../../services/training/trainingService.js";
 import type { RecoveryService } from "../../services/recoveryService.js";
 import type { RecoveryEffectsService } from "../../services/recoveryEffectsService.js";
+import type { RecoveryEventStudyService } from "../../services/recoveryEventStudyService.js";
+import type { RecoveryEffectOutcome } from "@health-dashboard/shared";
 import { todayInTz, addDays } from "../../services/userTz.js";
 
 /**
@@ -54,6 +56,7 @@ export interface V1Context {
   trainingService: TrainingService;
   recoveryService: RecoveryService;
   recoveryEffectsService: RecoveryEffectsService;
+  recoveryEventStudyService: RecoveryEventStudyService;
 }
 
 // ---------------------------------------------------------------------------
@@ -398,6 +401,38 @@ export function buildV1Endpoints(): V1EndpointDef[] {
       description: "Matched-period estimates comparing nights after one recovery activity with unused control nights on the same weekday and similar prior sleep, resting heart rate, HRV, training load, and calendar proximity. Results are adjusted associations, not proof of causation.",
       handler: async (_args, ctx) =>
         ctx.recoveryEffectsService.get(todayInTz(ctx.userTimezone)),
+    },
+    {
+      path: "/recovery/event-study",
+      summary: "Recovery activity event study",
+      description: "Descriptive outcome timeline from seven wake dates before through seven after a selected recovery activity. Sparse observations are not causal conclusions.",
+      parameters: {
+        type: "object",
+        properties: {
+          activityId: { type: "integer", description: "Recovery activity id." },
+          outcome: {
+            type: "string",
+            description: "Outcome to display in its native unit.",
+            enum: ["sleep_duration", "sleep_efficiency", "resting_heart_rate", "hrv", "restlessness", "readiness"],
+          },
+        },
+        required: ["activityId", "outcome"],
+      },
+      handler: async (args, ctx) => {
+        const activityId = asId(args.activityId);
+        if (activityId == null) throw new Error("activityId required");
+        const outcomes: RecoveryEffectOutcome[] = [
+          "sleep_duration", "sleep_efficiency", "resting_heart_rate", "hrv", "restlessness", "readiness",
+        ];
+        if (typeof args.outcome !== "string" || !outcomes.includes(args.outcome as RecoveryEffectOutcome)) {
+          throw new Error("outcome invalid");
+        }
+        return ctx.recoveryEventStudyService.get(
+          todayInTz(ctx.userTimezone),
+          activityId,
+          args.outcome as RecoveryEffectOutcome,
+        );
+      },
     },
 
     // -----------------------------------------------------------------

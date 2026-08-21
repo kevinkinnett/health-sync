@@ -4,6 +4,8 @@ import type {
   CreateRecoverySessionBody,
   RecoveryActivity,
   RecoveryEffectsData,
+  RecoveryEffectOutcome,
+  RecoveryEventStudyData,
   RecoveryPendingAction,
   RecoverySession,
   ConfirmRecoveryPendingActionBody,
@@ -36,6 +38,15 @@ export function useRecoveryEffects() {
   return useQuery<RecoveryEffectsData>({
     queryKey: ["recovery", "effects"],
     queryFn: () => apiFetch("/recovery/effects"),
+  });
+}
+
+export function useRecoveryEventStudy(activityId: number | null, outcome: RecoveryEffectOutcome) {
+  const params = new URLSearchParams({ activityId: String(activityId ?? ""), outcome });
+  return useQuery<RecoveryEventStudyData>({
+    queryKey: ["recovery", "event-study", activityId, outcome],
+    queryFn: () => apiFetch(`/recovery/event-study?${params}`),
+    enabled: activityId != null,
   });
 }
 

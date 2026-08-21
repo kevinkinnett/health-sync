@@ -40,9 +40,10 @@ export interface AlignedRecoveryPeriod extends RecoverySleepPeriod {
 export interface RecoveryEffectEngineResult {
   effects: RecoveryEffectEstimate[];
   matchedPairsByActivity: Map<number, number>;
+  matchedPairsByActivityOutcome: Map<string, number>;
 }
 
-interface OutcomeDefinition {
+export interface RecoveryOutcomeDefinition {
   key: RecoveryEffectOutcome;
   label: string;
   unit: string;
@@ -50,7 +51,7 @@ interface OutcomeDefinition {
   value: (period: RecoverySleepPeriod) => number | null;
 }
 
-const OUTCOMES: OutcomeDefinition[] = [
+export const RECOVERY_OUTCOMES: RecoveryOutcomeDefinition[] = [
   { key: "sleep_duration", label: "Sleep duration", unit: "min", betterDirection: "up", value: (row) => row.outcomes.sleepDuration },
   { key: "sleep_efficiency", label: "Sleep efficiency", unit: "%", betterDirection: "up", value: (row) => row.outcomes.sleepEfficiency },
   { key: "resting_heart_rate", label: "Wake-day resting HR", unit: "bpm", betterDirection: "down", value: (row) => row.outcomes.restingHeartRate },
@@ -100,9 +101,11 @@ export function estimateRecoveryEffects(
 ): RecoveryEffectEngineResult {
   const effects: RecoveryEffectEstimate[] = [];
   const matchedPairsByActivity = new Map<number, number>();
+  const matchedPairsByActivityOutcome = new Map<string, number>();
   for (const activity of activities) {
-    for (const outcome of OUTCOMES) {
+    for (const outcome of RECOVERY_OUTCOMES) {
       const matches = matchPeriods(periods, activity.id, outcome);
+      matchedPairsByActivityOutcome.set(`${activity.id}:${outcome.key}`, matches.length);
       matchedPairsByActivity.set(
         activity.id,
         Math.max(matchedPairsByActivity.get(activity.id) ?? 0, matches.length),
@@ -111,7 +114,11 @@ export function estimateRecoveryEffects(
       effects.push(summarize(activity, outcome, matches));
     }
   }
-  return { effects, matchedPairsByActivity };
+  return { effects, matchedPairsByActivity, matchedPairsByActivityOutcome };
+}
+
+export function getRecoveryOutcome(outcome: RecoveryEffectOutcome): RecoveryOutcomeDefinition {
+  return RECOVERY_OUTCOMES.find((definition) => definition.key === outcome)!;
 }
 
 interface Match {
@@ -124,7 +131,7 @@ interface Match {
 function matchPeriods(
   periods: AlignedRecoveryPeriod[],
   activityId: number,
-  outcome: OutcomeDefinition,
+  outcome: RecoveryOutcomeDefinition,
 ): Match[] {
   const exposed = periods.filter((period) => {
     const activityIds = new Set(period.sessions.map((session) => session.activityId));
@@ -133,14 +140,14 @@ function matchPeriods(
   const controls = periods.filter(
     (period) => period.sessions.length === 0 && outcome.value(period) != null,
   );
-  const scales = covariateScales(periods);
+  const scales = recoveryCovariateScales(periods);
   const candidates = exposed.map((period) => ({
     exposed: period,
     options: controls
       .filter((control) =>
         control.weekday === period.weekday &&
         dayDistance(control.date, period.date) <= RECOVERY_MAX_MATCH_DAY_DISTANCE)
-      .map((control) => ({ control, score: matchDistance(period, control, scales) }))
+      .map((control) => ({ control, score: recoveryMatchDistance(period, control, scales) }))
       .sort((a, b) => a.score - b.score),
   })).sort((a, b) => a.options.length - b.options.length);
 
@@ -162,7 +169,7 @@ function matchPeriods(
 
 function summarize(
   activity: RecoveryActivity,
-  outcome: OutcomeDefinition,
+  outcome: RecoveryOutcomeDefinition,
   matches: Match[],
 ): RecoveryEffectEstimate {
   const exposedValues = matches.map((match) => match.exposedValue);
@@ -204,7 +211,7 @@ function summarize(
 
 function interpretation(
   activityName: string,
-  outcome: OutcomeDefinition,
+  outcome: RecoveryOutcomeDefinition,
   difference: number,
   interval: { low: number; high: number },
   conclusion: RecoveryEffectEstimate["conclusion"],
@@ -216,7 +223,7 @@ function interpretation(
   return `${activityName} sessions were followed by ${Math.abs(difference).toFixed(1)} ${outcome.unit} ${direction} ${outcome.label.toLowerCase()} than matched nights.`;
 }
 
-function covariateScales(periods: RecoverySleepPeriod[]) {
+export function recoveryCovariateScales(periods: RecoverySleepPeriod[]) {
   return {
     sleep: Math.max(sampleSd(periods.flatMap((row) => row.priorSleepMinutes == null ? [] : [row.priorSleepMinutes])), 20),
     rhr: Math.max(sampleSd(periods.flatMap((row) => row.priorRestingHeartRate == null ? [] : [row.priorRestingHeartRate])), 2),
@@ -225,10 +232,10 @@ function covariateScales(periods: RecoverySleepPeriod[]) {
   };
 }
 
-function matchDistance(
+export function recoveryMatchDistance(
   exposed: RecoverySleepPeriod,
   control: RecoverySleepPeriod,
-  scales: ReturnType<typeof covariateScales>,
+  scales: ReturnType<typeof recoveryCovariateScales>,
 ): number {
   return (
     normalizedDistance(exposed.priorSleepMinutes, control.priorSleepMinutes, scales.sleep) +
