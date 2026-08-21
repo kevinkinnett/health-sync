@@ -95,7 +95,21 @@ const effects = {
     effects: [],
   }),
 };
-const controller = new RecoveryController(service, undefined, effects as never);
+const eventStudies = {
+  get: vi.fn().mockResolvedValue({
+    methodVersion: "recovery-event-study-v1-descriptive-windows",
+    activityId: 2,
+    outcome: "hrv",
+    trajectories: [],
+  }),
+};
+const controller = new RecoveryController(
+  service,
+  undefined,
+  effects as never,
+  "America/New_York",
+  eventStudies as never,
+);
 const app = express();
 app.use(express.json());
 app.use("/api/recovery", createRecoveryRoutes(controller));
@@ -104,6 +118,7 @@ app.use(errorMapper);
 beforeEach(() => {
   repo.reset();
   effects.get.mockClear();
+  eventStudies.get.mockClear();
 });
 
 describe("Recovery API", () => {
@@ -168,5 +183,19 @@ describe("Recovery API", () => {
     const response = await request(app).get("/api/recovery/effects").expect(200);
     expect(response.body.methodVersion).toBe("recovery-effects-v1-matched-sleep-periods");
     expect(effects.get).toHaveBeenCalledWith(expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/));
+  });
+
+  it("validates and exposes a focused recovery event study", async () => {
+    const response = await request(app)
+      .get("/api/recovery/event-study?activityId=2&outcome=hrv")
+      .expect(200);
+    expect(response.body).toMatchObject({ activityId: 2, outcome: "hrv" });
+    expect(eventStudies.get).toHaveBeenCalledWith(
+      expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+      2,
+      "hrv",
+    );
+    await request(app).get("/api/recovery/event-study?activityId=2&outcome=prediction").expect(400);
+    await request(app).get("/api/recovery/event-study?outcome=hrv").expect(400);
   });
 });

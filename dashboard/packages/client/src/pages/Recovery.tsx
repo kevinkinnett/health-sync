@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import type {
   CreateRecoveryActivityBody,
   RecoveryActivity,
@@ -39,13 +40,19 @@ export function Recovery() {
           <h1 className="font-headline text-3xl font-bold tracking-tight text-on-surface">Recovery</h1>
           <p className="text-on-surface-variant mt-1">Log heat therapy, massage, and other recovery sessions.</p>
         </div>
-        <div className="flex gap-1 p-1.5 bg-surface-container-low rounded-2xl border border-outline-variant/10">
+        <div className="flex flex-wrap items-center gap-2">
+          <Link to="/analytics/correlations#recovery-effects" className="inline-flex items-center gap-2 rounded-xl border border-tertiary/25 bg-tertiary/10 px-4 py-2.5 text-xs font-bold text-tertiary hover:bg-tertiary/15">
+            <span className="material-symbols-outlined text-base" aria-hidden="true">monitoring</span>
+            View effects
+          </Link>
+          <div className="flex gap-1 p-1.5 bg-surface-container-low rounded-2xl border border-outline-variant/10">
           {tabs.map((tab) => (
             <button key={tab} type="button" onClick={() => setActiveTab(tab)}
               className={`px-5 py-2 rounded-xl text-xs font-bold uppercase tracking-widest ${activeTab === tab ? "bg-primary text-on-primary-fixed" : "text-outline hover:text-on-surface"}`}>
               {tab}
             </button>
           ))}
+          </div>
         </div>
       </header>
       {activeTab === "Log" ? <RecoveryLog /> : <RecoveryLibrary />}

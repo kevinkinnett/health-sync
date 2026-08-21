@@ -1,9 +1,11 @@
 import { useState } from "react";
 import type {
+  RecoveryEffectOutcome,
   RecoveryEffectCoverage,
   RecoveryEffectEstimate,
   RecoveryEffectsData,
 } from "@health-dashboard/shared";
+import { RecoveryEventStudy } from "./RecoveryEventStudy";
 
 const TONE = {
   helped: "border-secondary/30 bg-secondary/10 text-secondary",
@@ -15,13 +17,14 @@ const LABEL = { helped: "Likely benefit", cost: "Possible cost", unclear: "Still
 
 export function RecoveryEffects({ data }: { data: RecoveryEffectsData }) {
   const [selectedId, setSelectedId] = useState<number | null>(data.coverage[0]?.activityId ?? null);
+  const [outcome, setOutcome] = useState<RecoveryEffectOutcome>("sleep_duration");
   const selected = data.coverage.find((item) => item.activityId === selectedId) ?? data.coverage[0];
   const visible = selected == null
     ? []
     : data.effects.filter((effect) => effect.activityId === selected.activityId);
 
   return (
-    <section className="space-y-4" aria-labelledby="recovery-effects-title">
+    <section id="recovery-effects" className="space-y-4 scroll-mt-24" aria-labelledby="recovery-effects-title">
       <div className="rounded-xl border border-tertiary/25 bg-tertiary/5 p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="max-w-3xl">
@@ -71,6 +74,8 @@ export function RecoveryEffects({ data }: { data: RecoveryEffectsData }) {
           </div>
 
           {selected && <CoverageCard coverage={selected} />}
+
+          {selected && <RecoveryEventStudy activityId={selected.activityId} outcome={outcome} onOutcomeChange={setOutcome} />}
 
           {visible.length === 0 ? (
             <div className="rounded-xl bg-surface-container p-6 text-sm text-on-surface-variant">

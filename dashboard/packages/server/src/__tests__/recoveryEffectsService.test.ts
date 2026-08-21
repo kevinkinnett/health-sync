@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { RecoveryActivity, RecoverySession, SleepDay } from "@health-dashboard/shared";
 import { RecoveryEffectsService } from "../services/recoveryEffectsService.js";
+import { RecoveryAnalysisDatasetBuilder } from "../services/recoveryAnalysisDataset.js";
 
 describe("RecoveryEffectsService", () => {
   it("loads every required signal and reports sparse evidence coverage", async () => {
@@ -51,7 +52,11 @@ describe("RecoveryEffectsService", () => {
       listActivities: vi.fn().mockResolvedValue([activity]),
       listSessions: vi.fn().mockResolvedValue([session]),
     };
-    const sleepRepo = { findLatest: vi.fn().mockResolvedValue([sleep]) };
+    const sleepRepo = { findLatest: vi.fn().mockResolvedValue([
+      sleep,
+      { ...sleep, date: "2026-08-18", measurementMethod: "legacy_sleep_v1", mainSleepStartTime: "2026-08-18T05:00:00.000Z" },
+      { ...sleep, date: "2026-08-21", measurementMethod: "future_partial_v1", mainSleepStartTime: "2026-08-21T05:00:00.000Z" },
+    ]) };
     const heartRateRepo = { findLatest: vi.fn().mockResolvedValue([{ date: "2026-08-19", restingHeartRate: 57 }]) };
     const hrvRepo = { findLatest: vi.fn().mockResolvedValue([{ date: "2026-08-19", dailyRmssd: 44, measurementMethod: "sample_mean_v1" }]) };
     const eightSleepRepo = { findLatest: vi.fn().mockResolvedValue([{ date: "2026-08-19", tnt: 12, sleepStart: "2026-08-19T05:00:00.000Z" }]) };
@@ -59,7 +64,7 @@ describe("RecoveryEffectsService", () => {
     const healthDataService = {
       getReadiness: vi.fn().mockResolvedValue({ history: [{ date: "2026-08-19", score: 72 }] }),
     };
-    const service = new RecoveryEffectsService(
+    const dataset = new RecoveryAnalysisDatasetBuilder(
       recoveryRepo as never,
       sleepRepo as never,
       heartRateRepo as never,
@@ -69,6 +74,7 @@ describe("RecoveryEffectsService", () => {
       healthDataService as never,
       "America/New_York",
     );
+    const service = new RecoveryEffectsService(dataset, "America/New_York");
 
     const result = await service.get("2026-08-21");
 
@@ -80,5 +86,11 @@ describe("RecoveryEffectsService", () => {
     });
     expect(healthDataService.getReadiness).toHaveBeenCalledWith(700);
     expect(exerciseRepo.findLatest).toHaveBeenCalled();
+    expect(recoveryRepo.listSessions).toHaveBeenCalledWith(
+      "2024-09-19",
+      "2026-08-20",
+      undefined,
+      "America/New_York",
+    );
   });
 });

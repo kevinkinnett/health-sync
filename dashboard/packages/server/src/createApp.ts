@@ -60,6 +60,8 @@ import { MedicationService } from "./services/medicationService.js";
 import { RecoveryService } from "./services/recoveryService.js";
 import { RecoveryActionService } from "./services/recoveryActionService.js";
 import { RecoveryEffectsService } from "./services/recoveryEffectsService.js";
+import { RecoveryEventStudyService } from "./services/recoveryEventStudyService.js";
+import { RecoveryAnalysisDatasetBuilder } from "./services/recoveryAnalysisDataset.js";
 import { LlmClient } from "./services/llmClient.js";
 import { DossierService } from "./services/dossierService.js";
 import { CatalogDossierItemReader } from "./services/dossierItemReader.js";
@@ -154,7 +156,7 @@ export async function createApp(pool: Pool, config: Config): Promise<Express> {
     recoveryService,
     config.userTimezone,
   );
-  const recoveryEffectsService = new RecoveryEffectsService(
+  const recoveryAnalysisDataset = new RecoveryAnalysisDatasetBuilder(
     recoveryRepo,
     sleepRepo,
     heartRateRepo,
@@ -164,6 +166,8 @@ export async function createApp(pool: Pool, config: Config): Promise<Express> {
     healthDataService,
     config.userTimezone,
   );
+  const recoveryEffectsService = new RecoveryEffectsService(recoveryAnalysisDataset, config.userTimezone);
+  const recoveryEventStudyService = new RecoveryEventStudyService(recoveryAnalysisDataset, config.userTimezone);
   const llmClient = new LlmClient({
     baseUrl: config.llm.baseUrl,
     apiKey: config.llm.apiKey,
@@ -208,6 +212,7 @@ export async function createApp(pool: Pool, config: Config): Promise<Express> {
     recoveryActionService,
     recoveryEffectsService,
     config.userTimezone,
+    recoveryEventStudyService,
   );
   const dossierController = new DossierController(dossierService);
   const analyticsController = new AnalyticsController(analyticsService, {
@@ -305,6 +310,7 @@ export async function createApp(pool: Pool, config: Config): Promise<Express> {
     medicationService,
     recoveryService,
     recoveryEffectsService,
+    recoveryEventStudyService,
     trainingService,
   };
   const insightService = new InsightService(insightRepo, llmClient, v1Ctx, {

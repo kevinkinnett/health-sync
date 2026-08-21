@@ -173,3 +173,102 @@ export interface RecoveryEffectsData {
   };
   caveats: string[];
 }
+
+export type RecoveryEventStudyEvidenceState =
+  | "collecting"
+  | "individual"
+  | "provisional"
+  | "matched"
+  | "moderate"
+  | "high";
+
+export interface RecoveryEventStudyRange {
+  low: number;
+  high: number;
+}
+
+export interface RecoveryEventStudyPoint {
+  date: string;
+  offsetDays: number;
+  actual: number | null;
+  expectedCenter: number | null;
+  expectedRange: RecoveryEventStudyRange | null;
+  delta: number | null;
+  controlCount: number;
+  recoveryExposures: string[];
+  excludedFromAggregate: boolean;
+}
+
+export interface RecoveryEventStudyTrajectory {
+  anchorDate: string;
+  sessionIds: number[];
+  startedAts: string[];
+  totalDurationMinutes: number;
+  sessionToSleepMinutes: number;
+  durationGroup: RecoveryDurationGroup;
+  combinedExposure: boolean;
+  eligible: boolean;
+  points: RecoveryEventStudyPoint[];
+}
+
+export type RecoveryDurationGroup = "short" | "medium" | "long";
+export type RecoveryDurationResponseState =
+  | "insufficient_events"
+  | "insufficient_variation"
+  | "available";
+
+export interface RecoveryDurationResponse {
+  offsetDays: number;
+  state: RecoveryDurationResponseState;
+  eligibleEvents: number;
+  distinctDurations: number;
+  durationRangeMinutes: number;
+  slopePer10Minutes: number | null;
+  slopeConfidenceInterval: RecoveryEventStudyRange | null;
+  rankCorrelation: number | null;
+}
+
+export interface RecoveryTimingResponse {
+  offsetDays: number;
+  state: RecoveryDurationResponseState;
+  eligibleEvents: number;
+  distinctTimings: number;
+  timingRangeMinutes: number;
+  slopePer60Minutes: number | null;
+  slopeConfidenceInterval: RecoveryEventStudyRange | null;
+  rankCorrelation: number | null;
+}
+
+export interface RecoveryEventStudyAggregatePoint {
+  offsetDays: number;
+  sampleCount: number;
+  medianDelta: number;
+  observedRange: RecoveryEventStudyRange;
+}
+
+export interface RecoveryEventStudyData {
+  methodVersion: string;
+  timezone: string;
+  window: { start: string | null; end: string | null };
+  activityId: number;
+  activityCode: string;
+  activityName: string;
+  outcome: RecoveryEffectOutcome;
+  outcomeLabel: string;
+  unit: string;
+  betterDirection: "up" | "down";
+  evidenceState: RecoveryEventStudyEvidenceState;
+  totalEvents: number;
+  eligibleEvents: number;
+  matchedPairs: number;
+  requiredMatchedPairs: number;
+  totalTrajectories: number;
+  displayedTrajectories: number;
+  offsets: number[];
+  trajectories: RecoveryEventStudyTrajectory[];
+  aggregate: RecoveryEventStudyAggregatePoint[];
+  durationResponses: RecoveryDurationResponse[];
+  timingResponses: RecoveryTimingResponse[];
+  matchedEstimate: RecoveryEffectEstimate | null;
+  caveats: string[];
+}
