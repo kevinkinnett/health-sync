@@ -40,9 +40,10 @@ export function RecoveryEffects({ data }: { data: RecoveryEffectsData }) {
               resting heart rate, HRV, recent training load, and calendar timing.
             </p>
           </div>
-          <div className="grid shrink-0 grid-cols-2 gap-x-5 gap-y-2 text-xs text-on-surface-variant sm:grid-cols-3">
+          <div className="grid shrink-0 grid-cols-2 gap-x-5 gap-y-2 text-xs text-on-surface-variant sm:grid-cols-4">
             <Stat value={data.coverage.reduce((sum, item) => sum + item.sessions, 0)} label="sessions" />
             <Stat value={data.coverage.reduce((sum, item) => sum + item.alignedSessions, 0)} label="linked to sleep" />
+            <Stat value={data.coverage.reduce((sum, item) => sum + item.pendingSessions, 0)} label="awaiting sleep" />
             <Stat value={data.matching.minimumMatchedPairs} label="pairs needed" />
           </div>
         </div>
@@ -109,6 +110,7 @@ export function RecoveryEffects({ data }: { data: RecoveryEffectsData }) {
 
 function CoverageCard({ coverage }: { coverage: RecoveryEffectCoverage }) {
   const progress = Math.min(100, Math.round(coverage.matchedPairs / coverage.requiredPairs * 100));
+  const unalignedSessions = Math.max(0, coverage.sessions - coverage.alignedSessions - coverage.pendingSessions);
   return (
     <article className="rounded-xl bg-surface-container-low p-4">
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
@@ -120,10 +122,22 @@ function CoverageCard({ coverage }: { coverage: RecoveryEffectCoverage }) {
       <div className="mt-2 h-2 overflow-hidden rounded-full bg-surface-container-highest" aria-label={`${progress}% of evidence floor`}>
         <div className="h-full rounded-full bg-tertiary" style={{ width: `${progress}%` }} />
       </div>
-      <p className="mt-2 text-xs text-on-surface-variant">
-        {coverage.alignedSessions} of {coverage.sessions} sessions linked to a main sleep.
-        {coverage.combinedExposures > 0 && ` ${coverage.combinedExposures} combined-exposure nights are shown in coverage but excluded from single-activity estimates.`}
-      </p>
+      <div className="mt-2 space-y-1 text-xs text-on-surface-variant">
+        <p>{coverage.alignedSessions} of {coverage.sessions} sessions linked to a main sleep.</p>
+        {coverage.pendingSessions > 0 && (
+          <p className="text-tertiary">
+            {coverage.pendingSessions} recent session{coverage.pendingSessions === 1 ? " is" : "s are"} waiting for the next completed main sleep.
+          </p>
+        )}
+        {unalignedSessions > 0 && (
+          <p>
+            {unalignedSessions} session{unalignedSessions === 1 ? " could" : "s could"} not be linked to a completed main sleep within 24 hours.
+          </p>
+        )}
+        {coverage.combinedExposures > 0 && (
+          <p>{coverage.combinedExposures} combined-exposure nights are shown in coverage but excluded from single-activity estimates.</p>
+        )}
+      </div>
     </article>
   );
 }

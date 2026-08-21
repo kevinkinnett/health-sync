@@ -20,6 +20,7 @@ const coverage = (over: Partial<RecoveryEffectCoverage> = {}): RecoveryEffectCov
   activityName: "Hot blanket",
   sessions: 14,
   alignedSessions: 12,
+  pendingSessions: 0,
   combinedExposures: 2,
   matchedPairs: 11,
   requiredPairs: 10,
@@ -82,8 +83,10 @@ const eventStudy = (
   unit: outcome === "hrv" ? "ms" : "min",
   betterDirection: "up",
   evidenceState: "individual",
+  totalSessions: 1,
   totalEvents: 1,
   eligibleEvents: 1,
+  pendingSessions: 0,
   matchedPairs: 1,
   requiredMatchedPairs: 10,
   totalTrajectories: 1,
@@ -164,6 +167,69 @@ describe("RecoveryEffects", () => {
   it("has a responsive empty state before the first session", () => {
     render(<RecoveryEffects data={data([], [])} />);
     expect(screen.getByText(/Log a Hot blanket or Massage session/i)).toBeInTheDocument();
+  });
+
+  it("labels a recent session as pending instead of failed alignment", () => {
+    mockedEventStudy.mockReturnValue({
+      data: eventStudy({
+        evidenceState: "collecting",
+        totalSessions: 1,
+        totalEvents: 0,
+        eligibleEvents: 0,
+        pendingSessions: 1,
+        trajectories: [],
+        totalTrajectories: 0,
+        displayedTrajectories: 0,
+      }),
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as ReturnType<typeof useRecoveryEventStudy>);
+
+    render(<RecoveryEffects data={data([coverage({ sessions: 1, alignedSessions: 0, pendingSessions: 1, matchedPairs: 0, combinedExposures: 0 })], [])} />);
+
+    expect(screen.getByText("Waiting for a completed main sleep")).toBeInTheDocument();
+    expect(screen.getAllByText(/1 recent .*session is waiting for the next completed main sleep/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/timeline will appear after the next completed main sleep/i)).toBeInTheDocument();
+    expect(screen.queryByText("No aligned sleep found")).not.toBeInTheDocument();
+  });
+
+  it("reports an older unaligned session without claiming it is pending", () => {
+    mockedEventStudy.mockReturnValue({
+      data: eventStudy({
+        evidenceState: "collecting",
+        totalSessions: 1,
+        totalEvents: 0,
+        eligibleEvents: 0,
+        pendingSessions: 0,
+        trajectories: [],
+        totalTrajectories: 0,
+        displayedTrajectories: 0,
+      }),
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as ReturnType<typeof useRecoveryEventStudy>);
+
+    render(<RecoveryEffects data={data([coverage({ sessions: 1, alignedSessions: 0, pendingSessions: 0, matchedPairs: 0, combinedExposures: 0 })], [])} />);
+
+    expect(screen.getByText("No aligned sleep found")).toBeInTheDocument();
+    expect(screen.getAllByText(/could not be linked to a completed main sleep/i).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/is waiting for the next completed main sleep/i)).not.toBeInTheDocument();
+  });
+
+  it("shows current-day window metadata without changing the accessible chart layout", () => {
+    mockedEventStudy.mockReturnValue({
+      data: eventStudy({ window: { start: "2025-01-01", end: "2026-08-21" } }),
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as ReturnType<typeof useRecoveryEventStudy>);
+
+    render(<RecoveryEffects data={data([coverage()], [])} />);
+
+    expect(screen.getByText(/Analysis through Aug 21, 2026/i)).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /sleep duration around hot blanket sessions/i })).toHaveClass("min-w-0");
   });
 
   it("shows an accessible individual timeline without an effect conclusion", () => {

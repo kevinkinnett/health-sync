@@ -132,6 +132,7 @@ export interface RecoveryEffectCoverage {
   activityName: string;
   sessions: number;
   alignedSessions: number;
+  pendingSessions: number;
   combinedExposures: number;
   matchedPairs: number;
   requiredPairs: number;
@@ -258,8 +259,10 @@ export interface RecoveryEventStudyData {
   unit: string;
   betterDirection: "up" | "down";
   evidenceState: RecoveryEventStudyEvidenceState;
+  totalSessions: number;
   totalEvents: number;
   eligibleEvents: number;
+  pendingSessions: number;
   matchedPairs: number;
   requiredMatchedPairs: number;
   totalTrajectories: number;

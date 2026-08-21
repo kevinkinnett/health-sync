@@ -31,8 +31,12 @@ export class RecoveryEventStudyService {
       unit: study.outcomeDefinition.unit,
       betterDirection: study.outcomeDefinition.betterDirection,
       evidenceState: study.evidenceState,
+      totalSessions: data.sessions.filter((session) => session.activityId === activityId).length,
       totalEvents: study.totalEvents,
       eligibleEvents: study.eligibleEvents,
+      pendingSessions: data.sessions.filter((session) =>
+        session.activityId === activityId && data.pendingSessionIds.has(session.id)
+      ).length,
       matchedPairs,
       requiredMatchedPairs: RECOVERY_MIN_MATCHES,
       totalTrajectories: study.totalTrajectories,
@@ -52,6 +56,9 @@ export class RecoveryEventStudyService {
         "Workouts, illness, medication changes, and unrecorded behavior may still explain any point.",
         "Only the seven wake dates after a session are shown because longer attribution windows are too confounded.",
         "Duration associations do not adjust for the time between the session and sleep, available time, stress, or other reasons a longer session was possible.",
+        data.currentDayIncluded
+          ? "Today's completed main sleep is included; wake-day measures that have not arrived yet remain missing."
+          : "The current Eastern calendar day enters this timeline only after a completed main sleep links to a session.",
       ],
     };
   }

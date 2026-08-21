@@ -16,12 +16,21 @@ describe("RecoveryEventStudyService", () => {
       notes: null, source: "manual", createdAt: "2026-08-19T01:00:00.000Z",
       updatedAt: "2026-08-19T01:00:00.000Z",
     };
+    const pending = {
+      ...exposure,
+      id: 10,
+      startedAt: "2026-08-21T21:00:00.000Z",
+      createdAt: "2026-08-21T21:00:00.000Z",
+      updatedAt: "2026-08-21T21:00:00.000Z",
+    };
     const dataset = {
       build: vi.fn().mockResolvedValue({
         timezone: "America/New_York",
-        window: { start: "2024-09-20", end: "2026-08-20" },
+        window: { start: "2024-09-20", end: "2026-08-21" },
         activities: [activity],
-        sessions: [exposure],
+        sessions: [exposure, pending],
+        pendingSessionIds: new Set([pending.id]),
+        currentDayIncluded: true,
         measurementRegimes: { sleep: "main_sleep_v2", hrv: "sample_mean_v1" },
         periods: [{
           date: "2026-08-19", sleepStartAt: "2026-08-19T05:00:00.000Z", weekday: 3,
@@ -43,7 +52,9 @@ describe("RecoveryEventStudyService", () => {
       outcome: "hrv",
       unit: "ms",
       evidenceState: "individual",
+      totalSessions: 2,
       totalEvents: 1,
+      pendingSessions: 1,
       matchedPairs: 0,
       matchedEstimate: null,
     });
@@ -57,5 +68,8 @@ describe("RecoveryEventStudyService", () => {
     expect(result.timingResponses).toHaveLength(8);
     expect(result.timingResponses[0]).toMatchObject({ state: "insufficient_events", eligibleEvents: 0 });
     expect(result.trajectories[0].points).toHaveLength(15);
+    expect(result.caveats).toContain(
+      "Today's completed main sleep is included; wake-day measures that have not arrived yet remain missing.",
+    );
   });
 });
