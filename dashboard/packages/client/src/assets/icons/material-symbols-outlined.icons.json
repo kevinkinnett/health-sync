@@ -28,6 +28,8 @@
   "cloud_off",
   "compare_arrows",
   "content_copy",
+  "contrast",
+  "dark_mode",
   "dashboard",
   "data_alert",
   "delete",
@@ -61,6 +63,7 @@
   "insights",
   "label",
   "light",
+  "light_mode",
   "list",
   "mark_email_unread",
   "massage",
@@ -106,7 +109,6 @@
   "spa",
   "spo2",
   "start",
-  "step",
   "steps",
   "switch",
   "sync",
@@ -126,5 +128,6 @@
   "vital_signs",
   "vitals",
   "warning",
-  "weight"
+  "weight",
+  "window"
 ]
