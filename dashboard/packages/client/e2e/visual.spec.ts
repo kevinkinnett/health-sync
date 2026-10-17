@@ -32,6 +32,12 @@ import { stubApi } from "./fixtures.js";
  * and eyeball the diff in the report before committing the new PNG. The
  * baseline is a review artifact, not a lockfile.
  *
+ * THEMES: every test here runs twice, once per Playwright project —
+ * `chromium` (OS dark → …-chromium-<platform>.png) and `chromium-light`
+ * (OS light → …-chromium-light-<platform>.png). The app follows the OS by
+ * default, so the project's colorScheme picks the mode. A palette change
+ * must re-record and eyeball BOTH sets, on both platforms.
+ *
  * PLATFORM: Playwright suffixes baselines per-platform. There are two sets:
  *   …-win32.png  local runs on Windows (`pnpm e2e:visual`)
  *   …-linux.png  CI, which runs inside the pinned Playwright image. Record

@@ -14,7 +14,7 @@ import { useChartTheme } from "../../stores/themeStore";
 import type { ChartAnnotation } from "./annotations";
 import { annotationMarkers } from "./annotationMarkers";
 import { movingAverage } from "../../utils/movingAverage";
-import { SLEEP_STAGE_COLOR } from "./chartPalette";
+import { CHART_CHROME, SLEEP_STAGE_COLOR } from "./chartPalette";
 
 interface Props {
   data: SleepDay[];
@@ -54,7 +54,7 @@ export function SleepStagesChart({ data, annotations = [] }: Props) {
           <Line
             type="monotone"
             dataKey="sleepMA"
-            stroke="#0a5e49"
+            stroke={CHART_CHROME.overlay}
             strokeWidth={2}
             dot={false}
             strokeDasharray="5 3"

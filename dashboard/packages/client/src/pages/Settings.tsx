@@ -8,6 +8,7 @@ import { LlmModelSettingsCard } from "../components/LlmModelSettingsCard";
 import { Card, CardHeader } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { PageHeader } from "../components/ui/PageHeader";
+import { ThemeChoiceGroup } from "../components/ThemeToggle";
 
 function StatusRow({
   label,
@@ -68,6 +69,15 @@ function SystemHealthCard() {
         />
         <StatusRow label="Windmill" state="neutral" detail="Managed externally" />
       </div>
+    </Card>
+  );
+}
+
+function AppearanceCard() {
+  return (
+    <Card className="p-6">
+      <CardHeader title="Appearance" description="System follows your device's light or dark setting." />
+      <ThemeChoiceGroup />
     </Card>
   );
 }
@@ -185,6 +195,7 @@ export function Settings() {
             <p className="mt-1 text-sm text-on-surface-variant">Local display preferences and connection status.</p>
           </div>
           <SystemHealthCard />
+          <AppearanceCard />
           <UnitsCard />
           <ApiAccessCard />
         </section>
