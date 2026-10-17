@@ -17,33 +17,37 @@ function status(state: "healthy" | "stale" | "unknown"): IngestStatus {
   };
 }
 
+const NY = "America/New_York";
+
 describe("Google Health operational monitor", () => {
   const now = new Date("2026-08-10T01:30:00.000Z");
 
   it("announces stale onset, but not a repeated stale observation", () => {
-    expect(ingestTransitionAlert("healthy", status("stale"), now)).toMatchObject({
-      kind: "ingest_stale", severity: "warn", date: "2026-08-10",
+    // 01:30Z is still the evening of Aug 9 in New York.
+    expect(ingestTransitionAlert("healthy", status("stale"), now, NY)).toMatchObject({
+      kind: "ingest_stale", severity: "warn", date: "2026-08-09",
     });
-    expect(ingestTransitionAlert("stale", status("stale"), now)).toBeNull();
+    expect(ingestTransitionAlert("stale", status("stale"), now, NY)).toBeNull();
   });
 
   it("announces recovery only after stale", () => {
-    expect(ingestTransitionAlert("stale", status("healthy"), now)).toMatchObject({
+    expect(ingestTransitionAlert("stale", status("healthy"), now, NY)).toMatchObject({
       kind: "ingest_recovered", severity: "warn",
     });
-    expect(ingestTransitionAlert("healthy", status("healthy"), now)).toBeNull();
+    expect(ingestTransitionAlert("healthy", status("healthy"), now, NY)).toBeNull();
   });
 
   it("persists the observed state and returns a newly created alert", async () => {
     const set = vi.fn();
-    const inserted = { id: 9, ...ingestTransitionAlert("healthy", status("stale"), now), createdAt: now.toISOString(), readAt: null };
+    const inserted = { id: 9, ...ingestTransitionAlert("healthy", status("stale"), now, NY), createdAt: now.toISOString(), readAt: null };
     const monitor = new IngestHealthMonitor(
       { getStatus: async () => status("stale") },
       { get: async <T>() => ({ status: "healthy", observedAtUtc: "2026-08-09T20:00:00.000Z" } as T), set },
       { insertIfNew: async () => inserted as never, resolveOpenKinds: async () => 0 },
+      NY,
       () => now,
     );
-    await expect(monitor.evaluate()).resolves.toMatchObject({ kind: "ingest_stale" });
+    await expect(monitor.evaluate()).resolves.toMatchObject({ kind: "ingest_stale", date: "2026-08-09" });
     expect(set).toHaveBeenCalledWith("monitor.google_health_ingest", {
       status: "stale", observedAtUtc: now.toISOString(),
     });
@@ -53,7 +57,7 @@ describe("Google Health operational monitor", () => {
     const resolveOpenKinds = vi.fn().mockResolvedValue(1);
     const recovered = {
       id: 10,
-      ...ingestTransitionAlert("stale", status("healthy"), now),
+      ...ingestTransitionAlert("stale", status("healthy"), now, NY),
       createdAt: now.toISOString(),
       lastObservedAt: now.toISOString(),
       resolvedAt: null,
@@ -67,6 +71,7 @@ describe("Google Health operational monitor", () => {
         set: vi.fn(),
       },
       { insertIfNew: async () => recovered as never, resolveOpenKinds },
+      NY,
       () => now,
     );
 

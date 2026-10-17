@@ -141,6 +141,15 @@ describe("SettingService — notification settings", () => {
     });
   });
 
+  it("bounds the Apprise request so a stalled endpoint cannot hang the request", async () => {
+    const svc = new SettingService(fakeRepo());
+    const fetchMock = vi.fn(async () => ({ status: 200, ok: true }) as Response);
+    vi.stubGlobal("fetch", fetchMock);
+    await svc.sendTestNotification();
+    const init = (fetchMock.mock.calls[0] as unknown[])[1] as RequestInit;
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+
   it("treats a network failure as not-delivered (status 0)", async () => {
     const svc = new SettingService(fakeRepo());
     vi.stubGlobal(
