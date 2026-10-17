@@ -7,7 +7,7 @@ import type { RecoveryService } from "../../services/recoveryService.js";
 import type { RecoveryEffectsService } from "../../services/recoveryEffectsService.js";
 import type { RecoveryEventStudyService } from "../../services/recoveryEventStudyService.js";
 import type { RecoveryEffectOutcome } from "@health-dashboard/shared";
-import { todayInTz, addDays } from "../../services/userTz.js";
+import { todayInTz, addDays, tzDayStartUtc, tzDayEndUtc } from "../../services/userTz.js";
 
 /**
  * Minimal JSON-Schema-ish shape for query parameters. Only the fields
@@ -63,21 +63,60 @@ export interface V1Context {
 // Helpers
 // ---------------------------------------------------------------------------
 
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 /**
- * Resolve a `start`/`end` window from query args. Defaults to "last 30
- * days in user TZ" when either bound is missing — same convention the
- * dashboard's controllers use, so v1 callers see the same windowing
- * semantics the UI does.
+ * Reads an optional `YYYY-MM-DD` arg. Absent/empty → undefined; present
+ * but malformed (or not a real calendar day) → throws a message the
+ * router maps to 400 and the LLM tool dispatcher returns to the model.
+ */
+function optionalDate(args: Record<string, unknown>, key: string): string | undefined {
+  const v = args[key];
+  if (v == null || v === "") return undefined;
+  if (typeof v !== "string" || !DATE_RE.test(v) || addDays(v, 0) !== v) {
+    throw new Error(`${key} invalid: expected YYYY-MM-DD`);
+  }
+  return v;
+}
+
+/**
+ * Resolve a `start`/`end` window from query args. Each bound defaults on
+ * its own, as `dateRangeParams` documents: end → today in the user's TZ,
+ * start → `defaultDays` before end. A lone `start` is therefore honoured
+ * rather than silently replaced by the last 30 days.
  */
 function resolveDateRange(
   args: Record<string, unknown>,
   tz: string,
+  defaultDays = 30,
 ): { start: string; end: string } {
-  const start = typeof args.start === "string" ? args.start : undefined;
-  const end = typeof args.end === "string" ? args.end : undefined;
-  if (start && end) return { start, end };
-  const today = todayInTz(tz);
-  return { start: addDays(today, -30), end: today };
+  const end = optionalDate(args, "end") ?? todayInTz(tz);
+  const start = optionalDate(args, "start") ?? addDays(end, -defaultDays);
+  if (start > end) throw new Error("start invalid: must be <= end");
+  return { start, end };
+}
+
+/**
+ * Intake rows are timestamped instants, but the parameters are local
+ * calendar days. Convert each supplied day to its UTC bound in the user's
+ * TZ (inclusive whole end day); absent bounds stay open.
+ */
+function resolveInstantRange(
+  args: Record<string, unknown>,
+  tz: string,
+): { start?: string; end?: string } {
+  const start = optionalDate(args, "start");
+  const end = optionalDate(args, "end");
+  if (start && end && start > end) throw new Error("start invalid: must be <= end");
+  return {
+    start: start ? tzDayStartUtc(start, tz) : undefined,
+    end: end ? tzDayEndUtc(end, tz) : undefined,
+  };
+}
+
+/** Query strings arrive as "true"/"false"; tool calls send real booleans. */
+function asBool(v: unknown): boolean {
+  return v === true || v === "true";
 }
 
 function asNumber(v: unknown, fallback: number): number {
@@ -376,7 +415,7 @@ export function buildV1Endpoints(): V1EndpointDef[] {
           includeInactive: { type: "boolean", description: "Include archived recovery activities.", default: false },
         },
       },
-      handler: async (args, ctx) => ctx.recoveryService.listActivities(Boolean(args.includeInactive)),
+      handler: async (args, ctx) => ctx.recoveryService.listActivities(asBool(args.includeInactive)),
     },
     {
       path: "/recovery/sessions",
@@ -453,7 +492,7 @@ export function buildV1Endpoints(): V1EndpointDef[] {
         },
       },
       handler: async (args, ctx) =>
-        ctx.supplementService.listItems(Boolean(args.includeInactive)),
+        ctx.supplementService.listItems(asBool(args.includeInactive)),
     },
     {
       path: "/supplements/intakes",
@@ -463,14 +502,13 @@ export function buildV1Endpoints(): V1EndpointDef[] {
       parameters: {
         type: "object",
         properties: {
-          start: { type: "string", description: "Start date YYYY-MM-DD." },
-          end: { type: "string", description: "End date YYYY-MM-DD." },
+          start: { type: "string", description: "Start local date YYYY-MM-DD (inclusive, user timezone)." },
+          end: { type: "string", description: "End local date YYYY-MM-DD (inclusive, user timezone)." },
           itemId: { type: "integer", description: "Optional: filter to a specific supplement item id." },
         },
       },
       handler: async (args, ctx) => {
-        const start = typeof args.start === "string" ? args.start : undefined;
-        const end = typeof args.end === "string" ? args.end : undefined;
+        const { start, end } = resolveInstantRange(args, ctx.userTimezone);
         const itemId = asId(args.itemId);
         return ctx.supplementService.listIntakes(
           start,
@@ -496,9 +534,7 @@ export function buildV1Endpoints(): V1EndpointDef[] {
       handler: async (args, ctx) => {
         const itemId = asId(args.itemId);
         if (itemId == null) throw new Error("itemId required");
-        const today = todayInTz(ctx.userTimezone);
-        const start = typeof args.start === "string" ? args.start : addDays(today, -90);
-        const end = typeof args.end === "string" ? args.end : today;
+        const { start, end } = resolveDateRange(args, ctx.userTimezone, 90);
         return ctx.analyticsService.getSupplementAdherence(itemId, start, end);
       },
     },
@@ -545,7 +581,7 @@ export function buildV1Endpoints(): V1EndpointDef[] {
         },
       },
       handler: async (args, ctx) =>
-        ctx.medicationService.listItems(Boolean(args.includeInactive)),
+        ctx.medicationService.listItems(asBool(args.includeInactive)),
     },
     {
       path: "/medications/intakes",
@@ -554,14 +590,13 @@ export function buildV1Endpoints(): V1EndpointDef[] {
       parameters: {
         type: "object",
         properties: {
-          start: { type: "string", description: "Start date YYYY-MM-DD." },
-          end: { type: "string", description: "End date YYYY-MM-DD." },
+          start: { type: "string", description: "Start local date YYYY-MM-DD (inclusive, user timezone)." },
+          end: { type: "string", description: "End local date YYYY-MM-DD (inclusive, user timezone)." },
           itemId: { type: "integer", description: "Optional: filter to a specific medication id." },
         },
       },
       handler: async (args, ctx) => {
-        const start = typeof args.start === "string" ? args.start : undefined;
-        const end = typeof args.end === "string" ? args.end : undefined;
+        const { start, end } = resolveInstantRange(args, ctx.userTimezone);
         const itemId = asId(args.itemId);
         return ctx.medicationService.listIntakes(
           start,
@@ -587,9 +622,7 @@ export function buildV1Endpoints(): V1EndpointDef[] {
       handler: async (args, ctx) => {
         const itemId = asId(args.itemId);
         if (itemId == null) throw new Error("itemId required");
-        const today = todayInTz(ctx.userTimezone);
-        const start = typeof args.start === "string" ? args.start : addDays(today, -90);
-        const end = typeof args.end === "string" ? args.end : today;
+        const { start, end } = resolveDateRange(args, ctx.userTimezone, 90);
         return ctx.analyticsService.getMedicationAdherence(itemId, start, end);
       },
     },
