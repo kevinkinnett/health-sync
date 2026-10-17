@@ -4,6 +4,7 @@ import type {
   ExperimentSummary,
   MetricEffect,
 } from "@health-dashboard/shared";
+import { beatsReportNull } from "./calibration.js";
 
 /**
  * Reduces full reports to what a home screen can show, and decides which
@@ -33,13 +34,15 @@ const CONFIDENCE_RANK: Record<ExperimentConfidence, number> = {
  * A metric that shifted a long way on a very noisy series is not the
  * headline; one that shifted clearly against its own spread is.
  *
- * Only `meaningful` effects qualify. Without that filter the headline
- * would always be whichever metric happened to wobble most, and the card
- * would claim a result on every intervention ever entered.
+ * Only effects that beat the person's placebo null with every metric
+ * counted qualify. Without that filter the headline would always be
+ * whichever metric happened to wobble most — and since ten metrics are
+ * compared at once, one of them looks individually unusual on a large
+ * share of dates where nothing changed.
  */
 export function pickHeadline(metrics: MetricEffect[]): MetricEffect | null {
   const candidates = metrics.filter(
-    (m) => m.meaningful && m.effectSize != null,
+    (m) => beatsReportNull(m) && m.effectSize != null,
   );
   if (candidates.length === 0) return null;
 

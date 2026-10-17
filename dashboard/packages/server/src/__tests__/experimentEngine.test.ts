@@ -223,14 +223,14 @@ describe("confound scanning", () => {
     });
   });
 
-  it("flags a measurement change that straddles the pivot", () => {
-    // The Google Health cutover changed how sleep efficiency is derived.
+  it("no longer flags the 2026-06-12 Google Health cutover", () => {
+    // The whole history was re-ingested through Google Health, so the
+    // stored data carries one regime on both sides of that date and no
+    // metric steps there. A stale flag capped real reports at weak.
     const late = intervention({ startedOn: "2026-06-01" });
     const w = selectWindows(late, "2026-07-26");
     const found = scanConfounds(late, [], w, fullCoverage);
-    const hit = found.find((c) => c.kind === "measurement_change");
-    expect(hit).toBeDefined();
-    expect(hit!.date).toBe("2026-06-12");
+    expect(found.filter((c) => c.kind === "measurement_change")).toEqual([]);
   });
 
   it("flags a too-short window and sparse coverage", () => {
@@ -263,6 +263,7 @@ describe("confidence grading", () => {
       effectSize: 1.1,
       improved: true,
       meaningful: true,
+      calibration: { windowDays: 30, effectSize: 1, placebos: 400, exceedance: 0.005, adjustedExceedance: 0.03 },
     },
   ];
   const longWindows = selectWindows(
@@ -272,6 +273,17 @@ describe("confidence grading", () => {
 
   it("is strong only when windows are long and nothing is flagged", () => {
     expect(gradeConfidence(solid, [], longWindows)).toBe("strong");
+  });
+
+  it("is never strong without calibrated evidence, however clean the design", () => {
+    // Every clean placebo used to grade strong: "no confound found" said
+    // nothing about whether the effect beat ordinary variation.
+    const uncalibrated = [{ ...solid[0], calibration: undefined }];
+    expect(gradeConfidence(uncalibrated, [], longWindows)).toBe("moderate");
+    const ordinary = [{ ...solid[0], calibration: { windowDays: 30, effectSize: 1, placebos: 400, exceedance: 0.06, adjustedExceedance: 0.4 } }];
+    expect(gradeConfidence(ordinary, [], longWindows)).toBe("moderate");
+    const nothingMoved = [{ ...solid[0], meaningful: false }];
+    expect(gradeConfidence(nothingMoved, [], longWindows)).toBe("moderate");
   });
 
   it("a single HIGH confound caps confidence at weak, however clean the numbers", () => {

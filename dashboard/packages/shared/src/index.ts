@@ -205,6 +205,7 @@ export type {
   ExperimentWindow,
   ExperimentConfidence,
   MetricEffect,
+  MetricCalibration,
   MetricProvenance,
   MetricSeries,
   MetricSeriesPoint,

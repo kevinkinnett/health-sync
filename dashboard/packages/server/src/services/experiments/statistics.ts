@@ -9,7 +9,8 @@
  * assumption behind those tests does not hold, and a naive p-value would
  * read as far more decisive than the evidence supports. Effect size plus
  * honest sample counts communicate the same thing without the false
- * precision.
+ * precision. Whether an effect is unusual is answered empirically instead,
+ * against the person's own placebo comparisons (`calibration.ts`).
  */
 
 export function mean(values: number[]): number {

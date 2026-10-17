@@ -19,6 +19,7 @@ function effect(over: Partial<MetricEffect> = {}): MetricEffect {
     effectSize: 1.9,
     improved: true,
     meaningful: true,
+    calibration: { windowDays: 30, effectSize: 1, placebos: 400, exceedance: 0.003, adjustedExceedance: 0.02 },
     ...over,
   };
 }
@@ -57,6 +58,31 @@ describe("pickHeadline", () => {
     ]);
     expect(head?.metric).toBe("restingHr");
     expect(head?.improved).toBe(false);
+  });
+
+  it("skips a metric that is unusual alone but not once every metric tested is counted", () => {
+    // Ten metrics are compared at once, so one of them looking 5%-unusual
+    // happens on a large share of dates where nothing changed.
+    const head = pickHeadline([
+      effect({
+        metric: "restingHr",
+        effectSize: 1.4,
+        calibration: { windowDays: 30, effectSize: 1, placebos: 400, exceedance: 0.05, adjustedExceedance: 0.38 },
+      }),
+      effect({
+        metric: "sleepEfficiency",
+        effectSize: 0.9,
+        calibration: { windowDays: 30, effectSize: 1, placebos: 400, exceedance: 0.004, adjustedExceedance: 0.03 },
+      }),
+    ]);
+    expect(head?.metric).toBe("sleepEfficiency");
+    expect(pickHeadline([
+      effect({ calibration: { windowDays: 30, effectSize: 1, placebos: 400, exceedance: 0.05, adjustedExceedance: 0.38 } }),
+    ])).toBeNull();
+  });
+
+  it("ignores an effect with no calibration, whatever its size", () => {
+    expect(pickHeadline([effect({ calibration: undefined, effectSize: 3 })])).toBeNull();
   });
 
   it("ignores effects that are not meaningful", () => {
