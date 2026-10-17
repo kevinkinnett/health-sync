@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { Intervention } from "@health-dashboard/shared";
 import { annotationsFor } from "../components/charts/annotations";
+import { SERIES } from "../components/charts/chartPalette";
 
 /**
  * The filtering rule is load-bearing, not cosmetic. Recharts anchors a
@@ -71,6 +72,6 @@ describe("annotationsFor", () => {
   it("gives markers a chrome colour, never a series colour", () => {
     // An annotation must not be mistakable for a plotted series.
     const [mark] = annotationsFor([intervention()], DATES);
-    expect(["#3987e5", "#d95926", "#199e70"]).not.toContain(mark.color);
+    expect(SERIES).not.toContain(mark.color);
   });
 });

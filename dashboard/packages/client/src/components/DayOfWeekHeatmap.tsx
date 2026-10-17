@@ -6,27 +6,29 @@ import {
   type UnitSystem,
 } from "../lib/units";
 
-// Map metric type to accent color hue for the heatmap
-function getColorForMetric(metric: string): { r0: number; g0: number; b0: number; r1: number; g1: number; b1: number } {
-  // Activity metrics -> primary (indigo)
-  if (metric.includes("step") || metric.includes("active") || metric.includes("calor") || metric.includes("dist"))
-    return { r0: 23, g0: 31, b0: 51, r1: 192, g1: 193, b1: 255 }; // surface-container -> primary
-  // Sleep metrics -> secondary (emerald)
+// Map metric type to the accent token whose hue the heatmap steps toward.
+function accentForMetric(metric: string): string {
+  // Sleep metrics -> secondary (green)
   if (metric.includes("sleep") || metric.includes("deep") || metric.includes("rem") || metric.includes("eff"))
-    return { r0: 23, g0: 31, b0: 51, r1: 78, g1: 222, b1: 163 }; // -> secondary
-  // HR metrics -> tertiary (rose)
+    return "var(--color-secondary)";
+  // HR metrics -> tertiary (orange)
   if (metric.includes("heart") || metric.includes("hr") || metric.includes("resting"))
-    return { r0: 23, g0: 31, b0: 51, r1: 255, g1: 178, b1: 183 }; // -> tertiary
-  // Default -> primary
-  return { r0: 23, g0: 31, b0: 51, r1: 192, g1: 193, b1: 255 };
+    return "var(--color-tertiary)";
+  // Activity and everything else -> primary (blue)
+  return "var(--color-primary)";
 }
 
-function interpolateColor(t: number, metric: string): string {
-  const c = getColorForMetric(metric);
-  const r = Math.round(c.r0 + t * (c.r1 - c.r0));
-  const g = Math.round(c.g0 + t * (c.g1 - c.g0));
-  const b = Math.round(c.b0 + t * (c.b1 - c.b0));
-  return `rgb(${r}, ${g}, ${b})`;
+/**
+ * Mix the accent into the card surface. Capped at 45% so the cell's
+ * on-surface text keeps ≥4.5:1 at the top of the range in BOTH modes —
+ * the accent is light-on-dark in one and dark-on-light in the other, and
+ * a full-strength fill would sink the text in either.
+ */
+const HEATMAP_MAX_MIX = 45;
+
+function heatmapCellColor(t: number, metric: string): string {
+  const pct = Math.round(Math.min(1, Math.max(0, t)) * HEATMAP_MAX_MIX);
+  return `color-mix(in oklab, ${accentForMetric(metric)} ${pct}%, var(--color-surface-container))`;
 }
 
 function CellValue({
@@ -54,7 +56,7 @@ function CellValue({
   // under unit conversion — so we don't need to convert min/max.
   const range = row.max - row.min;
   const t = range === 0 ? 0.5 : (val - row.min) / range;
-  const bg = interpolateColor(t, row.metric);
+  const bg = heatmapCellColor(t, row.metric);
   const isBold = t > 0.8;
 
   const displayUnit = row.unit === "km" ? distanceUnitLabel(units) : row.unit;

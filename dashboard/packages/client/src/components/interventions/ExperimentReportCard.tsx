@@ -6,7 +6,7 @@ import type {
 } from "@health-dashboard/shared";
 import { useExperimentReport } from "../../api/queries";
 import { QueryBoundary } from "../QueryBoundary";
-import { SERIES, STATUS } from "../charts/chartPalette";
+import { SERIES, STATUS, tint } from "../charts/chartPalette";
 import { EffectSizePlot } from "./EffectSizePlot";
 import { MetricSeriesPanels } from "./MetricSeriesPanels";
 import { EVIDENCE_EXPLANATION, EVIDENCE_LABEL } from "../evidence";
@@ -77,7 +77,7 @@ function Report({ report }: { report: ExperimentReport }) {
           </span>
           <span
             className="text-[10px] uppercase tracking-wider px-2 py-1 rounded-full font-semibold"
-            style={{ color: conf.color, backgroundColor: `${conf.color}22` }}
+            style={{ color: conf.color, backgroundColor: tint(conf.color, 13) }}
           >
             {conf.label}
           </span>

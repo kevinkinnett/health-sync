@@ -1,5 +1,5 @@
 import type { SparklineData } from "@health-dashboard/shared";
-import { DEFAULT_SERIES, STATUS, CHART_CHROME } from "./charts/chartPalette";
+import { DEFAULT_SERIES, STATUS, CHART_CHROME, tint } from "./charts/chartPalette";
 import { Sparkbars } from "./Sparkbars";
 import { statBadge, type BadgeTone } from "./statBadge";
 
@@ -71,7 +71,7 @@ export function StatCard({
         {badge ? (
           <span
             className="text-xs font-bold flex items-center px-2 py-0.5 rounded shrink-0"
-            style={{ backgroundColor: `${color}15`, color }}
+            style={{ backgroundColor: tint(color, 8), color }}
           >
             {badge}
           </span>

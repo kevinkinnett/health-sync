@@ -82,11 +82,159 @@
   --font-label: "Inter Variable", system-ui, sans-serif;
 }
 
-/* ── Base styles ── */
+/*
+ * ── Theme switching ──
+ *
+ * The @theme block above is the DARK set and stays the default, so a page
+ * whose pre-paint script failed still renders the app as it always has.
+ * The inline script in index.html stamps `dark` or `light` on <html>
+ * before first paint; `:root.light` below redefines the same tokens.
+ * Every Tailwind utility reads `var(--color-*)`, so nothing at a call site
+ * changes with the mode.
+ *
+ * The `dark:`/`light:` variants key off the same class (Tailwind's
+ * built-in `dark:` would follow the OS media query instead, and disagree
+ * with an explicit choice).
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+@custom-variant light (&:where(.light, .light *));
+
+/*
+ * ── Chart colour tokens ──
+ *
+ * Charts reference these as `var(--chart-*)` via chartPalette.ts, so a
+ * metric keeps its slot (and hue family) in both modes while the TONE is
+ * stepped for each surface. The hex values are mirrored in chartPalette.ts
+ * (SERIES_HEX / STATUS_HEX / CHROME_HEX), which is what the validator was
+ * run on; chartPalette.test.ts fails if the two drift apart.
+ */
 :root {
   color-scheme: dark;
+
+  /* dark-start */
+  --chart-1: #3987e5;
+  --chart-2: #d95926;
+  --chart-3: #199e70;
+  --chart-4: #c98500;
+  --chart-5: #d55181;
+  --chart-6: #9085e9;
+  --chart-7: #008300;
+  --chart-8: #e66767;
+  --chart-status-good: #0ca30c;
+  --chart-status-warning: #fab219;
+  --chart-status-critical: #d03b3b;
+  --chart-grid: #2a2f36;
+  --chart-axis: #8b929c;
+  --chart-inactive: #444b55;
+  --chart-overlay: #0a5e49;
+  --chart-ramp-1: #184f95;
+  --chart-ramp-2: #3987e5;
+  --chart-ramp-3: #86b6ef;
+  /* dark-end */
+  --chart-tooltip-bg: var(--color-surface-container-high);
+  --chart-tooltip-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  --chart-track: rgba(255, 255, 255, 0.08);
 }
 
+/*
+ * ── Light set ──
+ *
+ * Tones chosen BY MEASUREMENT (themeTokens.test.ts asserts every figure):
+ *
+ *   page #eef0f3, cards #ffffff. Sub-panels and wells step DOWN from the
+ *   white card toward the page; raised chips/popovers step further down.
+ *   On white there is no "lighter than the card", so the light ramp
+ *   orders by distance from the card instead of by raw lightness.
+ *
+ *   accents  primary 6.40 · secondary 6.12 · tertiary 6.06 · error 6.06
+ *            on the card (5.31–5.60 on the page) — same hues as the dark
+ *            set and the chart SERIES, darkened until they clear 4.5:1 as
+ *            text on the page, the harder of the two surfaces.
+ *   labels   white on every filled accent; the gradient button
+ *            (from-primary to-primary-container) is checked on both ends —
+ *            on light the LIGHTER end (primary, 6.40) is the binding one.
+ *   ink      on-surface 17.8 › variant 8.89 › outline 5.80 on the card —
+ *            outline is used as text (`text-outline`) so it clears 4.5:1
+ *            on the page too (5.08).
+ */
+:root.light {
+  color-scheme: light;
+
+  /* light-start */
+  --color-surface: #eef0f3;
+  --color-surface-dim: #e3e6ea;
+  --color-surface-bright: #d9dde2;
+  --color-surface-container-lowest: #f5f6f8;
+  --color-surface-container-low: #f8f9fa;
+  --color-surface-container: #ffffff;
+  --color-surface-container-high: #eceef1;
+  --color-surface-container-highest: #e2e5e9;
+
+  --color-on-surface: #15181d;
+  --color-on-surface-variant: #464a52;
+  --color-outline: #5f6670;
+  --color-outline-variant: #c3c8cf;
+
+  --color-primary: #1760a9;
+  --color-primary-container: #04559c;
+  --color-on-primary: #ffffff;
+  --color-on-primary-fixed: #ffffff;
+
+  --color-secondary: #04704e;
+  --color-secondary-container: #046747;
+  --color-on-secondary: #ffffff;
+
+  --color-tertiary: #a94202;
+  --color-tertiary-container: #9c3c01;
+  --color-on-tertiary: #ffffff;
+
+  --color-error: #b2353b;
+  --color-error-container: #a52931;
+  --color-on-error: #ffffff;
+
+  --color-inverse-surface: #20242a;
+  --color-inverse-on-surface: #f1f3f5;
+  --color-inverse-primary: #5ba0ee;
+
+  /*
+   * Categorical slots: the same eight hues in the same order as dark,
+   * stepped for the white card. validate_palette.js --mode light
+   * --surface #ffffff: lightness band, chroma floor, adjacent CVD (worst
+   * 8.1, red↔green), normal-vision (worst 17.7) and 3:1 contrast all
+   * PASS, with no WARN, in the 8-slot run; the first three also pass
+   * --pairs all.
+   */
+  --chart-1: #2a78d6;
+  --chart-2: #eb6834;
+  --chart-3: #01a772;
+  --chart-4: #c58506;
+  --chart-5: #db6f99;
+  --chart-6: #6250d6;
+  --chart-7: #008300;
+  --chart-8: #d94a4a;
+  /*
+   * Status: the dark warning (#fab219) is 1.83:1 on white — invisible as
+   * a mark. Every light status clears 3:1 and stays ≥7.8 ΔE from the
+   * nearest series slot, so a state can't impersonate a series.
+   */
+  --chart-status-good: #0ca30c;
+  --chart-status-warning: #a8701a;
+  --chart-status-critical: #b42318;
+  --chart-grid: #e2e5e9;
+  --chart-axis: #5f6670;
+  --chart-inactive: #b9bec6;
+  --chart-overlay: #0a5e49;
+  /* Ordinal ramp: darker = more on a light surface. */
+  --chart-ramp-1: #86b6ef;
+  --chart-ramp-2: #2a78d6;
+  --chart-ramp-3: #104281;
+  /* light-end */
+  --chart-tooltip-bg: #ffffff;
+  --chart-tooltip-shadow: 0 8px 24px rgba(21, 24, 29, 0.12);
+  --chart-track: rgba(21, 24, 29, 0.08);
+}
+
+/* ── Base styles ── */
 html {
   background-color: var(--color-surface);
 }

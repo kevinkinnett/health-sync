@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import type { MetricSeries } from "@health-dashboard/shared";
 import { MetricSeriesPanels } from "../components/interventions/MetricSeriesPanels";
+import { STATUS } from "../components/charts/chartPalette";
 
 /**
  * These assertions are possible because the panels are built with
@@ -115,7 +116,7 @@ describe("MetricSeriesPanels", () => {
     const strokes = [...container.querySelectorAll("[stroke]")].map((n) =>
       (n.getAttribute("stroke") ?? "").toLowerCase(),
     );
-    expect(strokes).not.toContain("#0ca30c"); // STATUS.good
+    expect(strokes).not.toContain(STATUS.good);
   });
 
   it("colours it when the change IS a result", () => {
@@ -125,7 +126,7 @@ describe("MetricSeriesPanels", () => {
     const strokes = [...container.querySelectorAll("[stroke]")].map((n) =>
       (n.getAttribute("stroke") ?? "").toLowerCase(),
     );
-    expect(strokes).toContain("#0ca30c");
+    expect(strokes).toContain(STATUS.good);
   });
 
   it("renders nothing when there is no series to plot", () => {

@@ -93,8 +93,21 @@ export default defineConfig({
       scale: "css",
     },
   },
+  /*
+   * One project per theme. The app defaults to "system", so each project
+   * pins the OS preference: `chromium` keeps the original dark baselines
+   * (…-chromium-win32.png) byte-for-byte meaningful, and `chromium-light`
+   * records its own (…-chromium-light-win32.png). Only the visual spec runs
+   * in light — the smoke flows don't depend on colour, so running them
+   * twice would only double the time.
+   */
   projects: [
-    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    { name: "chromium", use: { ...devices["Desktop Chrome"], colorScheme: "dark" } },
+    {
+      name: "chromium-light",
+      testMatch: /visual\.spec\.ts$/,
+      use: { ...devices["Desktop Chrome"], colorScheme: "light" },
+    },
   ],
   webServer: {
     // Build first so we test the real bundle, not a dev-server transform.
