@@ -26,6 +26,7 @@ import { logger } from "../logger.js";
 
 const NOTIFICATION_KEY = "notifications";
 const LLM_MODELS_KEY = "llm_models";
+const APPRISE_TIMEOUT_MS = 10_000;
 
 /**
  * A model the proxy will accept: the short aliases or any `claude-*` id.
@@ -259,6 +260,8 @@ export class SettingService {
           body: "Test notification from your dashboard settings. If this reached your phone, push delivery is wired up correctly.",
           type: "info",
         }),
+        // A stalled Apprise endpoint must not hold the request open.
+        signal: AbortSignal.timeout(APPRISE_TIMEOUT_MS),
       });
       return { delivered: resp.status === 200, status: resp.status };
     } catch (err) {

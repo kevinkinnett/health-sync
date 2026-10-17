@@ -63,7 +63,9 @@ describeWithPostgres("database migrations against PostgreSQL", () => {
       CREATE TABLE universe.google_health_data_point (
         data_type TEXT NOT NULL,
         source_platform TEXT NOT NULL,
-        value_jsonb JSONB NOT NULL
+        point_date DATE,
+        value_jsonb JSONB NOT NULL,
+        fetched_at TIMESTAMPTZ DEFAULT NOW()
       );
       CREATE TABLE universe.eight_sleep_session (
         date DATE NOT NULL,
@@ -169,6 +171,13 @@ describeWithPostgres("database migrations against PostgreSQL", () => {
         "cholesterol",
         "potassium",
       ]),
+    );
+    const ingestIndexes = await pool.query<{ indexname: string }>(`
+      SELECT indexname FROM pg_indexes
+      WHERE schemaname = 'universe' AND tablename = 'google_health_data_point'
+    `);
+    expect(ingestIndexes.rows.map((row) => row.indexname)).toEqual(
+      expect.arrayContaining(["ix_ghdp_type_point_date", "ix_ghdp_type_fetched_at"]),
     );
     const alertColumns = await pool.query<{ column_name: string }>(`
       SELECT column_name

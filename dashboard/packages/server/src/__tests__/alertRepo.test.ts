@@ -30,6 +30,39 @@ describe("AlertRepository episodes", () => {
     expect(query.mock.calls[0][0]).toContain("occurrence_count = occurrence_count + 1");
   });
 
+  it("returns an open episode whose severity escalated so the push job sees it", async () => {
+    const query = vi.fn().mockResolvedValueOnce({
+      rows: [{ ...row, kind: "low_spo2", severity: "alert", escalated: true }],
+    });
+    const repo = new AlertRepository({ query } as never);
+
+    await expect(repo.insertIfNew({ ...detected, kind: "low_spo2", severity: "alert" }))
+      .resolves.toMatchObject({ id: 14, severity: "alert" });
+    expect(query).toHaveBeenCalledTimes(1);
+    const sql = query.mock.calls[0][0] as string;
+    // The previous severity is read from the pre-update row and compared
+    // by rank, and an escalation is marked unread again.
+    expect(sql).toMatch(/prev_severity/);
+    expect(sql).toMatch(/AS escalated/);
+    expect(sql).toMatch(/read_at = CASE/);
+  });
+
+  it("returns a reopened episode only when it comes back at a higher severity", async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ ...row, severity: "alert", escalated: true }] });
+    const repo = new AlertRepository({ query } as never);
+    await expect(repo.insertIfNew({ ...detected, severity: "alert" }))
+      .resolves.toMatchObject({ severity: "alert" });
+
+    const quiet = vi.fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ ...row, escalated: false }] });
+    await expect(new AlertRepository({ query: quiet } as never).insertIfNew(detected))
+      .resolves.toBeNull();
+    expect(quiet.mock.calls[1][0]).toMatch(/AS escalated/);
+  });
+
   it("inserts a new episode when no open or recent episode exists", async () => {
     const query = vi.fn()
       .mockResolvedValueOnce({ rows: [] })

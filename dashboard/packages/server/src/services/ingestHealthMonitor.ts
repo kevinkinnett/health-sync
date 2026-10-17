@@ -2,6 +2,7 @@ import type { IngestFreshnessStatus, IngestStatus } from "@health-dashboard/shar
 import type { AlertRepository } from "../repositories/alertRepo.js";
 import type { SettingRepository } from "../repositories/settingRepo.js";
 import type { DetectedAlert } from "./alerts.js";
+import { formatDateInTz } from "./userTz.js";
 
 const STATE_KEY = "monitor.google_health_ingest";
 
@@ -19,9 +20,11 @@ export function ingestTransitionAlert(
   previous: IngestFreshnessStatus | null,
   current: IngestStatus,
   now: Date,
+  timeZone: string,
 ): DetectedAlert | null {
   const status = current.freshness.status;
-  const date = now.toISOString().slice(0, 10);
+  // The user's calendar day, not the UTC one (which flips at 8pm ET).
+  const date = formatDateInTz(now, timeZone);
   if (status === "stale" && previous !== "stale") {
     const last = current.freshness.lastSuccessAtUtc
       ? ` Last successful run: ${current.freshness.lastSuccessAtUtc}.`
@@ -55,6 +58,7 @@ export class IngestHealthMonitor {
     private statusSource: StatusSource,
     private state: Pick<SettingRepository, "get" | "set">,
     private alerts: Pick<AlertRepository, "insertIfNew" | "resolveOpenKinds">,
+    private timeZone: string,
     private clock: () => Date = () => new Date(),
   ) {}
 
@@ -64,7 +68,12 @@ export class IngestHealthMonitor {
       this.state.get<StoredMonitorState>(STATE_KEY),
     ]);
     const now = this.clock();
-    const detected = ingestTransitionAlert(prior?.status ?? null, current, now);
+    const detected = ingestTransitionAlert(
+      prior?.status ?? null,
+      current,
+      now,
+      this.timeZone,
+    );
     if (detected?.kind === "ingest_stale") {
       await this.alerts.resolveOpenKinds(["ingest_recovered"]);
     } else if (detected?.kind === "ingest_recovered") {

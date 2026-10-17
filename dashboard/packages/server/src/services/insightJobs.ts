@@ -39,13 +39,41 @@ export interface JobState extends InsightJob {
 
 const MAX_AGE_MS = 60 * 60 * 1000;
 
+/**
+ * A generation for a different window is already in flight. Carries the
+ * running job's id so the caller can poll it instead.
+ */
+export class InsightJobConflictError extends Error {
+  constructor(public readonly jobId: string) {
+    super("An insight generation is already running");
+    this.name = "InsightJobConflictError";
+  }
+}
+
 export class InsightJobManager {
   private jobs = new Map<string, JobState>();
 
   constructor(private service: InsightService) {}
 
+  /**
+   * Single-flight: categories are serialised within a job because
+   * concurrent proxy subprocesses fail, so two overlapping jobs (the
+   * weekly cron plus a manual click, or two tabs) would reintroduce that
+   * failure and double the spend. A request for the same window joins the
+   * in-flight job; a different window is refused with
+   * {@link InsightJobConflictError}.
+   */
   start(opts: { dateFrom?: string; dateTo?: string }): string {
     this.evictOld();
+    const active = [...this.jobs.values()].find(
+      (j) => j.status === "pending" || j.status === "running",
+    );
+    if (active) {
+      if (active.dateFrom === opts.dateFrom && active.dateTo === opts.dateTo) {
+        return active.jobId;
+      }
+      throw new InsightJobConflictError(active.jobId);
+    }
     const jobId = randomUUID();
     const cats = listCategoryDefs();
     const state: JobState = {

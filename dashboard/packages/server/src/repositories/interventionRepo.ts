@@ -111,37 +111,62 @@ export class InterventionRepository {
   /**
    * Upserts a batch of derived rows on `source_ref`. Returns how many
    * landed. Manual rows are never touched: the partial unique index only
-   * covers rows that carry a `source_ref`.
+   * covers rows that carry a `source_ref`, and pruning is limited to
+   * `source = 'derived'`.
+   *
+   * With `scope`, derived rows under `scope.sourceRefPrefix` that are not
+   * in `items` are deleted in the same transaction, so a re-keyed run
+   * replaces its predecessor instead of leaving an orphan behind.
    */
-  async upsertDerived(items: DerivedIntervention[]): Promise<number> {
-    let n = 0;
-    for (const item of items) {
-      await this.pool.query(
-        `INSERT INTO universe.intervention
-           (kind, category, name, started_on, ended_on, source, source_ref, detail)
-         VALUES ($1, $2, $3, $4, $5, 'derived', $6, $7)
-         ON CONFLICT (source_ref) WHERE source_ref IS NOT NULL
-         DO UPDATE SET
-           kind = EXCLUDED.kind,
-           category = EXCLUDED.category,
-           name = EXCLUDED.name,
-           started_on = EXCLUDED.started_on,
-           ended_on = EXCLUDED.ended_on,
-           detail = EXCLUDED.detail,
-           updated_at = NOW()`,
-        [
-          item.kind,
-          item.category,
-          item.name,
-          item.startedOn,
-          item.endedOn,
-          item.sourceRef,
-          item.detail,
-        ],
-      );
-      n++;
+  async upsertDerived(
+    items: DerivedIntervention[],
+    scope?: { sourceRefPrefix: string },
+  ): Promise<number> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      if (scope) {
+        await client.query(
+          `DELETE FROM universe.intervention
+           WHERE source = 'derived'
+             AND starts_with(source_ref, $1)
+             AND NOT (source_ref = ANY($2::text[]))`,
+          [scope.sourceRefPrefix, items.map((i) => i.sourceRef)],
+        );
+      }
+      for (const item of items) {
+        await client.query(
+          `INSERT INTO universe.intervention
+             (kind, category, name, started_on, ended_on, source, source_ref, detail)
+           VALUES ($1, $2, $3, $4, $5, 'derived', $6, $7)
+           ON CONFLICT (source_ref) WHERE source_ref IS NOT NULL
+           DO UPDATE SET
+             kind = EXCLUDED.kind,
+             category = EXCLUDED.category,
+             name = EXCLUDED.name,
+             started_on = EXCLUDED.started_on,
+             ended_on = EXCLUDED.ended_on,
+             detail = EXCLUDED.detail,
+             updated_at = NOW()`,
+          [
+            item.kind,
+            item.category,
+            item.name,
+            item.startedOn,
+            item.endedOn,
+            item.sourceRef,
+            item.detail,
+          ],
+        );
+      }
+      await client.query("COMMIT");
+      return items.length;
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
     }
-    return n;
   }
 }
 

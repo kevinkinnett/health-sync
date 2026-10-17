@@ -172,13 +172,18 @@ export class InsightChatService {
     // The loop's transcript starts with the messages we passed in, so
     // anything beyond that index is new.
     const newTurns = result.transcript.slice(messages.length);
-    for (const turn of newTurns) {
+    for (const [i, turn] of newTurns.entries()) {
       if (turn.role === "assistant") {
+        // A text draft immediately followed by a loop nag was rejected
+        // (hallucinated tool syntax / missing tools) — keep it for replay
+        // but out of the visible conversation.
+        const rejected = !turn.tool_calls?.length && newTurns[i + 1]?.role === "user";
         await this.repo.appendChatRecord({
           conversationId,
           role: "assistant",
           content: turn.content,
           toolCalls: turn.tool_calls ?? null,
+          hidden: rejected,
         });
       } else if (turn.role === "tool") {
         await this.repo.appendChatRecord({
@@ -189,12 +194,15 @@ export class InsightChatService {
           toolName: this.extractToolName(turn, result.transcript),
         });
       } else if (turn.role === "user") {
-        // Nag messages — persist them too so a follow-up regenerate
-        // sees the full transcript.
+        // Every user-role turn inside the loop is a corrective nag the
+        // loop injected, not something the user typed. Persist it hidden
+        // so a follow-up replay sees the full transcript without showing
+        // the user words they never wrote.
         await this.repo.appendChatRecord({
           conversationId,
           role: "user",
           content: turn.content,
+          hidden: true,
         });
       }
     }

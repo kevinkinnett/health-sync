@@ -25,6 +25,36 @@ import type {
   ModelSource,
 } from "./llmClient.js";
 import { LlmHttpError, resolveModel } from "./llmClient.js";
+import { LlmStreamError } from "./llm/errors.js";
+
+/**
+ * Per-call upstream timeout. A dossier is a single large completion, so it
+ * gets more room than a chat round (90s), but far less than the transport's
+ * 5-minute default — a hung proxy should fail the request, not hold it.
+ */
+export const DOSSIER_CALL_TIMEOUT_MS = 3 * 60 * 1000;
+/** Wall-clock budget for the whole refresh, including the decode retry. */
+export const DOSSIER_TOTAL_BUDGET_MS = 4 * 60 * 1000;
+/** Don't start a decode retry with less time than this left. */
+const MIN_RETRY_BUDGET_MS = 30 * 1000;
+
+/** Classifies a chatCompletion failure for usage accounting. */
+function transportFailure(error: unknown): {
+  status: DossierUsageStatus;
+  message: string;
+} {
+  if (error instanceof LlmHttpError) {
+    return { status: "http_error", message: `LLM proxy error ${error.status}` };
+  }
+  if (error instanceof LlmStreamError) {
+    return { status: "stream_error", message: `LLM stream failed (${error.errorType})` };
+  }
+  const name = (error as Error | undefined)?.name;
+  if (name === "AbortError" || name === "TimeoutError") {
+    return { status: "timeout", message: "LLM proxy timed out" };
+  }
+  return { status: "network_error", message: "LLM proxy unreachable" };
+}
 
 /** The persistence capability required by the dossier workflow. */
 export interface DossierStore {
@@ -94,6 +124,8 @@ export class DossierService {
     let lastError: DossierFetchError | undefined;
 
     for (let attempt = 0; attempt < 2; attempt++) {
+      const remainingMs = DOSSIER_TOTAL_BUDGET_MS - (Date.now() - start);
+      if (attempt > 0 && remainingMs < MIN_RETRY_BUDGET_MS) break;
       let response: ChatCompletionResponse;
       try {
         response = await this.llm.chatCompletion(
@@ -103,13 +135,18 @@ export class DossierService {
             temperature: 0.1,
             max_tokens: 8000,
           },
-          { task: "dossier" },
+          {
+            task: "dossier",
+            timeoutMs: Math.min(DOSSIER_CALL_TIMEOUT_MS, remainingMs),
+          },
         );
       } catch (error) {
-        if (!(error instanceof LlmHttpError)) throw error;
-
-        await this.recordUsage(type, id, model, start, "http_error");
-        throw new DossierFetchError(`LLM proxy error ${error.status}`, error);
+        // Every transport failure (HTTP status, mid-stream error, timeout,
+        // network) is an upstream problem: account for the paid call and
+        // surface it as a 502 rather than a generic 500.
+        const failure = transportFailure(error);
+        await this.recordUsage(type, id, model, start, failure.status);
+        throw new DossierFetchError(failure.message, error);
       }
 
       const assistantContent = response.choices[0]?.message?.content;

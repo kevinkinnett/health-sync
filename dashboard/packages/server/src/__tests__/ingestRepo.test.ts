@@ -45,6 +45,16 @@ describe("IngestRepository Google Health cutover", () => {
     expect(sqlCalls[0]).toContain("provider = 'google_health'");
     expect(sqlCalls[0]).not.toContain("fitbit_ingest_state");
     expect(sqlCalls[0]).not.toContain("'vo2_max'");
+    // Polled every 10s: coverage must be per-raw-type MIN/MAX lookups that
+    // the (data_type, point_date) / (data_type, fetched_at) indexes answer
+    // from their endpoints, not a GROUP BY over every raw point.
+    expect(sqlCalls[0]).not.toMatch(/JOIN universe\.google_health_data_point/);
+    const sql = sqlCalls[0].replace(/\s+/g, " ");
+    for (const agg of ["MIN(p.point_date)", "MAX(p.point_date)", "MAX(p.fetched_at)"]) {
+      expect(sql).toContain(
+        `(SELECT ${agg} FROM universe.google_health_data_point p WHERE p.data_type = tm.raw_type)`,
+      );
+    }
   });
 
   it("returns only Google Health audit runs and normalizes their details", async () => {

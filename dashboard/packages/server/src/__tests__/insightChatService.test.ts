@@ -24,6 +24,7 @@ import type { RecoveryPendingAction } from "@health-dashboard/shared";
 
 class FakeInsightRepo {
   rows: ChatRecord[] = [];
+  hiddenIds = new Set<number>();
 
   reset() {
     this.rows = [];
@@ -36,7 +37,9 @@ class FakeInsightRepo {
     toolCalls?: unknown | null;
     toolCallId?: string | null;
     toolName?: string | null;
+    hidden?: boolean;
   }): Promise<void> {
+    if (row.hidden) this.hiddenIds.add(this.rows.length + 1);
     this.rows.push({
       id: this.rows.length + 1,
       conversationId: row.conversationId,
@@ -162,6 +165,26 @@ describe("InsightChatService", () => {
     // (just sent) doesn't get it prepended again.
     expect(userMsgsRound2[0].content).toMatch(/DATA-GROUNDING RULES/);
     expect(userMsgsRound2[1].content).toBe("And steps?");
+  });
+
+  it("persists loop-injected nags and rejected drafts as hidden turns", async () => {
+    const llm = makeLlm([
+      textResponse('<tool_call>{"name": "query_sleep", "arguments": {}}</tool_call>'),
+      textResponse("Real answer."),
+    ]);
+    const service = makeService(llm, repo);
+    const result = await service.send({ message: "How was my sleep?" });
+
+    expect(result.message.content).toBe("Real answer.");
+    const visible = repo.rows.filter((r) => !repo.hiddenIds.has(r.id));
+    expect(visible.map((r) => [r.role, r.content])).toEqual([
+      ["user", "How was my sleep?"],
+      ["assistant", "Real answer."],
+    ]);
+    // Kept (hidden) for replay so the model still sees its own history.
+    expect(repo.rows).toHaveLength(4);
+    expect(repo.rows[2]).toMatchObject({ role: "user" });
+    expect(repo.hiddenIds).toEqual(new Set([2, 3]));
   });
 
   it("appends only the NEW turns from the loop transcript on completion", async () => {

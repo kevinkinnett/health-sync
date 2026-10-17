@@ -1,8 +1,32 @@
 import type { Request, Response } from "express";
 import { logger } from "../logger.js";
 import type { InsightRepository } from "../repositories/insightRepo.js";
-import type { InsightJobManager } from "../services/insightJobs.js";
+import {
+  InsightJobConflictError,
+  type InsightJobManager,
+} from "../services/insightJobs.js";
+import { addDays } from "../services/userTz.js";
 import type { InsightChatService } from "../services/insightChatService.js";
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Generation and conversation ids are server-minted UUIDs. */
+function isUuid(id: unknown): id is string {
+  return typeof id === "string" && UUID_RE.test(id);
+}
+
+/**
+ * Optional `YYYY-MM-DD` body field. Returns `null` for a malformed value so
+ * the caller can 400 before a paid generation starts.
+ */
+function optionalDate(raw: unknown): string | undefined | null {
+  if (raw == null || raw === "") return undefined;
+  if (typeof raw !== "string" || !DATE_RE.test(raw) || addDays(raw, 0) !== raw) {
+    return null;
+  }
+  return raw;
+}
 
 export class InsightController {
   constructor(
@@ -14,12 +38,24 @@ export class InsightController {
   // ------ Reports ------------------------------------------------------
 
   async generate(req: Request, res: Response): Promise<void> {
+    const dateFrom = optionalDate(req.body?.dateFrom);
+    const dateTo = optionalDate(req.body?.dateTo);
+    if (dateFrom === null || dateTo === null) {
+      res.status(400).json({ error: "dateFrom and dateTo must be YYYY-MM-DD dates" });
+      return;
+    }
+    if (dateFrom && dateTo && dateFrom > dateTo) {
+      res.status(400).json({ error: "dateFrom must be <= dateTo" });
+      return;
+    }
     try {
-      const dateFrom = typeof req.body?.dateFrom === "string" ? req.body.dateFrom : undefined;
-      const dateTo = typeof req.body?.dateTo === "string" ? req.body.dateTo : undefined;
       const jobId = this.jobs.start({ dateFrom, dateTo });
       res.json({ jobId });
     } catch (err) {
+      if (err instanceof InsightJobConflictError) {
+        res.status(409).json({ error: err.message, jobId: err.jobId });
+        return;
+      }
       logger.error({ err }, "Failed to start insight generation");
       res.status(500).json({ error: "Failed to start generation" });
     }
@@ -45,6 +81,10 @@ export class InsightController {
   }
 
   async getGeneration(req: Request, res: Response): Promise<void> {
+    if (!isUuid(req.params.generationId)) {
+      res.status(404).json({ error: "Generation not found" });
+      return;
+    }
     try {
       const rows = await this.repo.getGeneration(String(req.params.generationId));
       if (rows.length === 0) {
@@ -69,6 +109,10 @@ export class InsightController {
   }
 
   async deleteGeneration(req: Request, res: Response): Promise<void> {
+    if (!isUuid(req.params.generationId)) {
+      res.status(404).json({ error: "Generation not found" });
+      return;
+    }
     try {
       const n = await this.repo.deleteGeneration(String(req.params.generationId));
       if (n === 0) {
@@ -91,16 +135,27 @@ export class InsightController {
         res.status(400).json({ error: "message required" });
         return;
       }
-      const conversationId = typeof req.body?.conversationId === "string" ? req.body.conversationId : undefined;
+      const rawId = req.body?.conversationId;
+      if (rawId != null && !isUuid(rawId)) {
+        res.status(400).json({ error: "conversationId must be a UUID" });
+        return;
+      }
+      const conversationId = rawId ?? undefined;
       const result = await this.chat.send({ conversationId, message });
       res.json(result);
     } catch (err) {
+      // Details stay in the log; the loop already turns LLM failures into
+      // placeholder answers, so anything reaching here is internal.
       logger.error({ err }, "Chat completion failed");
-      res.status(500).json({ error: "Chat completion failed", message: (err as Error).message });
+      res.status(500).json({ error: "Chat completion failed" });
     }
   }
 
   async chatGetConversation(req: Request, res: Response): Promise<void> {
+    if (!isUuid(req.params.conversationId)) {
+      res.status(404).json({ error: "Conversation not found" });
+      return;
+    }
     try {
       const conversationId = String(req.params.conversationId);
       const [rows, pendingActions] = await Promise.all([
@@ -133,6 +188,10 @@ export class InsightController {
   }
 
   async chatDeleteConversation(req: Request, res: Response): Promise<void> {
+    if (!isUuid(req.params.conversationId)) {
+      res.status(404).json({ error: "Conversation not found" });
+      return;
+    }
     try {
       const n = await this.repo.deleteConversation(String(req.params.conversationId));
       if (n === 0) {

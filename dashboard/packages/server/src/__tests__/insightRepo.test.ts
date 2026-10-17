@@ -107,3 +107,34 @@ describe("InsightRepository date mapping (pg DATE-as-string)", () => {
     expect(out[0].dateTo).toBe("2026-05-04");
   });
 });
+
+describe("InsightRepository chat visibility", () => {
+  function capturePool() {
+    const calls: Array<{ sql: string; params?: unknown[] }> = [];
+    return {
+      calls,
+      pool: {
+        query: async (sql: string, params?: unknown[]) => {
+          calls.push({ sql, params });
+          return { rows: [] };
+        },
+      } as never,
+    };
+  }
+
+  it("stores the hidden flag and keeps hidden turns out of display, counts and previews", async () => {
+    const { calls, pool } = capturePool();
+    const repo = new InsightRepository(pool);
+    await repo.appendChatRecord({ conversationId: "c", role: "user", content: "nag", hidden: true });
+    await repo.appendChatRecord({ conversationId: "c", role: "user", content: "real" });
+    expect(calls[0].params?.at(-1)).toBe(true);
+    expect(calls[1].params?.at(-1)).toBe(false);
+
+    await repo.getDisplayConversation("c");
+    expect(calls[2].sql).toMatch(/AND NOT hidden/);
+    await repo.getFullConversation("c");
+    expect(calls[3].sql).not.toMatch(/hidden/);
+    await repo.listConversations();
+    expect(calls[4].sql.match(/NOT hidden/g)).toHaveLength(2);
+  });
+});
