@@ -9,6 +9,9 @@ const budgets = {
   // Recovery logging and matched-effect reporting add a full responsive
   // workflow. Keep only a narrow 1.3 KiB margin above the measured bundle.
   css: 72 * KiB,
+  // The Material Symbols SUBSET (scripts/subsetIcons.mjs) is ~17 KiB. The
+  // full font is ~477 KiB, so a regression to it cannot slip under this.
+  iconFont: 48 * KiB,
 };
 
 const assets = resolve(process.cwd(), "dist/assets");
@@ -35,6 +38,10 @@ const largest = js.reduce((max, item) => item[1] > max[1] ? item : max, ["none",
 report(`largest JS chunk (${largest[0]})`, largest[1], budgets.chunk);
 report("all JavaScript", js.reduce((sum, [, size]) => sum + size, 0), budgets.javascriptTotal);
 for (const [name, size] of css) report(`stylesheet (${name})`, size, budgets.css);
+
+const iconFonts = [...sizes].filter(([name]) => /^material-symbols.*\.woff2$/.test(name));
+if (!iconFonts.length) failures.push("Could not find the Material Symbols icon font");
+for (const [name, size] of iconFonts) report(`icon font (${name})`, size, budgets.iconFont);
 
 if (failures.length) {
   console.error("Bundle budget exceeded:\n" + failures.map((line) => `  ✗ ${line}`).join("\n"));

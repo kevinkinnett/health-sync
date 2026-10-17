@@ -32,11 +32,18 @@ const AnalyticsCorrelations = lazy(() => import("./pages/analytics/Correlations"
 const AnalyticsSupplements = lazy(() => import("./pages/analytics/Supplements").then((m) => ({ default: m.AnalyticsSupplements })));
 const AnalyticsMedications = lazy(() => import("./pages/analytics/Medications").then((m) => ({ default: m.AnalyticsMedications })));
 
+/*
+ * No default `refetchInterval`. A global poll fires whether or not data is
+ * stale, so it silently overrode every per-query `staleTime` (5-10 min on
+ * the analytics endpoints) and re-ran the expensive ones every minute
+ * against daily data the ingest refreshes every four hours. Freshness is
+ * `staleTime` plus refetch-on-focus; the few queries that are genuinely
+ * live (ingest jobs, health check, alerts, server version) set their own.
+ */
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 60_000,
-      refetchInterval: 60_000,
     },
   },
 });

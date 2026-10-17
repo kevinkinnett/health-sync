@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "bundle:check": "node scripts/checkBundleBudget.mjs",
+    "icons:subset": "node scripts/subsetIcons.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
@@ -14,6 +15,8 @@
     "typecheck": "tsc -b --noEmit",
     "e2e": "playwright test",
     "e2e:smoke": "playwright test e2e/smoke.spec.ts",
+    "e2e:visual": "playwright test e2e/visual.spec.ts",
+    "e2e:visual:linux": "node scripts/visualLinux.mjs",
     "e2e:ui": "playwright test --ui"
   },
   "dependencies": {

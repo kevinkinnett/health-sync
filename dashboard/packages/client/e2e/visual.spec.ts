@@ -27,13 +27,22 @@ import { stubApi } from "./fixtures.js";
  * ignored — which costs more than it saves.
  *
  * UPDATING: when a change to a chart is intended, re-record with
- *   pnpm exec playwright test visual --update-snapshots
+ *   pnpm exec playwright test visual --update-snapshots   (Windows set)
+ *   pnpm e2e:visual:linux --update                        (Linux/CI set)
  * and eyeball the diff in the report before committing the new PNG. The
  * baseline is a review artifact, not a lockfile.
  *
- * PLATFORM: Playwright suffixes baselines per-platform (…-win32.png).
- * These were recorded on Windows; a Linux CI would record its own on
- * first run rather than failing against these.
+ * PLATFORM: Playwright suffixes baselines per-platform. There are two sets:
+ *   …-win32.png  local runs on Windows (`pnpm e2e:visual`)
+ *   …-linux.png  CI, which runs inside the pinned Playwright image. Record
+ *                and check these with `pnpm e2e:visual:linux [--update]`,
+ *                which uses that same image, so they match CI exactly.
+ * A change to a chart needs BOTH re-recorded. CI never writes a missing
+ * baseline (playwright.config.ts), so forgetting the Linux one fails there.
+ *
+ * TIME: stubApi freezes the browser clock at the fixture's TODAY. Anything
+ * drawn "up to now" (an ongoing intervention's bar) otherwise moves every
+ * day and fails a baseline recorded on any other date.
  */
 
 /**
@@ -99,7 +108,7 @@ test.describe("chart appearance", () => {
       .locator("..");
     await expect(card).toBeVisible({ timeout: 15_000 });
     await settle(page);
-    await expect(card).toHaveScreenshot("nutrition-annotated.png");
+    await expect(card).toHaveScreenshot("vitals-annotated.png");
   });
 
   test("nutrition report, coverage and aligned energy context", async ({ page }) => {

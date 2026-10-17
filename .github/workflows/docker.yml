@@ -97,9 +97,59 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  # Pixel diffs over the chart cards (dashboard/packages/client/e2e/visual.spec.ts).
+  #
+  # Runs INSIDE the pinned Playwright image rather than on the bare runner:
+  # anti-aliasing depends on the exact Chromium build and system libraries,
+  # the suite's tolerance is deliberately tight, and the *-chromium-linux.png
+  # baselines are recorded locally in this same image
+  # (`pnpm --filter @health-dashboard/client e2e:visual:linux --update`).
+  # Same image both ends means a diff here is a change in the app, not in the
+  # machine. The tag must match @playwright/test; a unit test enforces it.
+  visual:
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.1-noble
+      options: --ipc=host
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: dashboard/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: dashboard
+
+      - name: Run visual regression suite
+        id: visual
+        run: pnpm --filter @health-dashboard/client e2e:visual
+        working-directory: dashboard
+
+      - name: Upload visual diffs
+        if: ${{ failure() && steps.visual.outcome == 'failure' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-visual-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            dashboard/packages/client/playwright-report/
+            dashboard/packages/client/test-results/
+          if-no-files-found: error
+          retention-days: 7
+
   build-and-push:
     if: github.event_name != 'pull_request'
-    needs: test
+    needs: [test, visual]
     runs-on: ubuntu-latest
     permissions:
       contents: read

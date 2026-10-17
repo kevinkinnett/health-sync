@@ -15,6 +15,13 @@ import { defineConfig, devices } from "@playwright/test";
  * run in CI. Server behaviour is covered separately by the supertest
  * suites and the createApp boot test.
  */
+/*
+ * Overridable so two checkouts (or parallel sessions) can run the suite at
+ * once without one silently testing the other's bundle.
+ */
+const PORT = Number(process.env.E2E_PORT ?? 4173);
+const BASE_URL = `http://localhost:${PORT}`;
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
@@ -27,8 +34,14 @@ export default defineConfig({
       ]
     : "list",
   timeout: 30_000,
+  /*
+   * CI must never write a baseline: a missing one has to FAIL there (and be
+   * recorded deliberately with `pnpm e2e:visual:linux --update`), or the
+   * first CI run would "pass" by comparing a screenshot against itself.
+   */
+  updateSnapshots: process.env.CI ? "none" : "missing",
   use: {
-    baseURL: "http://localhost:4173",
+    baseURL: BASE_URL,
     trace: "on-first-retry",
   },
   expect: {
@@ -85,9 +98,17 @@ export default defineConfig({
   ],
   webServer: {
     // Build first so we test the real bundle, not a dev-server transform.
-    command: "pnpm build && pnpm exec vite preview --port 4173 --strictPort",
-    url: "http://localhost:4173",
-    reuseExistingServer: !process.env.CI,
+    command: `pnpm build && pnpm exec vite preview --port ${PORT} --strictPort`,
+    url: BASE_URL,
+    /*
+     * NEVER reuse. With reuse on, any process already answering on the
+     * port (a preview left running, another checkout's suite) is taken as
+     * "the app" and `pnpm build` is skipped — so the run checks a stale or
+     * foreign bundle, mutation tests look caught or missed for the wrong
+     * reason, and `--update-snapshots` records baselines from old code.
+     * With `--strictPort`, an occupied port now fails loudly instead.
+     */
+    reuseExistingServer: false,
     timeout: 180_000,
   },
 });
