@@ -2,6 +2,7 @@ import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { analyticsUsesDateRange, analyzeNavItems } from "./navigation";
 import { DateRangePresets } from "./ui/DateRangePresets";
 import { PageHeader } from "./ui/PageHeader";
+import { RouteErrorBoundary } from "./RouteErrorBoundary";
 
 const trendViews = analyzeNavItems.filter((item) => item.to.startsWith("/analytics/"));
 
@@ -33,7 +34,10 @@ export function AnalyticsLayout() {
       {analyticsUsesDateRange(location.pathname) && (
         <DateRangePresets className="sm:hidden" label="Analytics date range" />
       )}
-      <Outlet />
+      {/* Inner boundary keeps the Explore header and view picker usable when one view throws. */}
+      <RouteErrorBoundary>
+        <Outlet />
+      </RouteErrorBoundary>
     </div>
   );
 }

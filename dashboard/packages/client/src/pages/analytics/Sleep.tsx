@@ -1,7 +1,7 @@
 import { useSleep } from "../../api/queries";
 import { SleepStagesChart } from "../../components/charts/SleepStagesChart";
 import { SleepTimingChart } from "../../components/charts/SleepTimingChart";
-import { DataTable, tdClass, tdRightClass, trClass } from "../../components/DataTable";
+import { DataTable, tdDateClass, tdRightClass, trClass } from "../../components/DataTable";
 import { EmptyState, QueryBoundary } from "../../components/QueryBoundary";
 import { useChartAnnotations } from "../../components/charts/annotations";
 
@@ -32,7 +32,7 @@ export function AnalyticsSleep() {
               .slice(0, 30)
               .map((d) => (
                 <tr key={d.date} className={trClass}>
-                  <td className={tdClass}>{d.date}</td>
+                  <td className={tdDateClass}>{d.date}</td>
                   <td className={tdRightClass}>
                     {d.totalMinutesAsleep != null
                       ? `${Math.floor(d.totalMinutesAsleep / 60)}h ${d.totalMinutesAsleep % 60}m`

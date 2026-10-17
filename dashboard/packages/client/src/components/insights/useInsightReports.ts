@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type {
   InsightGeneration,
@@ -55,7 +55,10 @@ export interface InsightReportsState {
   generations: InsightGenerationSummary[];
   inFlight: boolean;
   isLoading: boolean;
+  /** True from the click until the job is visibly running — every Generate button must be disabled while set. */
   isStarting: boolean;
+  /** Why the last Generate/Regenerate request failed, if it did. Cleared on the next attempt. */
+  startError: string | null;
   job?: InsightJob;
   resolvedIndex: number;
   deleteActive: () => Promise<void>;
@@ -136,8 +139,30 @@ export function useInsightReports(): InsightReportsState {
     jobQuery.data?.status === "running" ||
     jobQuery.data?.status === "pending";
 
+  // A ref, not state: two clicks in the same frame both see the stale
+  // `isPending`, and each would start a separate billed generation job.
+  const startingRef = useRef(false);
+  const [startError, setStartError] = useState<string | null>(null);
+  // Between the POST resolving and the first job poll landing, nothing
+  // is "in flight" yet — count that gap as starting so the button stays
+  // disabled.
+  const awaitingFirstPoll = persistedJob != null && jobQuery.data == null && !jobQuery.error;
+
   const regenerate = async () => {
-    const result = await start.mutateAsync();
+    if (startingRef.current || inFlight || awaitingFirstPoll) return;
+    startingRef.current = true;
+    setStartError(null);
+    let result: Awaited<ReturnType<typeof start.mutateAsync>>;
+    try {
+      result = await start.mutateAsync();
+    } catch (error) {
+      setStartError(
+        error instanceof Error ? error.message : "The analysis could not be started.",
+      );
+      return;
+    } finally {
+      startingRef.current = false;
+    }
     const nextJob: PersistedInsightJob = {
       jobId: result.jobId,
       startedAt: new Date().toISOString(),
@@ -172,7 +197,8 @@ export function useInsightReports(): InsightReportsState {
     generations,
     inFlight,
     isLoading: list.isLoading,
-    isStarting: start.isPending,
+    isStarting: start.isPending || awaitingFirstPoll,
+    startError,
     job: jobQuery.data,
     resolvedIndex,
     deleteActive,

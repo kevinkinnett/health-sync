@@ -13,6 +13,8 @@ import {
 import { ReadinessWaterfall } from "../components/charts/ReadinessWaterfall";
 import { READINESS_BAND_COLOR } from "../components/charts/chartPalette";
 import { readinessSourceLabel } from "../lib/readinessSource";
+import { QueryBoundary } from "../components/QueryBoundary";
+import { PageHeader } from "../components/ui/PageHeader";
 
 /**
  * Readiness detail screen — the "more information" view behind the
@@ -35,20 +37,31 @@ export function Readiness() {
   // analysis view. 45 stays within the 90-day input window (+30 baseline).
   const q = useReadiness(45);
 
-  if (q.isLoading) {
-    return <p className="text-sm text-outline">Loading readiness…</p>;
-  }
-  const data = q.data;
-  if (!data || data.score == null) {
-    return (
-      <div className="bg-surface-container rounded-xl p-6 border border-outline-variant/10">
-        <p className="text-on-surface-variant text-sm">
-          {data?.summary || "Not enough data to compute readiness yet — keep syncing."}
-        </p>
-      </div>
-    );
-  }
-  return <ReadinessDetail data={data} />;
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Readiness"
+        description="How recovered you are versus your own baseline, and which signals are driving it."
+      />
+      {/* An API failure must read as a failure with Retry — not as "keep syncing". */}
+      <QueryBoundary
+        query={q}
+        skeleton={<p role="status" className="text-sm text-outline">Loading readiness…</p>}
+      >
+        {(data) =>
+          data.score == null ? (
+            <div className="bg-surface-container rounded-xl p-6 border border-outline-variant/10">
+              <p className="text-on-surface-variant text-sm">
+                {data.summary || "Not enough data to compute readiness yet — keep syncing."}
+              </p>
+            </div>
+          ) : (
+            <ReadinessDetail data={data} />
+          )
+        }
+      </QueryBoundary>
+    </div>
+  );
 }
 
 function ReadinessDetail({ data }: { data: ReadinessScore }) {

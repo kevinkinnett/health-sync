@@ -1,6 +1,6 @@
 import { useActivity } from "../../api/queries";
 import { ActivityChart } from "../../components/charts/ActivityChart";
-import { DataTable, tdClass, tdRightClass, trClass } from "../../components/DataTable";
+import { DataTable, tdDateClass, tdRightClass, trClass } from "../../components/DataTable";
 import { useUnits } from "../../stores/unitsStore";
 import { formatDistance } from "../../lib/units";
 import { EmptyState, QueryBoundary } from "../../components/QueryBoundary";
@@ -30,7 +30,7 @@ export function AnalyticsActivity() {
               .slice(0, 30)
               .map((d) => (
                 <tr key={d.date} className={trClass}>
-                  <td className={tdClass}>{d.date}</td>
+                  <td className={tdDateClass}>{d.date}</td>
                   <td className={tdRightClass}>
                     {d.steps?.toLocaleString() ?? "---"}
                   </td>

@@ -5,29 +5,8 @@ import {
   distanceUnitLabel,
   type UnitSystem,
 } from "../lib/units";
-
-// Map metric type to accent color hue for the heatmap
-function getColorForMetric(metric: string): { r0: number; g0: number; b0: number; r1: number; g1: number; b1: number } {
-  // Activity metrics -> primary (indigo)
-  if (metric.includes("step") || metric.includes("active") || metric.includes("calor") || metric.includes("dist"))
-    return { r0: 23, g0: 31, b0: 51, r1: 192, g1: 193, b1: 255 }; // surface-container -> primary
-  // Sleep metrics -> secondary (emerald)
-  if (metric.includes("sleep") || metric.includes("deep") || metric.includes("rem") || metric.includes("eff"))
-    return { r0: 23, g0: 31, b0: 51, r1: 78, g1: 222, b1: 163 }; // -> secondary
-  // HR metrics -> tertiary (rose)
-  if (metric.includes("heart") || metric.includes("hr") || metric.includes("resting"))
-    return { r0: 23, g0: 31, b0: 51, r1: 255, g1: 178, b1: 183 }; // -> tertiary
-  // Default -> primary
-  return { r0: 23, g0: 31, b0: 51, r1: 192, g1: 193, b1: 255 };
-}
-
-function interpolateColor(t: number, metric: string): string {
-  const c = getColorForMetric(metric);
-  const r = Math.round(c.r0 + t * (c.r1 - c.r0));
-  const g = Math.round(c.g0 + t * (c.g1 - c.g0));
-  const b = Math.round(c.b0 + t * (c.b1 - c.b0));
-  return `rgb(${r}, ${g}, ${b})`;
-}
+import { MAGNITUDE_RAMP_3 } from "./charts/chartPalette";
+import { heatmapBucket, inkFor } from "../lib/heatmapScale";
 
 function CellValue({
   row,
@@ -54,8 +33,9 @@ function CellValue({
   // under unit conversion — so we don't need to convert min/max.
   const range = row.max - row.min;
   const t = range === 0 ? 0.5 : (val - row.min) / range;
-  const bg = interpolateColor(t, row.metric);
-  const isBold = t > 0.8;
+  const bucket = heatmapBucket(t);
+  const bg = MAGNITUDE_RAMP_3[bucket];
+  const isBold = bucket === MAGNITUDE_RAMP_3.length - 1;
 
   const displayUnit = row.unit === "km" ? distanceUnitLabel(units) : row.unit;
   const displayVal =
@@ -72,7 +52,7 @@ function CellValue({
   return (
     <td
       className={`px-4 py-4 text-center tabular-nums ${isBold ? "font-bold" : ""}`}
-      style={{ backgroundColor: bg }}
+      style={{ backgroundColor: bg, color: inkFor(bg) }}
       title={`${row.label} weekday average: ${formatted} ${displayUnit}${samples != null ? ` · n=${samples}` : ""}`}
     >
       {formatted}
@@ -95,11 +75,16 @@ export function DayOfWeekHeatmap({ data }: { data: DayOfWeekHeatmapData }) {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex gap-1">
-            <div className="w-3 h-3 bg-primary/20 rounded-sm" />
-            <div className="w-3 h-3 bg-primary/50 rounded-sm" />
-            <div className="w-3 h-3 bg-primary/80 rounded-sm" />
-            <div className="w-3 h-3 bg-primary rounded-sm" />
+          <div
+            className="flex items-center gap-1 text-[10px] text-outline"
+            aria-label="Shading runs from lower to higher, relative to each metric's own weekday range"
+            role="img"
+          >
+            <span aria-hidden="true">Lower</span>
+            {MAGNITUDE_RAMP_3.map((fill) => (
+              <div key={fill} className="w-3 h-3 rounded-sm" style={{ backgroundColor: fill }} />
+            ))}
+            <span aria-hidden="true">Higher</span>
           </div>
           <span className="text-xs text-outline tabular-nums ml-2">
             {data.totalDays} completed days
