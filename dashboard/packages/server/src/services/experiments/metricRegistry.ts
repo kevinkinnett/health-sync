@@ -23,6 +23,13 @@ export interface MetricSpec {
    * "improvement" in resting heart rate.
    */
   minMeaningfulDelta: number;
+  /**
+   * True for totals that build up over the day (steps, active minutes).
+   * Today's row for these is half-observed, so it is left out of an
+   * after window that runs to today. Overnight metrics dated today are
+   * already complete and keep it.
+   */
+  accumulatesThroughDay?: boolean;
 }
 
 export const METRIC_SPECS: MetricSpec[] = [
@@ -37,8 +44,8 @@ export const METRIC_SPECS: MetricSpec[] = [
   { key: "restingHr", label: "Resting heart rate", unit: "bpm", betterDirection: "down", minMeaningfulDelta: 1 },
   { key: "dailyRmssd", label: "HRV (RMSSD)", unit: "ms", betterDirection: "up", minMeaningfulDelta: 2 },
   // Activity
-  { key: "steps", label: "Steps", unit: "steps", betterDirection: "up", minMeaningfulDelta: 500 },
-  { key: "activeMinutes", label: "Active minutes", unit: "min", betterDirection: "up", minMeaningfulDelta: 5 },
+  { key: "steps", label: "Steps", unit: "steps", betterDirection: "up", minMeaningfulDelta: 500, accumulatesThroughDay: true },
+  { key: "activeMinutes", label: "Active minutes", unit: "min", betterDirection: "up", minMeaningfulDelta: 5, accumulatesThroughDay: true },
 ];
 
 export function specFor(metric: string): MetricSpec | undefined {
@@ -60,4 +67,11 @@ export interface DailyPoint {
  */
 export interface DailySeriesSource {
   fetch(metric: string, start: string, end: string): Promise<DailyPoint[]>;
+  /**
+   * Optional batch form: every listed metric over one range. A source
+   * whose metrics share storage (six sleep metrics, one sleep table)
+   * should implement it so a report reads each table once per window
+   * rather than once per metric. Missing metrics map to `[]`.
+   */
+  fetchMany?(metrics: string[], start: string, end: string): Promise<Map<string, DailyPoint[]>>;
 }

@@ -41,8 +41,25 @@ const MEASUREMENT_CHANGES: { date: string; detail: string; affectedMetrics: stri
   },
 ];
 
+/**
+ * Fewest readings a side needs before a metric can carry a verdict — both
+ * for the report as a whole and for any single metric the summary or the
+ * home-screen headline quotes. Cohen's d is computable from two points,
+ * but two nights is not evidence.
+ */
+export const MIN_READINGS_PER_SIDE = 5;
+
 /** A change this close to the pivot is essentially inseparable from it. */
 const INSEPARABLE_DAYS = 14;
+
+/**
+ * Longest gap between one derived dose run's last logged day and the next
+ * run's first that still counts as a single dose change. Matches the dose
+ * deriver's grace for a regimen that is still running: a longer silence
+ * means the medication was stopped and restarted, which is a change of its
+ * own worth flagging.
+ */
+const DOSE_HANDOFF_DAYS = 10;
 
 /** Below this, a window is too short to say much. */
 const SHORT_WINDOW_DAYS = 14;
@@ -61,13 +78,15 @@ export function scanConfounds(
   const pivot = subject.startedOn;
 
   // --- Other interventions that could be doing the work ------------------
+  const handoff = doseHandoffs(subject, others);
   for (const other of others) {
     if (other.id === subject.id) continue;
 
     // Any boundary of the other intervention that lands inside either
-    // window is a candidate explanation.
+    // window is a candidate explanation — except the one where the same
+    // medication handed over to this dose, which IS the change under study.
     const boundaries = [other.startedOn, other.endedOn].filter(
-      (d): d is string => d != null,
+      (d): d is string => d != null && !handoff.has(`${other.id}:${d}`),
     );
     for (const boundary of boundaries) {
       const inWindow =
@@ -134,6 +153,48 @@ export function scanConfounds(
   return found;
 }
 
+/** `medication.item:7:dose:20:2026-03-01` → `medication.item:7`. */
+function doseItem(intervention: Intervention): string | null {
+  const match = /^(medication\.item:\d+):dose:/.exec(intervention.sourceRef ?? "");
+  return match ? match[1] : null;
+}
+
+/**
+ * The boundaries (`<id>:<date>`) at which another run of the SAME derived
+ * medication hands over to or from the subject.
+ *
+ * The dose deriver writes 20 mg → 10 mg as two adjacent interventions, so
+ * without this the 20 mg run ending the day before would be reported as a
+ * rival explanation for the 10 mg change — the same change seen from the
+ * other side — and cap every dose-change report at `weak`. Only the
+ * immediate neighbours are excused; an earlier dose change of the same
+ * drug inside the window is still a real confound.
+ */
+function doseHandoffs(subject: Intervention, others: Intervention[]): Set<string> {
+  const item = doseItem(subject);
+  const excused = new Set<string>();
+  if (item == null) return excused;
+
+  const siblings = others.filter((o) => o.id !== subject.id && doseItem(o) === item);
+  const previous = siblings
+    .filter((o) => o.endedOn != null && o.endedOn < subject.startedOn)
+    .sort((a, b) => (b.endedOn as string).localeCompare(a.endedOn as string))[0];
+  if (previous && daysBetween(previous.endedOn as string, subject.startedOn) <= DOSE_HANDOFF_DAYS) {
+    excused.add(`${previous.id}:${previous.endedOn}`);
+  }
+
+  if (subject.endedOn != null) {
+    const end = subject.endedOn;
+    const next = siblings
+      .filter((o) => o.startedOn > end)
+      .sort((a, b) => a.startedOn.localeCompare(b.startedOn))[0];
+    if (next && daysBetween(end, next.startedOn) <= DOSE_HANDOFF_DAYS) {
+      excused.add(`${next.id}:${next.startedOn}`);
+    }
+  }
+  return excused;
+}
+
 /**
  * Grades the report. A single high-severity confound caps confidence at
  * `weak` no matter how clean the numbers look — the point of the grade is
@@ -144,7 +205,7 @@ export function gradeConfidence(
   confounds: Confound[],
   windows: WindowPair,
 ): ExperimentConfidence {
-  const usable = metrics.filter((m) => m.before.n >= 5 && m.after.n >= 5);
+  const usable = metrics.filter((m) => m.before.n >= MIN_READINGS_PER_SIDE && m.after.n >= MIN_READINGS_PER_SIDE);
   if (usable.length === 0) return "insufficient";
 
   if (confounds.some((c) => c.severity === "high")) return "weak";

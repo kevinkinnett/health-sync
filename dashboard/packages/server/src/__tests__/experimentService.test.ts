@@ -1,4 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import type { HealthDataService } from "../services/healthDataService.js";
+import { HealthSeriesSource } from "../services/experiments/healthSeriesSource.js";
 import type { Intervention } from "@health-dashboard/shared";
 import {
   ExperimentService,
@@ -287,5 +289,113 @@ describe("ExperimentService — daily series for plotting", () => {
       "fitbit_legacy_main_v1",
       "main_sleep_v2",
     ]);
+  });
+});
+
+describe("ExperimentService — audit regressions", () => {
+  it("does not treat the previous run of the same medication as a rival explanation", async () => {
+    // The dose deriver writes 20 mg → 10 mg as two back-to-back runs. The
+    // 20 mg run ending the day before is this change, seen from the other
+    // side — not a second intervention that could explain the result.
+    const twenty = intervention({
+      id: 1,
+      name: "Escitalopram 20 mg",
+      category: "medication",
+      source: "derived",
+      startedOn: "2026-03-01",
+      endedOn: "2026-05-07",
+      sourceRef: "medication.item:7:dose:20:2026-03-01",
+    });
+    const ten = intervention({
+      id: 2,
+      name: "Escitalopram 10 mg",
+      category: "medication",
+      source: "derived",
+      startedOn: "2026-05-08",
+      endedOn: null,
+      sourceRef: "medication.item:7:dose:10:2026-05-08",
+    });
+    const report = await new ExperimentService(
+      lookup([twenty, ten]),
+      steppedSource("sleepMin", 392, 435, "2026-05-08"),
+      // Before the Google Health cutover, so the only candidate confound is
+      // the sibling dose run itself.
+    ).report(2, "2026-06-05");
+
+    expect(report.confounds.filter((c) => c.severity === "high")).toEqual([]);
+    expect(report.confounds.some((c) => c.detail.includes("ended"))).toBe(false);
+    expect(report.confidence).not.toBe("weak");
+    expect(report.summary).not.toContain("something else could explain it");
+  });
+
+  it("does not let a metric with fewer than five readings per side claim an improvement", async () => {
+    const dense = steppedSource("sleepMin", 392, 435);
+    const source: DailySeriesSource = {
+      fetch: async (metric, start, end) => {
+        if (metric === "deepMin") {
+          // Three nights each side, with a big clean jump.
+          return series(start, 3, start >= "2026-05-02" ? 90 : 60, 2);
+        }
+        return dense.fetch(metric, start, end);
+      },
+    };
+    const report = await new ExperimentService(lookup([intervention()]), source).report(1, TODAY);
+
+    const deep = report.metrics.find((m) => m.metric === "deepMin")!;
+    expect(deep.before.n).toBe(3);
+    expect(deep.meaningful).toBe(false);
+    expect(report.summary).not.toContain("deep sleep");
+    expect(report.metrics.find((m) => m.metric === "sleepMin")!.meaningful).toBe(true);
+  });
+
+  it("leaves today's half-accumulated activity out of an ongoing after window", async () => {
+    const today = "2026-06-10";
+    const source: DailySeriesSource = {
+      fetch: async (metric, start, end) => {
+        if (metric !== "steps") return [];
+        return series(start, 40, 8000, 200)
+          .filter((p) => p.date <= end)
+          .map((p) => (p.date === today ? { ...p, value: 900 } : p));
+      },
+    };
+    const report = await new ExperimentService(
+      lookup([intervention({ startedOn: "2026-05-02" })]),
+      source,
+    ).report(1, today);
+
+    const steps = report.metrics.find((m) => m.metric === "steps")!;
+    const stepSeries = report.series.find((s) => s.metric === "steps")!;
+    expect(stepSeries.points.some((p) => p.date === today)).toBe(false);
+    expect(steps.after.n).toBe(stepSeries.points.filter((p) => p.date >= "2026-05-02").length);
+  });
+
+  it("reads each health family once per window instead of once per metric", async () => {
+    const calls: string[] = [];
+    const health = {
+      getSleep: async (s: string) => { calls.push(`sleep ${s}`); return []; },
+      getHeartRate: async (s: string) => { calls.push(`hr ${s}`); return []; },
+      getHrv: async (s: string) => { calls.push(`hrv ${s}`); return []; },
+      getActivity: async (s: string) => { calls.push(`activity ${s}`); return []; },
+    };
+    const findById = vi.fn(async (id: number) => (id === 1 ? intervention() : null));
+    const findAll = vi.fn(async () => [intervention()]);
+    const svc = new ExperimentService(
+      { findById, findAll },
+      new HealthSeriesSource(health as unknown as HealthDataService),
+    );
+
+    await svc.report(1, TODAY);
+    expect(calls.sort()).toEqual([
+      "activity 2026-02-05", "activity 2026-05-02",
+      "hr 2026-02-05", "hr 2026-05-02",
+      "hrv 2026-02-05", "hrv 2026-05-02",
+      "sleep 2026-02-05", "sleep 2026-05-02",
+    ]);
+
+    findById.mockClear();
+    findAll.mockClear();
+    await svc.summaries(TODAY);
+    expect(findAll).toHaveBeenCalledTimes(1);
+    expect(findById).not.toHaveBeenCalled();
   });
 });

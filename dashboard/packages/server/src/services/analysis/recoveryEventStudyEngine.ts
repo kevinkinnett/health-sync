@@ -274,10 +274,15 @@ function selectControls(
   outcome: RecoveryOutcomeDefinition,
   scales: ReturnType<typeof recoveryCovariateScales>,
 ): AlignedRecoveryPeriod[] {
+  // A control's ±7-day timeline must not overlap the anchor's own: a control
+  // a week after the session would read the anchor's post-session nights as
+  // its pre-period (and one a week before, the anchor's pre-period as its
+  // follow-up), leaking the effect being studied into the expected baseline.
   return periods
     .filter((period) =>
       period.sessions.length === 0 &&
       period.weekday === anchor.weekday &&
+      dayDistance(period.date, anchor.date) > RECOVERY_EVENT_WINDOW_DAYS * 2 &&
       dayDistance(period.date, anchor.date) <= RECOVERY_MAX_MATCH_DAY_DISTANCE &&
       outcome.value(period) != null)
     .map((period) => ({ period, score: recoveryMatchDistance(anchor, period, scales) }))
