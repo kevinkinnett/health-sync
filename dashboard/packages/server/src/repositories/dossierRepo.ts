@@ -10,7 +10,10 @@ export type DossierUsageStatus =
   | "ok"
   | "parse_error"
   | "validation_error"
-  | "http_error";
+  | "http_error"
+  | "stream_error"
+  | "timeout"
+  | "network_error";
 
 /** Inputs for {@link DossierRepository.recordUsage}. */
 export interface DossierUsageRow {
