@@ -30,6 +30,18 @@ export function ReportsTab() {
         </div>
       )}
 
+      {reports.startError && (
+        <div
+          role="alert"
+          className="bg-error/10 border border-error/30 rounded-xl p-4 text-sm text-on-surface"
+        >
+          <span className="font-bold text-error">Couldn’t start the analysis.</span>{" "}
+          <span className="text-on-surface-variant">
+            {reports.startError} Nothing was generated — try again in a moment.
+          </span>
+        </div>
+      )}
+
       <Card as="div" variant="inset" className="p-4 sm:p-5">
         <header className="flex min-w-0 flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="min-w-0 text-sm text-on-surface">
@@ -111,13 +123,25 @@ export function ReportsTab() {
         !reports.isLoading &&
         reports.generations.length === 0 &&
         !reports.inFlight && (
-          <EmptyReport onGenerate={reports.regenerate} />
+          <EmptyReport
+            onGenerate={reports.regenerate}
+            disabled={reports.inFlight || reports.isStarting}
+            starting={reports.isStarting}
+          />
         )}
     </div>
   );
 }
 
-function EmptyReport({ onGenerate }: { onGenerate: () => Promise<void> }) {
+function EmptyReport({
+  onGenerate,
+  disabled,
+  starting,
+}: {
+  onGenerate: () => Promise<void>;
+  disabled: boolean;
+  starting: boolean;
+}) {
   return (
     <Card className="p-8 text-center sm:p-12">
       <div className="text-outline mb-4">
@@ -134,9 +158,10 @@ function EmptyReport({ onGenerate }: { onGenerate: () => Promise<void> }) {
       </p>
       <button
         onClick={onGenerate}
-        className="px-6 py-2.5 bg-primary text-on-primary-fixed rounded-lg text-sm font-bold"
+        disabled={disabled}
+        className="min-h-11 px-6 py-2.5 bg-primary text-on-primary-fixed rounded-lg text-sm font-bold disabled:opacity-50"
       >
-        Generate First Analysis
+        {starting ? "Starting…" : "Generate First Analysis"}
       </button>
     </Card>
   );

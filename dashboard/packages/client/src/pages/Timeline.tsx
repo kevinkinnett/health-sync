@@ -201,6 +201,10 @@ function InterventionRow({
   onSelect: () => void;
 }) {
   const del = useDeleteIntervention();
+  // Deleting is a hard DELETE that also takes the before/after report
+  // built on this change, and the button sits right beside the row's
+  // expand target — so it asks first, like the other deletes in the app.
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const color = CATEGORY_COLOR[item.category];
   const ongoing = item.kind === "period" && item.endedOn == null;
 
@@ -248,15 +252,59 @@ function InterventionRow({
         {item.source === "manual" && (
           <button
             type="button"
-            onClick={() => del.mutate(item.id)}
+            onClick={() => {
+              setConfirmingDelete(true);
+              del.reset();
+            }}
             disabled={del.isPending}
             aria-label={`Delete ${item.name}`}
-            className="material-symbols-outlined text-base text-outline hover:text-error disabled:opacity-40 shrink-0"
+            aria-expanded={confirmingDelete}
+            className="h-10 w-10 shrink-0 rounded-lg flex items-center justify-center text-outline hover:text-error hover:bg-error/10 disabled:opacity-40"
           >
-            delete
+            <span className="material-symbols-outlined text-base" aria-hidden="true">
+              delete
+            </span>
           </button>
         )}
       </div>
+
+      {confirmingDelete && (
+        <div className="px-4 pb-4 border-t border-outline-variant/10 pt-3">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <p className="text-xs text-on-surface-variant">
+              Delete “{item.name}”? Its before/after report goes with it. This cannot be undone.
+            </p>
+            <div className="grid grid-cols-2 gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmingDelete(false);
+                  del.reset();
+                }}
+                disabled={del.isPending}
+                className="min-h-10 px-3 py-2 text-xs font-bold text-outline rounded-lg hover:bg-surface-container-high disabled:opacity-50"
+              >
+                Keep
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  del.mutate(item.id, { onSuccess: () => setConfirmingDelete(false) })
+                }
+                disabled={del.isPending}
+                className="min-h-10 px-3 py-2 text-xs font-bold text-error bg-error/10 rounded-lg hover:bg-error/20 disabled:opacity-50"
+              >
+                {del.isPending ? "Deleting…" : del.isError ? "Try again" : "Delete"}
+              </button>
+            </div>
+          </div>
+          {del.isError && (
+            <p role="alert" className="text-xs text-error mt-2">
+              Could not delete this change: {del.error?.message ?? "unknown error"}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

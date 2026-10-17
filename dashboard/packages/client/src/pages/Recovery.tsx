@@ -33,6 +33,8 @@ const labelClass = "text-[10px] text-outline uppercase tracking-wider font-bold 
 
 export function Recovery() {
   const [activeTab, setActiveTab] = useState<Tab>("Log");
+  // Set when the empty Quick log sends the user here, so the add form is already open.
+  const [startAdding, setStartAdding] = useState(false);
   return (
     <div className="space-y-6">
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
@@ -47,7 +49,7 @@ export function Recovery() {
           </Link>
           <div className="flex gap-1 p-1.5 bg-surface-container-low rounded-2xl border border-outline-variant/10">
           {tabs.map((tab) => (
-            <button key={tab} type="button" onClick={() => setActiveTab(tab)}
+            <button key={tab} type="button" onClick={() => { setStartAdding(false); setActiveTab(tab); }}
               className={`px-5 py-2 rounded-xl text-xs font-bold uppercase tracking-widest ${activeTab === tab ? "bg-primary text-on-primary-fixed" : "text-outline hover:text-on-surface"}`}>
               {tab}
             </button>
@@ -55,11 +57,11 @@ export function Recovery() {
           </div>
         </div>
       </header>
-      {activeTab === "Log" ? <RecoveryLog /> : <RecoveryLibrary />}
+      {activeTab === "Log" ? <RecoveryLog onOpenLibrary={() => { setStartAdding(true); setActiveTab("Library"); }} /> : <RecoveryLibrary startAdding={startAdding} />}
     </div>
   );
 }
-function RecoveryLog() {
+function RecoveryLog({ onOpenLibrary }: { onOpenLibrary: () => void }) {
   const timezone = useUserTimezone();
   const today = todayInTz(timezone);
   const [range, setRange] = useState<HistoryRange>("30d");
@@ -105,10 +107,25 @@ function RecoveryLog() {
 
       <section className="bg-surface-container rounded-xl p-4 sm:p-5 border border-outline-variant/10">
         <h2 className="font-headline text-lg font-semibold text-on-surface mb-1">Quick log</h2>
-        <p className="text-sm text-on-surface-variant mb-4">Choose an activity, then confirm its time and duration.</p>
         {activities.isLoading ? <p className="text-sm text-outline">Loading activities…</p> : activities.error ? (
           <p role="alert" className="text-sm text-error">{activities.error.message}</p>
+        ) : (activities.data ?? []).length === 0 ? (
+          // No activities means nothing to choose — point at where they're made
+          // instead of showing an instruction that can't be followed.
+          <div className="rounded-xl bg-surface-container-low border border-outline-variant/10 p-6 text-center">
+            <span className="material-symbols-outlined text-4xl text-outline block mb-2" aria-hidden="true">spa</span>
+            <p className="text-sm text-on-surface-variant mb-4">
+              No recovery activities yet. Add one — sauna, cold plunge, massage — in the Library, then log sessions here.
+            </p>
+            <button type="button" onClick={onOpenLibrary}
+              className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-bold text-on-primary-fixed">
+              <span className="material-symbols-outlined text-base" aria-hidden="true">add</span>
+              Add your first activity
+            </button>
+          </div>
         ) : (
+          <>
+          <p className="text-sm text-on-surface-variant mb-4">Choose an activity, then confirm its time and duration.</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
             {(activities.data ?? []).map((activity) => (
               <button key={activity.id} type="button" aria-label={`Quick log ${activity.name}`}
@@ -124,6 +141,7 @@ function RecoveryLog() {
               </button>
             ))}
           </div>
+          </>
         )}
       </section>
 
@@ -235,12 +253,12 @@ function SessionList({ title, sessions, timezone, empty, editingId, deletingId, 
   );
 }
 
-function RecoveryLibrary() {
+function RecoveryLibrary({ startAdding = false }: { startAdding?: boolean }) {
   const activities = useRecoveryActivities(true);
   const create = useCreateRecoveryActivity();
   const update = useUpdateRecoveryActivity();
   const archive = useArchiveRecoveryActivity();
-  const [editing, setEditing] = useState<RecoveryActivity | "new" | null>(null);
+  const [editing, setEditing] = useState<RecoveryActivity | "new" | null>(startAdding ? "new" : null);
   return <div className="space-y-4">
     <div className="flex justify-between items-center"><div><h2 className="font-headline text-xl font-semibold text-on-surface">Activity library</h2><p className="text-sm text-on-surface-variant">Set defaults or add another recovery activity.</p></div><button type="button" onClick={() => setEditing("new")} className="px-4 py-2.5 rounded-xl bg-primary text-on-primary-fixed text-xs font-bold">Add activity</button></div>
     {editing && <ActivityEditor key={editing === "new" ? "new" : editing.id} activity={editing === "new" ? null : editing} saving={create.isPending || update.isPending} onClose={() => setEditing(null)} onSave={async (body) => { if (editing === "new") await create.mutateAsync(body as CreateRecoveryActivityBody); else await update.mutateAsync({ id: editing.id, body }); setEditing(null); }} />}

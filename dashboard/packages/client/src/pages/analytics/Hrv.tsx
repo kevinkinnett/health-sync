@@ -1,6 +1,6 @@
 import { useHrv } from "../../api/queries";
 import { HrvChart } from "../../components/charts/HrvChart";
-import { DataTable, tdClass, tdRightClass, trClass } from "../../components/DataTable";
+import { DataTable, tdClass, tdDateClass, tdRightClass, trClass } from "../../components/DataTable";
 import { EmptyState, QueryBoundary } from "../../components/QueryBoundary";
 import { useChartAnnotations } from "../../components/charts/annotations";
 
@@ -27,7 +27,7 @@ export function AnalyticsHrv() {
               .slice(0, 30)
               .map((d) => (
                 <tr key={d.date} className={trClass}>
-                  <td className={tdClass}>{d.date}</td>
+                  <td className={tdDateClass}>{d.date}</td>
                   <td className={tdRightClass}>
                     {d.dailyRmssd != null ? `${d.dailyRmssd.toFixed(1)} ms` : "---"}
                   </td>

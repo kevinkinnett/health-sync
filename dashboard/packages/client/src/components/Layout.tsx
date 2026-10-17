@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { BuildStamp } from "./BuildStamp";
 import { BuildCompatibilityGate } from "./BuildCompatibilityGate";
+import { RouteErrorBoundary } from "./RouteErrorBoundary";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useDateRangeStore } from "../stores/dateRangeStore";
 import { useUserTimezone } from "../api/queries";
@@ -352,7 +353,9 @@ export function Layout() {
       <main className="min-w-0 px-4 pb-24 pt-16 md:pl-[calc(5rem+2rem)] md:pr-8 md:pb-8 xl:pl-[calc(16rem+2rem)]">
         <div className="min-w-0 max-w-7xl mx-auto mt-4">
           <BuildCompatibilityGate>
-            <Outlet />
+            <RouteErrorBoundary>
+              <Outlet />
+            </RouteErrorBoundary>
           </BuildCompatibilityGate>
         </div>
       </main>

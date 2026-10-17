@@ -91,9 +91,9 @@ function DayIntakeRow({ intake }: { intake: MedicationIntake }) {
         onClick={() => del.mutate(intake.id)}
         disabled={del.isPending}
         aria-label={`Delete intake at ${timeLabel(intake.takenAt)}`}
-        className="text-outline hover:text-error transition-colors p-1 shrink-0"
+        className="h-10 w-10 flex items-center justify-center rounded-lg text-outline hover:text-error hover:bg-error/10 transition-colors shrink-0"
       >
-        <span className="material-symbols-outlined text-base">delete</span>
+        <span className="material-symbols-outlined text-base" aria-hidden="true">delete</span>
       </button>
     </div>
   );

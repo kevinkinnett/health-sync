@@ -15,13 +15,37 @@ function formatDateRange(start: string, end: string): string {
 /** Full labels for the multi-week weekday aggregates. */
 const FULL_DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-function ChangeArrow({ value }: { value: number }) {
-  if (value === 0) return <span className="text-outline text-xs">--</span>;
+/**
+ * Week-over-week change. The glyph and the number always follow the RAW
+ * direction (a falling resting HR points down); only the good/bad tone
+ * depends on `goodWhenUp`. Colour is never the only signal: the visually
+ * hidden text spells out the direction and whether it is better or worse.
+ */
+export function ChangeArrow({ value, goodWhenUp = true }: { value: number; goodWhenUp?: boolean }) {
+  if (value === 0) {
+    return (
+      <span className="text-outline text-xs">
+        <span aria-hidden="true">--</span>
+        <span className="sr-only">No change from last week</span>
+      </span>
+    );
+  }
   const up = value > 0;
+  const better = up === goodWhenUp;
   return (
-    <span className={`inline-flex items-center text-sm font-bold ${up ? "text-secondary" : "text-error"}`}>
-      <span className="material-symbols-outlined text-sm">{up ? "arrow_upward" : "arrow_downward"}</span>
-      {Math.abs(value)}%
+    <span
+      data-testid="change-arrow"
+      data-direction={up ? "up" : "down"}
+      data-tone={better ? "better" : "worse"}
+      className={`inline-flex items-center text-sm font-bold ${better ? "text-secondary" : "text-error"}`}
+    >
+      <span className="material-symbols-outlined text-sm" aria-hidden="true">
+        {up ? "arrow_upward" : "arrow_downward"}
+      </span>
+      <span aria-hidden="true">{Math.abs(value)}%</span>
+      <span className="sr-only">
+        {up ? "Up" : "Down"} {Math.abs(value)}% from last week ({better ? "better" : "worse"})
+      </span>
     </span>
   );
 }
@@ -30,17 +54,15 @@ function MetricCard({
   label,
   metric,
   format,
-  invertColor,
+  lowerIsBetter,
 }: {
   label: string;
   metric: MetricComparison;
   format?: (v: number) => string;
-  invertColor?: boolean;
+  /** e.g. resting HR: a fall is an improvement. Affects tone only, never direction. */
+  lowerIsBetter?: boolean;
 }) {
   const fmt = format ?? ((v: number) => v.toLocaleString());
-  const change = invertColor
-    ? { ...metric, changePercent: -metric.changePercent }
-    : metric;
 
   return (
     <div className="space-y-1">
@@ -50,7 +72,7 @@ function MetricCard({
           {fmt(metric.current)}
         </span>
       </div>
-      <ChangeArrow value={change.changePercent} />
+      <ChangeArrow value={metric.changePercent} goodWhenUp={!lowerIsBetter} />
     </div>
   );
 }
@@ -144,7 +166,7 @@ export function WeeklyInsights({ data }: { data: WeeklyInsightsData }) {
               label="Resting HR"
               metric={data.restingHr}
               format={(v) => `${v}`}
-              invertColor
+              lowerIsBetter
             />
           )}
         </div>

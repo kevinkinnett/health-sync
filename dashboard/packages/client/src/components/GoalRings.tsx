@@ -140,10 +140,13 @@ export function GoalRings({ summary }: { summary: HealthSummary }) {
           </p>
         </div>
         <button
+          type="button"
           onClick={() => setEditing(!editing)}
-          className="text-on-surface-variant hover:text-on-surface transition-colors"
+          aria-label="Edit daily goals"
+          aria-expanded={editing}
+          className="-mr-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors"
         >
-          <span className="material-symbols-outlined">more_horiz</span>
+          <span className="material-symbols-outlined" aria-hidden="true">more_horiz</span>
         </button>
       </div>
 

@@ -97,11 +97,21 @@ export function DayOfWeekHeatmap({ data }: { data: DayOfWeekHeatmapData }) {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex gap-1">
-            <div className="w-3 h-3 bg-primary/20 rounded-sm" />
-            <div className="w-3 h-3 bg-primary/50 rounded-sm" />
-            <div className="w-3 h-3 bg-primary/80 rounded-sm" />
-            <div className="w-3 h-3 bg-primary rounded-sm" />
+          {/* Swatches are the cells' own fills (low / mid / top of a row's range), so the key matches the table. */}
+          <div
+            className="flex items-center gap-1 text-[10px] text-outline"
+            aria-label="Shading runs from lower to higher, relative to each metric's own weekday range"
+            role="img"
+          >
+            <span aria-hidden="true">Lower</span>
+            {[0, 0.5, 1].map((t) => (
+              <div
+                key={t}
+                className="w-3 h-3 rounded-sm border border-outline-variant/40"
+                style={{ backgroundColor: heatmapCellColor(t, "steps") }}
+              />
+            ))}
+            <span aria-hidden="true">Higher</span>
           </div>
           <span className="text-xs text-outline tabular-nums ml-2">
             {data.totalDays} completed days
