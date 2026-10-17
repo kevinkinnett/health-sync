@@ -79,6 +79,7 @@ export function scanConfounds(
 
   // --- Other interventions that could be doing the work ------------------
   const handoff = doseHandoffs(subject, others);
+  for (const key of thirdPartyHandoffs(subject, others, windows)) handoff.add(key);
   for (const other of others) {
     if (other.id === subject.id) continue;
 
@@ -193,6 +194,41 @@ function doseHandoffs(subject: Intervention, others: Intervention[]): Set<string
     }
   }
   return excused;
+}
+
+/**
+ * Old-dose end boundaries (`<id>:<date>`) to drop when a report about
+ * something ELSE sees a dose change of one medication.
+ *
+ * 20 mg ending on 4 May and 10 mg starting on 8 May are one change seen
+ * twice, so the mattress report listed it as two HIGH rivals. Only the new
+ * dose's start is kept — and only when that start is itself inside the
+ * windows, so the change is never dropped altogether.
+ */
+function thirdPartyHandoffs(
+  subject: Intervention,
+  others: Intervention[],
+  windows: WindowPair,
+): Set<string> {
+  const subjectItem = doseItem(subject);
+  const runs = others.filter((o) => o.id !== subject.id && doseItem(o) != null && doseItem(o) !== subjectItem);
+  const dropped = new Set<string>();
+  for (const run of runs) {
+    if (run.endedOn == null) continue;
+    const end = run.endedOn;
+    const next = runs
+      .filter((o) => doseItem(o) === doseItem(run) && o.startedOn > end)
+      .sort((a, b) => a.startedOn.localeCompare(b.startedOn))[0];
+    if (
+      next &&
+      daysBetween(end, next.startedOn) <= DOSE_HANDOFF_DAYS &&
+      next.startedOn >= windows.before.start &&
+      next.startedOn <= windows.after.end
+    ) {
+      dropped.add(`${run.id}:${end}`);
+    }
+  }
+  return dropped;
 }
 
 /**
