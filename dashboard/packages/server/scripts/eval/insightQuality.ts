@@ -146,6 +146,9 @@ async function evaluate(w: Wired, today: string, step: number) {
       metrics: report.metrics.map((m) => ({
         metric: m.metric, beforeN: m.before.n, afterN: m.after.n, before: m.before.mean, after: m.after.mean,
         delta: m.delta, deltaPct: m.deltaPct, d: m.effectSize, meaningful: m.meaningful, improved: m.improved,
+        placebos: m.calibration?.placebos ?? null,
+        exceedance: m.calibration?.exceedance ?? null,
+        adjusted: m.calibration?.adjustedExceedance ?? null,
       })),
     });
   }
@@ -193,6 +196,8 @@ async function evaluate(w: Wired, today: string, step: number) {
           metric: spec.key,
           d,
           meaningful: atTrue?.metrics[spec.key]?.meaningful ?? false,
+          engineExceedance: atTrue?.metrics[spec.key]?.exceedance ?? null,
+          engineAdjusted: atTrue?.metrics[spec.key]?.adjustedExceedance ?? null,
           exceedance: d == null ? null : round(placeboExceedance(nullByMetric.get(spec.key) ?? [], Math.abs(d)), 3),
         };
       }),
@@ -304,10 +309,10 @@ function printReport(r: Awaited<ReturnType<typeof evaluate>>): void {
     out.push(`\n### ${x.name} (${x.startedOn}${x.endedOn ? `→${x.endedOn}` : "→"}) windows ${x.before.start}..${x.before.end} | ${x.after.start}..${x.after.end} (${x.after.days}d)`);
     out.push(`confidence=${x.confidence} headline=${x.headline} summary="${x.summary}"`);
     out.push(`confounds: ${x.confounds.map((c) => `${c.kind}/${c.severity}${c.date ? `@${c.date}` : ""}`).join(", ") || "none"}`);
-    out.push("| metric | n b/a | before | after | Δ | Δ% | d | meaningful |");
-    out.push("|---|---|---|---|---|---|---|---|");
+    out.push("| metric | n b/a | before | after | Δ | Δ% | d | placebos | exceedance | adjusted | meaningful |");
+    out.push("|---|---|---|---|---|---|---|---|---|---|---|");
     for (const m of x.metrics) {
-      out.push(`| ${m.metric} | ${m.beforeN}/${m.afterN} | ${m.before} | ${m.after} | ${m.delta} | ${m.deltaPct} | ${m.d} | ${m.meaningful ? (m.improved ? "YES ↑good" : "YES ↓bad") : ""} |`);
+      out.push(`| ${m.metric} | ${m.beforeN}/${m.afterN} | ${m.before} | ${m.after} | ${m.delta} | ${m.deltaPct} | ${m.d} | ${m.placebos} | ${m.exceedance} | ${m.adjusted} | ${m.meaningful ? (m.improved ? "YES ↑good" : "YES ↓bad") : ""} |`);
     }
   }
 
@@ -331,14 +336,14 @@ function printReport(r: Awaited<ReturnType<typeof evaluate>>): void {
     for (const row of s.rows.filter((x) => x.offset % 4 === 0 || Math.abs(x.offset) <= 3)) {
       out.push(`| ${row.offset} | ${metrics.map((m) => {
         const o = row.metrics[m];
-        return o ? `${o.effectSize}${o.meaningful ? "*" : ""}` : "";
+        return o ? `${o.effectSize}${o.meaningful ? "*" : ""}${o.exceedance != null ? ` (${o.exceedance}/${o.adjustedExceedance})` : ""}` : "";
       }).join(" | ")} |`);
     }
   }
 
   out.push("\n## Known effects vs clean 30-day placebo null (exceedance = share of placebos with |d| ≥ observed)");
   for (const e of r.exceedance) {
-    out.push(`- ${e.label}: ${e.metrics.filter((m) => m.d != null).map((m) => `${m.metric} d=${m.d}${m.meaningful ? "*" : ""} p=${m.exceedance}`).join("; ")}`);
+    out.push(`- ${e.label}: ${e.metrics.filter((m) => m.d != null).map((m) => `${m.metric} d=${m.d}${m.meaningful ? "*" : ""} p=${m.exceedance} engine=${m.engineExceedance}/${m.engineAdjusted}`).join("; ")}`);
   }
 
   out.push("\n## Real reports vs clean placebos of the same window length (p = share of placebos with |d| ≥ observed)");

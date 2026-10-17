@@ -10,6 +10,11 @@ changepoints** (dates where nothing changed) and **shifted changepoints**
 Everything was read-only. Nothing was written to the database, deployed, or
 edited in `universe.intervention`.
 
+> **Update (after):** the calibration recommended below (R1, R2, and the
+> retirement of the stale confound in R4) is implemented. Clean-placebo
+> headlines fell from 94–98% to 6–10%. See
+> [After: calibrated engine](#after-calibrated-engine) at the end.
+
 ## TL;DR
 
 - **The engine finds real effects. It also "finds" effects nearly everywhere
@@ -322,3 +327,129 @@ above: 3 events, and ±8.5 efficiency points arise by chance.
   the pre-level of 79.5 is not.
 - The event-study power uses a fixed planted delta on random nights. Real
   effects may vary with session duration and timing.
+
+## After: calibrated engine
+
+The same harness was re-run on the same snapshot (today = 2026-10-16) after
+the engine change below. Nothing else changed: the same placebo dates, the
+same clean definition and the same real interventions.
+
+### What changed
+
+- **`meaningful` is calibrated against the person's own placebo null.**
+  The new module `services/experiments/calibration.ts` is pure and has its
+  own tests. It reads about three years of history once per day, then
+  measures the same comparison at every past date (one placebo per day)
+  whose windows straddle no logged change. A metric is meaningful only
+  when three things hold. The old prerequisites still apply (≥ 5 readings
+  a side, `minMeaningfulDelta`, |d| ≥ 0.3). At most 10% of placebos moved
+  as far (`exceedance ≤ 0.1`). And that step points the same way as the
+  reported shift.
+- **The step at the changepoint is what gets calibrated.** The step is the
+  comparison over min(window, 30) days on either side of the change. The
+  reported means still cover the full windows. On this history a 90-day
+  window has only ~4–5 non-overlapping placebo comparisons. A null that
+  small is dominated by one or two unlogged level shifts (July 2025
+  efficiency/awake, summer 2024 RHR/HRV), so the 90-day comparison itself
+  cannot be calibrated. With it, 43% of clean 90-day placebos still got a
+  headline. At 30 days there are ~14 such comparisons. The step also
+  answers F4 and F5: a 90-day mean dilutes a real step, and absorbs drift
+  that started before the pivot.
+- **The headline and `strong` must beat a report-level null.** The
+  headline must clear `adjustedExceedance ≤ 0.1`, and so must `strong`.
+  That figure is the share of placebo dates whose *most* unusual metric
+  was at least as unusual, a min-p / Westfall–Young step across all ten
+  metrics. Each placebo date is ranked the way a report on that date
+  would be, without its own straddling neighbours. Ranking it against
+  them made every report look rarer than it was, and the 90-day headline
+  rate stayed at ~50%. `strong` also still needs long windows and no
+  confound. Without calibrated evidence the best grade is `moderate`.
+- **The 2026-06-12 Google Health measurement-change confound is retired**
+  (`MEASUREMENT_CHANGES` is now empty, with the reason written next to it).
+- **API:** `MetricEffect.calibration` is optional. It carries
+  `{ windowDays, effectSize, placebos, exceedance, adjustedExceedance }`,
+  so the UI can show "rarer than N% of your own comparisons". Old fields
+  are unchanged.
+- **Cost:** the home-screen `summaries()` adds one 3-year read per health
+  family per day, shared by every report. Nulls are cached per metric and
+  window length. Each null is a prefix-sum pass, a few thousand operations.
+
+### Placebo false-positive rate, before → after
+
+Clean placebos only, so these reports have no real effect available to
+pick up.
+
+| | 30-day (n=108) | 59-day (n=94) | 90-day (n=85) |
+|---|---|---|---|
+| Home-screen headline shown | 98.1% → **7.4%** | 94.7% → **9.6%** | 94.1% → **5.9%** |
+| Graded `strong` | 100% → **7.4%** | 100% → **9.6%** | 100% → **5.9%** |
+| Per-metric `meaningful`, range over metrics | 8–77% → **8–14%** | 15–66% → **4–12%** | 8–58% → **2–11%** |
+| Resting HR `meaningful` | 76.9% → 11.1% | 66.0% → 7.4% | 51.8% → 7.1% |
+| HRV `meaningful` | 66.7% → 11.1% | 59.6% → 9.6% | 57.6% → 8.2% |
+
+The nominal rate is 10% at both the metric and the report level. Including
+the non-clean placebos, which may straddle a real change, the headline
+rate is 12.7% / 13.5% / 12.8%. Weekly placebos overlap, so read these as
+roughly ±7 points.
+
+### The real reports, before → after
+
+| Intervention | Before | After |
+|---|---|---|
+| **Eight Sleep Pod** (90-day windows) | `weak`, headline REM. Claimed asleep, REM, RHR, HRV improved, active minutes "wrong way". Efficiency and awake reported, step understated. | `weak` (escitalopram 6 days later, still HIGH), headline REM. **Time asleep, efficiency, awake and REM** improved (step exceedance 0.001 / 0.040 / 0.065 / 0.001). RHR (0.79), HRV (0.37) and active minutes (0.70) are no longer claimed. |
+| **Escitalopram 10 mg** | `weak`, same claims as the Pod. | `weak`, headline time asleep. The same four sleep metrics, with the Pod flagged HIGH. Still inseparable from the Pod, and the report says so. |
+| **Escitalopram 20 mg** | `moderate`, ten metrics "moved", headline time in bed. | `moderate`, headline time in bed (adjusted 0.003). Five metrics: asleep and in bed down; efficiency, awake and **active minutes up**. Active minutes is still the F3 artifact (step exceedance 0.003). Calibration cannot catch a data error that is itself rare (see below). |
+| **Strength training** | `weak` only because of the stale 06-12 confound; headline HRV +17.4%. | `moderate`, **no headline**: "Nothing moved meaningfully". With the confound retired, the HRV headline stays suppressed. Its 30-day step is d 0.12, exceedance 0.87: the 90-day gain is drift, as F5 said. Resting HR (step exceedance 0.45) is not claimed either. |
+
+The Eight Sleep effects at fixed 30-day windows match the engine's own
+calibration. The harness's weekly-placebo exceedance and the engine's
+daily-placebo exceedance agree:
+
+| Metric | d | Harness p (weekly null) | Engine exceedance | Engine adjusted | `meaningful` |
+|---|---|---|---|---|---|
+| Time asleep | 1.04 | 0.018 | 0.0013 | 0.003 | yes |
+| Sleep efficiency | 1.07 | 0.046 | 0.040 | 0.30 | yes |
+| Awake in bed | −0.84 | 0.073 | 0.065 | 0.40 | yes |
+| REM | 1.37 | 0.009 | 0.0013 | 0.003 | yes (headline) |
+| Time in bed | 0.51 | 0.156 | 0.11 | 0.58 | no (truthfully unchanged) |
+
+### What this does not fix
+
+- **F3, implausible activity days, is untouched.** A data error that is
+  itself rare looks like a rare effect. Escitalopram 20 mg still claims
+  active minutes +584%. R3 (drop days with very-active > 120 min on
+  < 8,000 steps) is still needed, and still needs the user to approve the
+  threshold.
+- **R5's question is answered partly.** "Does the step sit at the pivot?"
+  is now asked at ±30 days, and in sign. A drift that keeps going *through*
+  the pivot in the same direction can still pass, if its 30-day step is
+  rare.
+- **R4 is only partly done.** Measurement changes are still a constant,
+  now empty. Deriving them from `provenance.regimes` is still the right
+  follow-up for the next ingest change.
+- **Short histories get no verdicts.** With fewer than 30 clean placebo
+  comparisons, a metric cannot be calibrated and is never meaningful. The
+  summary then says there is not enough history yet. A new user sees
+  nothing claimed for their first months. That is deliberate.
+
+### Tests
+
+Written first, and each failed before its code existed:
+
+- `experimentCalibration.test.ts` covers the placebo draws (arithmetic
+  identical to `cohensD`, sparse and flat stretches), the exclusion rule
+  and exceedance. It also checks that the family-wise rate stays near
+  nominal on iid draws, and on autocorrelated draws: 20.5% before
+  leave-neighbours-out ranking, ~12% after.
+- `experimentService.test.ts`:
+  - On a drifting series, ≥ 60% of placebo dates pass the old rule and
+    ≤ 20% pass the new one.
+  - A real step is still found and graded `strong`.
+  - A clean placebo is never `strong` and gets no headline.
+  - A 90-day report is judged on its 30-day step.
+  - A rise that predates the pivot is not credited to it.
+  - With too little history, nothing is meaningful.
+  - The history is read once per day, not once per report.
+- `experimentHeadline.test.ts` / `experimentEngine.test.ts`: the headline
+  needs the adjusted bar, `strong` needs calibrated evidence, and 06-12 is
+  no longer flagged.

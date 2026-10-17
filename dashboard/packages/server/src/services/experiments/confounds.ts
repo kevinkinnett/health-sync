@@ -4,6 +4,7 @@ import type {
   Intervention,
   MetricEffect,
 } from "@health-dashboard/shared";
+import { beatsReportNull } from "./calibration.js";
 import { daysBetween, type WindowPair } from "./windows.js";
 
 /**
@@ -21,25 +22,21 @@ import { daysBetween, type WindowPair } from "./windows.js";
 
 /**
  * Dates on which HOW something is measured changed, independently of the
- * user's behaviour. A shift here can manufacture an effect out of nothing.
+ * user's behaviour. A shift here can manufacture an effect out of nothing,
+ * so it is flagged as a confound and kept out of the placebo null.
  *
  * Kept as a constant rather than data because these are facts about this
  * app's own ingest history. If the list grows, it should become a table.
+ *
+ * Retired: the 2026-06-12 Google Health cutover. The whole sleep and HRV
+ * history has since been re-ingested through Google Health (every sleep
+ * row is `main_sleep_v2`, every HRV row `daily_hrv_v1`, back to 2024-01),
+ * and no metric steps at that date. The stale flag capped three of four
+ * real reports at `weak`. It was also the only thing hiding a drift-driven
+ * strength-training HRV headline, so it came out only once headlines had
+ * to beat the placebo null (docs/insight-quality-2026-10.md).
  */
-const MEASUREMENT_CHANGES: { date: string; detail: string; affectedMetrics: string[] }[] = [
-  {
-    date: "2026-06-12",
-    detail:
-      "Google Health cutover — sleep efficiency became a derived value " +
-      "rather than one Fitbit supplied, and HRV changed to a per-5-minute " +
-      "flavour with a different absolute scale. Activity rollups also moved " +
-      "to the Google Health ingest path.",
-    affectedMetrics: [
-      "sleepMin", "inBedMin", "efficiency", "wakeMin", "deepMin", "remMin",
-      "dailyRmssd", "steps", "activeMinutes",
-    ],
-  },
-];
+export const MEASUREMENT_CHANGES: { date: string; detail: string; affectedMetrics: string[] }[] = [];
 
 /**
  * Fewest readings a side needs before a metric can carry a verdict — both
@@ -235,6 +232,11 @@ function thirdPartyHandoffs(
  * Grades the report. A single high-severity confound caps confidence at
  * `weak` no matter how clean the numbers look — the point of the grade is
  * to stop a tidy-looking table from over-persuading.
+ *
+ * `strong` also needs evidence, not just the absence of a problem: some
+ * metric has to beat this person's own placebo null with every metric
+ * counted. Without that, a clean design over ordinary drift graded every
+ * placebo date `strong`.
  */
 export function gradeConfidence(
   metrics: MetricEffect[],
@@ -248,6 +250,7 @@ export function gradeConfidence(
 
   const longEnough = windows.before.days >= 30 && windows.after.days >= 30;
   const clean = confounds.length === 0;
-  if (longEnough && clean) return "strong";
+  const evidenced = usable.some(beatsReportNull);
+  if (longEnough && clean && evidenced) return "strong";
   return "moderate";
 }

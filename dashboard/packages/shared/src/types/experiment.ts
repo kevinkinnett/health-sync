@@ -62,9 +62,54 @@ export interface MetricEffect {
   effectSize: number | null;
   /** True when the change moved in this metric's better direction. */
   improved: boolean;
-  /** Whether the shift is large relative to the metric's own variability. */
+  /**
+   * Whether the shift is unusual for THIS person: large in the metric's own
+   * unit, with a step at the change that is rare among the same comparison
+   * at dates where nothing was changed (`calibration`) and that points the
+   * same way. Never true without a calibration — clearing a fixed
+   * effect-size bar is not enough on series that drift.
+   */
   meaningful: boolean;
+  /**
+   * How the shift ranks against this person's own placebo comparisons.
+   * Absent when there is too little clean history to build that null.
+   */
+  calibration?: MetricCalibration;
   provenance?: MetricProvenance;
+}
+
+/**
+ * The step at the changepoint, measured against "what usually happens
+ * anyway".
+ *
+ * The step is the comparison over the `windowDays` either side of the
+ * change — the report's own windows, capped at 30 days. The same
+ * comparison is run at many past dates where no change was logged, giving
+ * the spread of |Cohen's d| that drift and day-to-day swing produce on
+ * their own. This is the honest stand-in for the p-value this report
+ * refuses to compute: it is empirical, so the autocorrelation in daily
+ * metrics is already priced in.
+ *
+ * Why capped: 90-day windows overlap so heavily that a few years of
+ * history hold only a handful of independent placebo comparisons — too
+ * few to call anything rare — and a 90-day mean also absorbs drift that
+ * predates the change. The step is what the change itself can claim.
+ */
+export interface MetricCalibration {
+  /** Days either side of the change the step is measured over. */
+  windowDays: number;
+  /** Cohen's d of the step; its sign must agree with the full-window shift. */
+  effectSize: number;
+  /** Placebo comparisons the null was built from (same metric, same window length). */
+  placebos: number;
+  /** Share of placebos with |d| at least as large as observed. Small = unusual. */
+  exceedance: number;
+  /**
+   * The same, after accounting for every metric in the report being tested
+   * at once: the share of placebo dates whose MOST unusual metric was at
+   * least this unusual. This is what a headline has to beat.
+   */
+  adjustedExceedance: number;
 }
 
 export type ConfoundKind =
@@ -89,7 +134,8 @@ export interface Confound {
  * How stable and usable the numerical estimate is. This is deliberately
  * separate from evidence grade: a dense uncontrolled before/after comparison
  * can be estimated precisely without becoming causal evidence.
- *  - `strong`       — long windows, dense data, no serious confound
+ *  - `strong`       — long windows, dense data, no serious confound, and a
+ *                     headline that beats this person's own placebo null
  *  - `moderate`     — usable, but something is imperfect
  *  - `weak`         — a serious confound or a very short window
  *  - `insufficient` — not enough data to say anything

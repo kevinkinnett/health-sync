@@ -53,6 +53,9 @@ export interface MetricOutcome {
   improved: boolean;
   beforeN: number;
   afterN: number;
+  /** The engine's own placebo calibration, when it had one. */
+  exceedance?: number;
+  adjustedExceedance?: number;
 }
 
 export interface PlaceboRun {
@@ -108,6 +111,8 @@ function outcomes(report: ExperimentReport): Record<string, MetricOutcome> {
     improved: m.improved,
     beforeN: m.before.n,
     afterN: m.after.n,
+    exceedance: m.calibration?.exceedance,
+    adjustedExceedance: m.calibration?.adjustedExceedance,
   }]));
 }
 

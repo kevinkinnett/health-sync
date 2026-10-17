@@ -1,5 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
 import type { HealthDataService } from "../services/healthDataService.js";
+import { HISTORY_DAYS } from "../services/experiments/calibration.js";
+import { seededRandom } from "../services/evaluation/counterfactuals.js";
+import { addDays } from "../services/userTz.js";
 import { HealthSeriesSource } from "../services/experiments/healthSeriesSource.js";
 import type { Intervention } from "@health-dashboard/shared";
 import {
@@ -372,7 +375,12 @@ describe("ExperimentService — audit regressions", () => {
   it("reads each health family once per window instead of once per metric", async () => {
     const calls: string[] = [];
     const health = {
-      getSleep: async (s: string) => { calls.push(`sleep ${s}`); return []; },
+      // Some sleep on file, so the report has something to calibrate.
+      getSleep: async (s: string, e: string) => {
+        calls.push(`sleep ${s}`);
+        return series(s, Math.round((Date.parse(e) - Date.parse(s)) / 86_400_000) + 1, 420)
+          .map((p) => ({ date: p.date, totalMinutesAsleep: p.value }));
+      },
       getHeartRate: async (s: string) => { calls.push(`hr ${s}`); return []; },
       getHrv: async (s: string) => { calls.push(`hrv ${s}`); return []; },
       getActivity: async (s: string) => { calls.push(`activity ${s}`); return []; },
@@ -385,17 +393,148 @@ describe("ExperimentService — audit regressions", () => {
     );
 
     await svc.report(1, TODAY);
+    // Two windows, plus one read of the history the placebo null is built from.
+    const history = addDays(TODAY, -HISTORY_DAYS);
     expect(calls.sort()).toEqual([
-      "activity 2026-02-05", "activity 2026-05-02",
-      "hr 2026-02-05", "hr 2026-05-02",
-      "hrv 2026-02-05", "hrv 2026-05-02",
-      "sleep 2026-02-05", "sleep 2026-05-02",
-    ]);
+      "activity 2026-02-05", "activity 2026-05-02", `activity ${history}`,
+      "hr 2026-02-05", "hr 2026-05-02", `hr ${history}`,
+      "hrv 2026-02-05", "hrv 2026-05-02", `hrv ${history}`,
+      "sleep 2026-02-05", "sleep 2026-05-02", `sleep ${history}`,
+    ].sort());
 
     findById.mockClear();
     findAll.mockClear();
+    calls.length = 0;
     await svc.summaries(TODAY);
     expect(findAll).toHaveBeenCalledTimes(1);
     expect(findById).not.toHaveBeenCalled();
+    // The home screen runs several reports per load; the history read and
+    // the nulls built from it are shared for the day, not repeated.
+    expect(calls.filter((c) => c.endsWith(history))).toEqual([]);
+  });
+});
+
+describe("ExperimentService — calibrated against the person's own history", () => {
+  /** Gaussian-ish noise keyed on the date, so every fetch of a day agrees. */
+  const noiseOn = (seed: string) => (date: string) => {
+    const random = seededRandom(`${seed}:${date}`);
+    return random() + random() + random() + random() - 2;
+  };
+  const dayIndex = (date: string) => Math.round(Date.parse(`${date}T00:00:00Z`) / 86_400_000);
+
+  function sourceOf(metric: string, valueOn: (date: string) => number): DailySeriesSource {
+    return {
+      fetch: async (m, start, end) => {
+        if (m !== metric) return [];
+        const out: DailyPoint[] = [];
+        for (let date = start; date <= end; date = addDays(date, 1)) out.push({ date, value: valueOn(date) });
+        return out;
+      },
+    };
+  }
+
+  // Sleep that wanders by ±30 min over a four-month cycle, on top of
+  // ordinary night-to-night noise: two adjacent months routinely differ by
+  // far more than d = 0.3 with nothing having changed.
+  const wobble = noiseOn("drift");
+  const drifting = sourceOf("sleepMin", (date) =>
+    420 + 30 * Math.sin((2 * Math.PI * dayIndex(date)) / 120) + 10 * wobble(date));
+
+  const stepNoise = noiseOn("step");
+  const stepped = sourceOf("sleepMin", (date) =>
+    400 + 30 * stepNoise(date) + (date >= "2026-05-02" ? 40 : 0));
+
+  const month = (startedOn: string) =>
+    intervention({ startedOn, endedOn: addDays(startedOn, 29) });
+
+  it("does not call ordinary drift an effect, though it clears the old d ≥ 0.3 bar", async () => {
+    const dates = Array.from({ length: 24 }, (_, i) => addDays("2025-06-01", i * 11));
+    const effects = [];
+    for (const date of dates) {
+      const report = await new ExperimentService(lookup([month(date)]), drifting).report(1, TODAY);
+      effects.push(report.metrics.find((m) => m.metric === "sleepMin")!);
+    }
+    // The old rule would have flagged most of these placebo dates…
+    const oldRule = effects.filter((e) => Math.abs(e.effectSize!) >= 0.3 && Math.abs(e.delta) >= 10);
+    expect(oldRule.length).toBeGreaterThan(dates.length * 0.6);
+    // …the calibrated one flags about as many as its threshold allows.
+    expect(effects.filter((e) => e.meaningful).length).toBeLessThanOrEqual(dates.length * 0.2);
+  });
+
+  it("still finds a real step and exposes how unusual it was", async () => {
+    const report = await new ExperimentService(lookup([month("2026-05-02")]), stepped).report(1, TODAY);
+    const sleep = report.metrics.find((m) => m.metric === "sleepMin")!;
+
+    expect(sleep.meaningful).toBe(true);
+    expect(sleep.calibration).toBeDefined();
+    expect(sleep.calibration!.placebos).toBeGreaterThan(100);
+    expect(sleep.calibration!.exceedance).toBeLessThan(0.02);
+    expect(sleep.calibration!.adjustedExceedance).toBeLessThan(0.1);
+    expect(report.series.find((s) => s.metric === "sleepMin")!.meaningful).toBe(true);
+    expect(report.confidence).toBe("strong");
+  });
+
+  it("puts nothing on the home screen and never grades a clean placebo strong", async () => {
+    const svc = new ExperimentService(lookup([month("2025-09-10")]), drifting);
+    const report = await svc.report(1, TODAY);
+    const sleep = report.metrics.find((m) => m.metric === "sleepMin")!;
+    expect(sleep.calibration!.exceedance).toBeGreaterThan(0.1);
+    expect(sleep.meaningful).toBe(false);
+    expect(report.confidence).not.toBe("strong");
+
+    const [summary] = await svc.summaries(TODAY);
+    expect(summary.headline).toBeNull();
+  });
+
+  it("judges a long report on the step at the changepoint", async () => {
+    // Ninety-day windows overlap so much that a few years of history hold
+    // only a handful of independent placebos — too few to call anything
+    // rare. The step over the 30 days either side has many more.
+    const report = await new ExperimentService(lookup([intervention()]), stepped).report(1, TODAY);
+    const sleep = report.metrics.find((m) => m.metric === "sleepMin")!;
+    expect(report.after.days).toBe(86);
+    expect(sleep.calibration!.windowDays).toBe(30);
+    expect(sleep.calibration!.effectSize).toBeGreaterThan(1);
+    expect(sleep.meaningful).toBe(true);
+  });
+
+  it("does not credit a change with a shift that happened before it", async () => {
+    // Low for two months, then up a month BEFORE the change, then back
+    // down a little at it. The 90-day means say "up"; at the change the
+    // series went down. That is drift that predates the pivot, not an effect.
+    const n = noiseOn("predates");
+    const source = sourceOf("sleepMin", (date) => {
+      const level = date >= "2026-05-02" ? 420 : date >= "2026-04-02" ? 440 : 380;
+      return level + 10 * n(date);
+    });
+    const report = await new ExperimentService(lookup([intervention()]), source).report(1, TODAY);
+    const sleep = report.metrics.find((m) => m.metric === "sleepMin")!;
+    expect(sleep.delta).toBeGreaterThan(10);
+    expect(sleep.calibration!.effectSize).toBeLessThan(0);
+    expect(sleep.meaningful).toBe(false);
+  });
+
+  it("will not call anything meaningful without enough history to calibrate", async () => {
+    // Data only inside the two report windows: no placebo dates at all.
+    const windowsOnly: DailySeriesSource = {
+      fetch: async (m, start, end) => {
+        if (m !== "sleepMin") return [];
+        const lo = start < "2026-04-02" ? "2026-04-02" : start;
+        const hi = end > "2026-05-31" ? "2026-05-31" : end;
+        const out: DailyPoint[] = [];
+        for (let date = lo; date <= hi; date = addDays(date, 1)) {
+          out.push({ date, value: 400 + 30 * stepNoise(date) + (date >= "2026-05-02" ? 40 : 0) });
+        }
+        return out;
+      },
+    };
+    const report = await new ExperimentService(lookup([month("2026-05-02")]), windowsOnly).report(1, TODAY);
+    const sleep = report.metrics.find((m) => m.metric === "sleepMin")!;
+
+    expect(Math.abs(sleep.effectSize!)).toBeGreaterThan(1);
+    expect(sleep.calibration).toBeUndefined();
+    expect(sleep.meaningful).toBe(false);
+    expect(report.confidence).not.toBe("strong");
+    expect(report.summary).toContain("history");
   });
 });
