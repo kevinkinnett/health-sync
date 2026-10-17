@@ -16,7 +16,19 @@ export type { Pool } from "pg";
 // across every pool inherits the override.
 types.setTypeParser(1082, (val) => val);
 
-export function createPool(config: Config["db"]): InstanceType<typeof Pool> {
+export interface PoolOptions {
+  /**
+   * Client-side ceiling on any single query. Unset for the app pool, where
+   * request handlers own their timeouts; set for the migration runner so a
+   * connection that has silently died cannot hang startup forever.
+   */
+  queryTimeoutMillis?: number;
+}
+
+export function createPool(
+  config: Config["db"],
+  options: PoolOptions = {},
+): InstanceType<typeof Pool> {
   return new Pool({
     host: config.host,
     port: config.port,
@@ -27,5 +39,14 @@ export function createPool(config: Config["db"]): InstanceType<typeof Pool> {
     max: 10,
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 5_000,
+    // The DB is reached over the tailnet, and the container's route to it can
+    // change under an open socket (the Tailscale sidecar installs its routes
+    // a moment after the app starts). Without keepalive a connection whose
+    // packets are being dropped looks healthy forever: on 2026-10-17 a
+    // migration's reply was lost this way and startup hung for 13 minutes
+    // while holding a lock that stalled the Google Health ingest.
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10_000,
+    ...(options.queryTimeoutMillis ? { query_timeout: options.queryTimeoutMillis } : {}),
   });
 }
