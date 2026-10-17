@@ -13,8 +13,6 @@ import { Readiness } from "../pages/Readiness";
 import { Recovery } from "../pages/Recovery";
 import { GoalRings } from "../components/GoalRings";
 import { DayOfWeekHeatmap } from "../components/DayOfWeekHeatmap";
-import { MAGNITUDE_RAMP_3 } from "../components/charts/chartPalette";
-import { contrastRatio, heatmapBucket, inkFor } from "../lib/heatmapScale";
 import { tdDateClass, thClass } from "../components/DataTable";
 
 /**
@@ -200,19 +198,9 @@ describe("AI Insights generation start", () => {
 // ---------------------------------------------------------------------------
 
 describe("DayOfWeekHeatmap colour", () => {
-  it("every ramp step has a label ink at ≥ 4.5:1", () => {
-    for (const fill of MAGNITUDE_RAMP_3) {
-      expect(contrastRatio(fill, inkFor(fill))).toBeGreaterThanOrEqual(4.5);
-    }
-  });
-
-  it("bins normalised values onto the ramp, top value on the lightest step", () => {
-    expect(heatmapBucket(0)).toBe(0);
-    expect(heatmapBucket(0.5)).toBe(1);
-    expect(heatmapBucket(1)).toBe(MAGNITUDE_RAMP_3.length - 1);
-  });
-
-  it("renders cells only on ramp colours with no retired pastel", () => {
+  // Contrast is measured in a real browser in both themes (e2e/uxLayout.spec.ts);
+  // jsdom can't resolve color-mix() over CSS variables.
+  it("uses no retired pastel and keys the shading with words, not colour alone", () => {
     const { container } = render(
       <DayOfWeekHeatmap
         data={{
@@ -224,14 +212,10 @@ describe("DayOfWeekHeatmap colour", () => {
         }}
       />,
     );
-    const peak = screen.getByTitle(/Steps weekday average: 7,607/);
-    // jsdom normalises inline colours to rgb().
-    expect(peak.style.backgroundColor).toBe("rgb(134, 182, 239)"); // #86b6ef
-    expect(peak.style.color).toBe("rgb(7, 16, 28)"); // dark ink on the light step
-    const low = screen.getByTitle(/Steps weekday average: 5,017/);
-    expect(low.style.color).toBe("rgb(241, 243, 245)");
-    expect(container.innerHTML).not.toMatch(/192, 193, 255|78, 222, 163|255, 178, 183/);
-    expect(screen.getByLabelText(/shading runs from lower to higher/i)).toBeInTheDocument();
+    expect(container.innerHTML).not.toMatch(/192, ?193, ?255|78, ?222, ?163|255, ?178, ?183|c0c1ff|4edea3|ffb2b7/i);
+    const key = screen.getByLabelText(/shading runs from lower to higher/i);
+    expect(key).toHaveTextContent("Lower");
+    expect(key).toHaveTextContent("Higher");
   });
 });
 

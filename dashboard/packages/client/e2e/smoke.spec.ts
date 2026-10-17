@@ -289,11 +289,19 @@ test("charts actually render marks, not just an empty frame", async ({ page }) =
   const painted = await page
     .locator(".recharts-surface *")
     .evaluateAll((nodes) => {
+      // Palette roles are `var(--chart-*)` references now, so read the
+      // COMPUTED colour — what is actually painted in this mode — and
+      // normalise it back to hex for comparison.
+      const toHex = (rgb: string) => {
+        const m = rgb.match(/^rgb\((\d+), (\d+), (\d+)\)$/);
+        return m ? "#" + m.slice(1, 4).map((c) => Number(c).toString(16).padStart(2, "0")).join("") : null;
+      };
       const seen = new Set<string>();
       for (const n of nodes) {
-        for (const attr of ["stroke", "fill"]) {
-          const v = n.getAttribute(attr);
-          if (v?.startsWith("#")) seen.add(v.toLowerCase());
+        for (const attr of ["stroke", "fill"] as const) {
+          if (!n.getAttribute(attr)) continue;
+          const hex = toHex(getComputedStyle(n)[attr]);
+          if (hex) seen.add(hex);
         }
       }
       return [...seen];

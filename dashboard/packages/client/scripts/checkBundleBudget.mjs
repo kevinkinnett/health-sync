@@ -5,11 +5,13 @@ const KiB = 1024;
 const budgets = {
   entry: 225 * KiB,
   chunk: 260 * KiB,
-  // UX-audit fixes (route error boundaries, delete confirms, insight start errors) measured 1502.1 KiB; ~1.9 KiB margin.
-  javascriptTotal: 1504 * KiB,
+  // Light palette + theme store/toggle: 1496.3 → 1500.2 KiB measured.
+  // UX-audit fixes (route error boundaries, delete confirms, insight start errors): 1500.2 → 1506.1 KiB.
+  javascriptTotal: 1508 * KiB,
   // Recovery logging and matched-effect reporting add a full responsive
-  // workflow. UX-audit fixes brought it to 71.3 KiB; keep ~1.7 KiB margin.
-  css: 73 * KiB,
+  // workflow. Keep only a narrow 1.3 KiB margin above the measured bundle.
+  // The light palette and theme toggle add the :root.light token set: 71.1 → 73.9 KiB.
+  css: 75 * KiB,
   // The Material Symbols SUBSET (scripts/subsetIcons.mjs) is ~17 KiB. The
   // full font is ~477 KiB, so a regression to it cannot slip under this.
   iconFont: 48 * KiB,

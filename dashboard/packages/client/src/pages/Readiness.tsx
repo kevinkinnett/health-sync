@@ -159,7 +159,7 @@ function ScoreDial({ score, ring }: { score: number; ring: string }) {
   return (
     <div
       className="w-24 h-24 rounded-full flex items-center justify-center shrink-0"
-      style={{ background: `conic-gradient(${ring} ${score * 3.6}deg, rgba(255,255,255,0.08) 0deg)` }}
+      style={{ background: `conic-gradient(${ring} ${score * 3.6}deg, var(--chart-track) 0deg)` }}
       role="img"
       aria-label={`Readiness score ${score} of 100`}
     >

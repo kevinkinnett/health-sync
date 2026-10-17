@@ -15,16 +15,17 @@ from datetime import date
 from unittest.mock import patch
 
 try:
-    import psycopg  # noqa: F401
+    import psycopg as _psycopg
 except ModuleNotFoundError:
-    psycopg = types.ModuleType("psycopg")
-    sys.modules["psycopg"] = psycopg
-# Another suite (test_health_data_invariants) may already have registered a
-# bare psycopg stub; ingest_common's annotations need these attributes.
-if not hasattr(psycopg, "Connection"):
-    psycopg.Connection = object
-if not hasattr(psycopg, "connect"):
-    psycopg.connect = None
+    _psycopg = types.ModuleType("psycopg")
+    sys.modules["psycopg"] = _psycopg
+# Another test module may already have registered a BARE psycopg stub
+# (unittest discovery imports test_health_data_invariants first), so fill
+# in what ingest_common needs at import time rather than trusting it.
+if not hasattr(_psycopg, "Connection"):
+    _psycopg.Connection = object
+if not hasattr(_psycopg, "connect"):
+    _psycopg.connect = None
 
 import eight_sleep_points  # noqa: E402
 import google_health_capture  # noqa: E402

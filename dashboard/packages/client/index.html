@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -11,6 +11,25 @@
     <link rel="icon" type="image/png" sizes="64x64" href="/icon-64.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>Vitalis</title>
+    <!--
+      Pre-paint theme: stamps `dark`/`light` on <html> before the stylesheet
+      paints, so a light-mode user never sees a dark flash (and vice versa).
+      Mirrors readStoredChoice/resolveMode/applyMode in src/stores/themeStore.ts:
+      same storage key, same "system" default, dark when anything is unreadable.
+    -->
+    <script>
+      (function () {
+        var c = "system", d = document.documentElement, m;
+        try { c = localStorage.getItem("vitalis.theme") || "system"; } catch (e) {}
+        if (c !== "light" && c !== "dark") {
+          try { c = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark"; } catch (e) { c = "dark"; }
+        }
+        d.classList.add(c);
+        d.style.colorScheme = c;
+        m = document.querySelector('meta[name="theme-color"]');
+        if (m && c === "light") m.setAttribute("content", "#eef0f3");
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

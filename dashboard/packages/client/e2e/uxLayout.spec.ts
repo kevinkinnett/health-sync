@@ -94,3 +94,39 @@ test("a screen that throws keeps the shell and offers retry", async ({ page }) =
   await expect(page.getByText("This screen couldn’t be displayed")).toBeHidden();
   await expect(page.getByText("2026-07-29").first()).toBeVisible();
 });
+
+for (const theme of ["dark", "light"] as const) {
+  test(`weekday heatmap labels clear 4.5:1 in ${theme} mode`, async ({ page }) => {
+    await page.addInitScript((t) => localStorage.setItem("vitalis.theme", t), theme);
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto("/analytics/overview");
+    const cells = page.locator("td[title*='weekday average']");
+    await expect(cells.first()).toBeVisible();
+    const ratios = await cells.evaluateAll((tds) => {
+      // Resolve whatever CSS colour syntax the browser reports (color-mix
+      // results come back as oklab/color()) to sRGB through a canvas.
+      const ctx = document.createElement("canvas").getContext("2d", { willReadFrequently: true })!;
+      const rgb = (css: string) => {
+        ctx.clearRect(0, 0, 1, 1);
+        ctx.fillStyle = css;
+        ctx.fillRect(0, 0, 1, 1);
+        return [...ctx.getImageData(0, 0, 1, 1).data.slice(0, 3)];
+      };
+      const lum = (c: number[]) => {
+        const [r, g, b] = c.map((v) => {
+          const s = v / 255;
+          return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+        });
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      };
+      return tds.map((td) => {
+        const style = getComputedStyle(td);
+        const a = lum(rgb(style.color));
+        const b = lum(rgb(style.backgroundColor));
+        return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+      });
+    });
+    expect(ratios.length).toBeGreaterThan(0);
+    expect(Math.min(...ratios)).toBeGreaterThanOrEqual(4.5);
+  });
+}

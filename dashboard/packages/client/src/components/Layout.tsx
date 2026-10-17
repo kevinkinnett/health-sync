@@ -6,6 +6,7 @@ import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useDateRangeStore } from "../stores/dateRangeStore";
 import { useUserTimezone } from "../api/queries";
 import { AlertBell } from "./AlertBell";
+import { ThemeToggle } from "./ThemeToggle";
 import {
   allNavItems,
   analyzeNavItems,
@@ -259,6 +260,7 @@ function TopBar() {
         {showDateRange && <DateRangePresets className="hidden sm:grid" />}
 
         {/* Icons */}
+        <ThemeToggle />
         <AlertBell />
         <NavLink
           to="/settings"
