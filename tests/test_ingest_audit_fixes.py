@@ -3,7 +3,8 @@
 The Windmill entry points import ``wmill`` and ``u.kevin.*`` workspace
 modules, neither of which exists locally. They are stubbed below with the
 local modules of the same name so ``main()`` can run against fake DB/HTTP
-collaborators.
+collaborators. CI installs only requirements-test.txt, so ``psycopg`` is
+stubbed too when absent; every test patches ``psycopg.connect`` anyway.
 """
 
 import re
@@ -13,13 +14,21 @@ import unittest
 from datetime import date
 from unittest.mock import patch
 
-import eight_sleep_points
-import google_health_capture
-import google_health_points
-import google_health_rollups
-import google_health_temporal
-import ingest_common
-from google_health_capture import Page, RawPointStore, capture_types
+try:
+    import psycopg  # noqa: F401
+except ModuleNotFoundError:
+    _psycopg = types.ModuleType("psycopg")
+    _psycopg.Connection = object
+    _psycopg.connect = None
+    sys.modules["psycopg"] = _psycopg
+
+import eight_sleep_points  # noqa: E402
+import google_health_capture  # noqa: E402
+import google_health_points  # noqa: E402
+import google_health_rollups  # noqa: E402
+import google_health_temporal  # noqa: E402
+import ingest_common  # noqa: E402
+from google_health_capture import Page, RawPointStore, capture_types  # noqa: E402
 
 
 def _install_windmill_stubs():
