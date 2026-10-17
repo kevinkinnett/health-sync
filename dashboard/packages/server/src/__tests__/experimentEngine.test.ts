@@ -187,6 +187,40 @@ describe("confound scanning", () => {
       // 15 mg start/end and 20 mg start are real; only the 20 → 10 handoff is excused.
       expect(dates).toEqual(["2026-04-20", "2026-04-29", "2026-04-30"]);
     });
+
+    // Seen from a third intervention (the mattress), 20 mg ending on 5/4 and
+    // 10 mg starting on 5/8 are one dose change, not two rival explanations.
+    // The real Eight Sleep report listed both as separate HIGH confounds.
+    it("reports a dose handoff inside another intervention's window once, at the new dose", () => {
+      const twenty = run({
+        id: 1, name: "Escitalopram 20 mg", startedOn: "2026-03-07", endedOn: "2026-05-04",
+        sourceRef: "medication.item:7:dose:20:2026-03-07",
+      });
+      const tenOn8 = run({
+        id: 2, name: "Escitalopram 10 mg", startedOn: "2026-05-08",
+        sourceRef: "medication.item:7:dose:10:2026-05-08",
+      });
+      const pod = intervention({ id: 5 });
+      const podWindows = selectWindows(pod, "2026-07-30");
+      const hits = nearby(scanConfounds(pod, [twenty, tenOn8, pod], podWindows, fullCoverage));
+      expect(hits.map((c) => c.date).sort()).toEqual(["2026-03-07", "2026-05-08"]);
+      expect(hits.find((c) => c.date === "2026-05-08")!.severity).toBe("high");
+    });
+
+    it("keeps the old dose's end when the new dose starts outside the window", () => {
+      const twenty = run({
+        id: 1, name: "Escitalopram 20 mg", startedOn: "2026-03-07", endedOn: "2026-05-04",
+        sourceRef: "medication.item:7:dose:20:2026-03-07",
+      });
+      const tenOn8 = run({
+        id: 2, name: "Escitalopram 10 mg", startedOn: "2026-05-08",
+        sourceRef: "medication.item:7:dose:10:2026-05-08",
+      });
+      // A 4-day event window ending 5/5 contains 5/4 but not 5/8.
+      const early = intervention({ id: 5, kind: "period", startedOn: "2026-05-02", endedOn: "2026-05-05" });
+      const hits = nearby(scanConfounds(early, [twenty, tenOn8, early], selectWindows(early, "2026-07-30"), fullCoverage));
+      expect(hits.map((c) => c.date)).toEqual(["2026-05-04"]);
+    });
   });
 
   it("flags a measurement change that straddles the pivot", () => {
