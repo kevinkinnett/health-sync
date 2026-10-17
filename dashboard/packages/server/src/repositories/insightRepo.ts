@@ -164,11 +164,13 @@ export class InsightRepository {
     toolCalls?: unknown | null;
     toolCallId?: string | null;
     toolName?: string | null;
+    /** Loop-internal turn: replayed to the model, never displayed. */
+    hidden?: boolean;
   }): Promise<void> {
     await this.pool.query(
       `INSERT INTO universe.health_insight_chat
-        (conversation_id, role, content, tool_calls, tool_call_id, tool_name)
-       VALUES ($1, $2, $3, $4::jsonb, $5, $6)`,
+        (conversation_id, role, content, tool_calls, tool_call_id, tool_name, hidden)
+       VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7)`,
       [
         row.conversationId,
         row.role,
@@ -176,6 +178,7 @@ export class InsightRepository {
         row.toolCalls != null ? JSON.stringify(row.toolCalls) : null,
         row.toolCallId ?? null,
         row.toolName ?? null,
+        row.hidden ?? false,
       ],
     );
   }
@@ -202,6 +205,7 @@ export class InsightRepository {
        WHERE conversation_id = $1
          AND role IN ('user', 'assistant')
          AND content IS NOT NULL
+         AND NOT hidden
        ORDER BY id`,
       [conversationId],
     );
@@ -213,14 +217,14 @@ export class InsightRepository {
       `WITH latest AS (
          SELECT conversation_id,
                 MAX(created_at) AS last_message_at,
-                COUNT(*) FILTER (WHERE role IN ('user','assistant') AND content IS NOT NULL)::int AS message_count
+                COUNT(*) FILTER (WHERE role IN ('user','assistant') AND content IS NOT NULL AND NOT hidden)::int AS message_count
          FROM universe.health_insight_chat
          GROUP BY conversation_id
        ),
        firsts AS (
          SELECT DISTINCT ON (conversation_id) conversation_id, content
          FROM universe.health_insight_chat
-         WHERE role = 'user' AND content IS NOT NULL
+         WHERE role = 'user' AND content IS NOT NULL AND NOT hidden
          ORDER BY conversation_id, id
        )
        SELECT l.conversation_id, l.last_message_at, l.message_count,

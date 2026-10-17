@@ -289,7 +289,12 @@ export async function createApp(pool: Pool, config: Config): Promise<Express> {
   // Proactive health alerts (anomaly detection over recovery signals).
   // Reads thresholds/toggles from settings; the evaluate response carries
   // the push-delivery policy for the scheduled Windmill job.
-  const ingestHealthMonitor = new IngestHealthMonitor(ingestService, settingRepo, alertRepo);
+  const ingestHealthMonitor = new IngestHealthMonitor(
+    ingestService,
+    settingRepo,
+    alertRepo,
+    config.userTimezone,
+  );
   const alertService = new AlertService(
     healthDataService,
     alertRepo,

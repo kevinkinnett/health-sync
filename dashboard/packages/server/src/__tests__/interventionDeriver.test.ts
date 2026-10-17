@@ -52,6 +52,9 @@ describe("MedicationDoseDeriver", () => {
 
     expect(out).toHaveLength(2);
     const [first, second] = out;
+    // Pruning of stale derived rows is scoped by this prefix.
+    const prefix = new MedicationDoseDeriver(source(history)).sourceRefPrefix;
+    expect(out.every((o) => o.sourceRef.startsWith(prefix))).toBe(true);
 
     expect(first.name).toBe("Escitalopram 20 mg");
     expect(first.startedOn).toBe("2026-03-07");

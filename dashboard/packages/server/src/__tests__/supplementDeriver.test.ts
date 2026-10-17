@@ -41,6 +41,9 @@ describe("SupplementDeriver", () => {
       endedOn: null,
       detail: "30 days logged, ongoing",
     });
+    // Pruning of stale derived rows is scoped by this prefix.
+    const prefix = new SupplementDeriver({ listIntakeHistory: async () => [] }).sourceRefPrefix;
+    expect(out[0].sourceRef.startsWith(prefix)).toBe(true);
   });
 
   it("closes a run that stopped well before today", async () => {

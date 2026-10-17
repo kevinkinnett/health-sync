@@ -27,8 +27,14 @@ export interface InterventionStore {
     clearEndedOn?: boolean,
   ): Promise<Intervention | null>;
   remove(id: number): Promise<boolean>;
+  /**
+   * Upserts derived rows. With `scope`, also deletes derived rows whose
+   * `source_ref` starts with the prefix but is not among `items`, in the
+   * same transaction.
+   */
   upsertDerived(
     items: Awaited<ReturnType<InterventionDeriver["derive"]>>,
+    scope?: { sourceRefPrefix: string },
   ): Promise<number>;
 }
 
@@ -150,7 +156,8 @@ export class InterventionService {
   /**
    * Re-runs every deriver and upserts the results. Idempotent: derived
    * rows are keyed by `sourceRef`, so this converges rather than
-   * accumulating duplicates.
+   * accumulating duplicates. Rows a deriver stopped producing are pruned
+   * within its `sourceRefPrefix`.
    *
    * One failing deriver must not deny the others — a broken medication
    * query shouldn't stop device detection — so failures are logged and
@@ -166,7 +173,12 @@ export class InterventionService {
     for (const deriver of this.derivers) {
       try {
         const items = await deriver.derive(today);
-        const n = await this.store.upsertDerived(items);
+        const n = await this.store.upsertDerived(
+          items,
+          deriver.sourceRefPrefix
+            ? { sourceRefPrefix: deriver.sourceRefPrefix }
+            : undefined,
+        );
         bySource[deriver.id] = n;
         total += n;
       } catch (err) {

@@ -5,9 +5,14 @@ import type {
   MetricEffect,
   MetricSeries,
 } from "@health-dashboard/shared";
-import { gradeConfidence, scanConfounds } from "./confounds.js";
+import { gradeConfidence, MIN_READINGS_PER_SIDE, scanConfounds } from "./confounds.js";
 import { rankSummaries, toSummary } from "./headline.js";
-import { METRIC_SPECS, type DailySeriesSource, type MetricSpec } from "./metricRegistry.js";
+import {
+  METRIC_SPECS,
+  type DailyPoint,
+  type DailySeriesSource,
+  type MetricSpec,
+} from "./metricRegistry.js";
 import { cohensD, mean, round, stdDev } from "./statistics.js";
 import { selectWindows, type WindowPair } from "./windows.js";
 
@@ -38,18 +43,38 @@ export class ExperimentService {
     if (!intervention) {
       throw new Error(`Intervention ${interventionId} not found`);
     }
+    return this.reportFor(intervention, await this.interventions.findAll(), today);
+  }
 
+  /**
+   * The report itself, given the intervention list already in hand — so
+   * `summaries()` can run several reports off its one `findAll()` rather
+   * than re-reading the store twice per report.
+   */
+  private async reportFor(
+    intervention: Intervention,
+    others: Intervention[],
+    today: string,
+  ): Promise<ExperimentReport> {
     const windows = selectWindows(intervention, today);
     const metrics: MetricEffect[] = [];
     const series: MetricSeries[] = [];
     let beforeObserved = 0;
     let afterObserved = 0;
 
+    const keys = this.specs.map((spec) => spec.key);
+    const [beforeByMetric, afterByMetric] = await Promise.all([
+      this.fetchAll(keys, windows.before.start, windows.before.end),
+      this.fetchAll(keys, windows.after.start, windows.after.end),
+    ]);
+
     for (const spec of this.specs) {
-      const [beforePoints, afterPoints] = await Promise.all([
-        this.series.fetch(spec.key, windows.before.start, windows.before.end),
-        this.series.fetch(spec.key, windows.after.start, windows.after.end),
-      ]);
+      const beforePoints = beforeByMetric.get(spec.key) ?? [];
+      // An ongoing after window runs to today, and today's step count is
+      // whatever has accumulated so far — a half-day total, not a reading.
+      const afterPoints = (afterByMetric.get(spec.key) ?? []).filter(
+        (p) => !spec.accumulatesThroughDay || p.date < today,
+      );
 
       beforeObserved = Math.max(beforeObserved, beforePoints.length);
       afterObserved = Math.max(afterObserved, afterPoints.length);
@@ -89,7 +114,6 @@ export class ExperimentService {
       after: windows.after.days > 0 ? afterObserved / windows.after.days : 0,
     };
 
-    const others = await this.interventions.findAll();
     const confounds = scanConfounds(
       intervention,
       others,
@@ -129,6 +153,18 @@ export class ExperimentService {
    * intervention with an unparseable date should cost its own row, not
    * the whole answer. Failures are skipped, not thrown.
    */
+  private async fetchAll(
+    metrics: string[],
+    start: string,
+    end: string,
+  ): Promise<Map<string, DailyPoint[]>> {
+    if (this.series.fetchMany) return this.series.fetchMany(metrics, start, end);
+    const fetched = await Promise.all(
+      metrics.map(async (metric) => [metric, await this.series.fetch(metric, start, end)] as const),
+    );
+    return new Map(fetched);
+  }
+
   async summaries(today: string, limit = 3): Promise<ExperimentSummary[]> {
     const all = await this.interventions.findAll();
     const recent = [...all]
@@ -138,7 +174,7 @@ export class ExperimentService {
     const reports = await Promise.all(
       recent.map(async (i) => {
         try {
-          return toSummary(await this.report(i.id, today));
+          return toSummary(await this.reportFor(i, all, today));
         } catch {
           return null;
         }
@@ -175,8 +211,13 @@ function effectFor(
   // metric's own unit and one that is large relative to its variability.
   // Either test alone misleads: a 0.4 bpm change can look enormous on a
   // very stable series, and a 40-minute sleep swing is unremarkable if
-  // the night-to-night spread is 90 minutes.
+  // the night-to-night spread is 90 minutes. And neither test means
+  // anything from a handful of readings: the summary and the headline quote
+  // this flag, so a metric with three nights a side must not earn it on the
+  // strength of denser metrics carrying the report's confidence.
   const meaningful =
+    before.length >= MIN_READINGS_PER_SIDE &&
+    after.length >= MIN_READINGS_PER_SIDE &&
     Math.abs(delta) >= spec.minMeaningfulDelta &&
     effectSize != null &&
     Math.abs(effectSize) >= 0.3;

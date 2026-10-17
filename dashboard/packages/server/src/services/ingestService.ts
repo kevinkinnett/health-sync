@@ -69,10 +69,27 @@ export function evaluateGoogleHealthFreshness(
   };
 }
 
+/**
+ * Per-request ceiling for Windmill API calls. The Ingest page polls the
+ * overview every 10s and fans out ~20 calls; without a bound, a Windmill
+ * that accepts connections and then stalls holds the whole overview (and
+ * its DB-backed state) for undici's ~300s header timeout instead of
+ * degrading to `windmillConnected: false`.
+ */
+export const WINDMILL_TIMEOUT_MS = 5_000;
+
+export interface IngestServiceOptions {
+  windmillTimeoutMs?: number;
+}
+
 export class IngestService {
+  /** In-process guard covering the check→enqueue window of a trigger. */
+  private triggerInFlight = false;
+
   constructor(
     private ingestRepo: IngestRepository,
     private windmill: WindmillConfig,
+    private options: IngestServiceOptions = {},
   ) {}
 
   private wmUrl(path: string): string {
@@ -88,7 +105,12 @@ export class IngestService {
 
   private async wmFetch(label: string, url: string, init?: RequestInit): Promise<Response> {
     const start = Date.now();
-    const resp = await fetch(url, { ...init, headers: this.wmHeaders() });
+    const resp = await fetch(url, {
+      ...init,
+      headers: this.wmHeaders(),
+      signal: init?.signal ??
+        AbortSignal.timeout(this.options.windmillTimeoutMs ?? WINDMILL_TIMEOUT_MS),
+    });
     const duration = Date.now() - start;
 
     if (!resp.ok) {
@@ -157,43 +179,7 @@ export class IngestService {
     const jobs = await Promise.all(
       MANAGED_PIPELINES.map(async (pipeline): Promise<WindmillJob[]> => {
         try {
-          const url = this.wmUrl(
-            `/jobs/list?script_path_exact=${pipeline.scriptPath}&running=true&per_page=10`,
-          );
-          const resp = await this.wmFetch(`list active jobs: ${pipeline.key}`, url);
-          if (!resp.ok) return [];
-          const running = (await resp.json()) as Record<string, unknown>[];
-
-          const queuedUrl = this.wmUrl(
-            `/jobs/list?script_path_exact=${pipeline.scriptPath}&per_page=10`,
-          );
-          const queuedResp = await this.wmFetch(
-            `list queued jobs: ${pipeline.key}`,
-            queuedUrl,
-          );
-          const allJobs = queuedResp.ok
-            ? ((await queuedResp.json()) as Record<string, unknown>[])
-            : [];
-          const pending = allJobs.filter((job) => job.type === "QueuedJob");
-
-          const seen = new Set<string>();
-          const merged: WindmillJob[] = [];
-          for (const job of [...running, ...pending]) {
-            const id = String(job.id);
-            if (seen.has(id)) continue;
-            seen.add(id);
-            merged.push({
-              ...pipelineIdentity(pipeline),
-              id,
-              scriptPath: String(job.script_path ?? ""),
-              createdAt: String(job.created_at ?? ""),
-              startedAt: job.started_at ? String(job.started_at) : null,
-              scheduledFor: job.scheduled_for ? String(job.scheduled_for) : null,
-              running: Boolean(job.running),
-              schedulePath: job.schedule_path ? String(job.schedule_path) : null,
-            });
-          }
-          return merged;
+          return await this.activeJobsFor(pipeline);
         } catch (err) {
           logger.error(
             { err, pipeline: pipeline.key },
@@ -204,6 +190,49 @@ export class IngestService {
       }),
     );
     return jobs.flat().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
+  /** Running plus queued (not yet started) Windmill jobs for one pipeline. */
+  private async activeJobsFor(
+    pipeline: (typeof MANAGED_PIPELINES)[number],
+  ): Promise<WindmillJob[]> {
+    const url = this.wmUrl(
+      `/jobs/list?script_path_exact=${pipeline.scriptPath}&running=true&per_page=10`,
+    );
+    const resp = await this.wmFetch(`list active jobs: ${pipeline.key}`, url);
+    if (!resp.ok) return [];
+    const running = (await resp.json()) as Record<string, unknown>[];
+
+    const queuedUrl = this.wmUrl(
+      `/jobs/list?script_path_exact=${pipeline.scriptPath}&per_page=10`,
+    );
+    const queuedResp = await this.wmFetch(
+      `list queued jobs: ${pipeline.key}`,
+      queuedUrl,
+    );
+    const allJobs = queuedResp.ok
+      ? ((await queuedResp.json()) as Record<string, unknown>[])
+      : [];
+    const pending = allJobs.filter((job) => job.type === "QueuedJob");
+
+    const seen = new Set<string>();
+    const merged: WindmillJob[] = [];
+    for (const job of [...running, ...pending]) {
+      const id = String(job.id);
+      if (seen.has(id)) continue;
+      seen.add(id);
+      merged.push({
+        ...pipelineIdentity(pipeline),
+        id,
+        scriptPath: String(job.script_path ?? ""),
+        createdAt: String(job.created_at ?? ""),
+        startedAt: job.started_at ? String(job.started_at) : null,
+        scheduledFor: job.scheduled_for ? String(job.scheduled_for) : null,
+        running: Boolean(job.running),
+        schedulePath: job.schedule_path ? String(job.schedule_path) : null,
+      });
+    }
+    return merged;
   }
 
   async getCompletedJobs(limit: number): Promise<WindmillCompletedJob[]> {
@@ -288,12 +317,33 @@ export class IngestService {
       );
   }
 
+  /**
+   * Enqueues a Google Health ingest unless one is already in progress.
+   * "In progress" covers three windows: a trigger from this process still
+   * between its check and its enqueue, a Windmill job queued or running
+   * but not yet far enough to write its `ingest_run` row, and a run whose
+   * row says `running`.
+   */
   async triggerRun(): Promise<TriggerResponse> {
-    const isRunning = await this.ingestRepo.hasRunningJob();
-    if (isRunning) {
-      return { jobId: "", message: "An ingest job is already running." };
+    const already = { jobId: "", message: "An ingest job is already running." };
+    if (this.triggerInFlight) return already;
+    this.triggerInFlight = true;
+    try {
+      if (await this.ingestRepo.hasRunningJob()) return already;
+      const active = await this.activeJobsFor(GOOGLE_HEALTH_PIPELINE).catch(
+        (err: unknown) => {
+          logger.warn({ err }, "Could not check Windmill for active ingest jobs");
+          return [];
+        },
+      );
+      if (active.length > 0) return already;
+      return await this.enqueueIngest();
+    } finally {
+      this.triggerInFlight = false;
     }
+  }
 
+  private async enqueueIngest(): Promise<TriggerResponse> {
     const url = this.wmUrl(`/jobs/run/p/${GOOGLE_HEALTH_PIPELINE.scriptPath}`);
 
     const response = await this.wmFetch("trigger ingest", url, {

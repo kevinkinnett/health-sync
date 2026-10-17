@@ -339,6 +339,7 @@
     "content",
     "conversation_id",
     "created_at",
+    "hidden",
     "id",
     "role",
     "tool_call_id",

@@ -20,15 +20,26 @@ export class IngestRepository {
            ('breathing_rate', 'daily-respiratory-rate'),
            ('skin_temp', 'daily-sleep-temperature-derivations'),
            ('exercise_log', 'exercise')
-       ), coverage AS (
+       ), raw_coverage AS (
+         -- One correlated MIN/MAX per raw type: with the
+         -- (data_type, point_date) and (data_type, fetched_at) indexes each
+         -- is an index endpoint lookup, so this stays cheap on the 10s
+         -- Ingest-page poll however many raw points accumulate.
          SELECT tm.data_type,
-                MIN(p.point_date) AS earliest_fetched_date,
-                MAX(p.point_date) AS latest_fetched_date,
-                MAX(p.fetched_at) AS updated_at_utc
+                (SELECT MIN(p.point_date) FROM universe.google_health_data_point p
+                 WHERE p.data_type = tm.raw_type) AS earliest,
+                (SELECT MAX(p.point_date) FROM universe.google_health_data_point p
+                 WHERE p.data_type = tm.raw_type) AS latest,
+                (SELECT MAX(p.fetched_at) FROM universe.google_health_data_point p
+                 WHERE p.data_type = tm.raw_type) AS fetched
          FROM type_map tm
-         LEFT JOIN universe.google_health_data_point p
-           ON p.data_type = tm.raw_type
-         GROUP BY tm.data_type
+       ), coverage AS (
+         SELECT data_type,
+                MIN(earliest) AS earliest_fetched_date,
+                MAX(latest) AS latest_fetched_date,
+                MAX(fetched) AS updated_at_utc
+         FROM raw_coverage
+         GROUP BY data_type
        ), latest_run AS (
          SELECT ingest_run_id, finished_at_utc
          FROM universe.ingest_run

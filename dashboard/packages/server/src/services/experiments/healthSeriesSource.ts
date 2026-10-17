@@ -21,6 +21,17 @@ interface Extractor {
 const num = (v: unknown): number | null =>
   typeof v === "number" && Number.isFinite(v) ? v : null;
 
+/**
+ * A charger or non-wear day still produces an activity row, with zero
+ * steps. Counting it would read compliance as behaviour, so activity
+ * metrics only use days the tracker was worn — the same rule the
+ * correlations engine applies.
+ */
+const isWearDay = (r: Record<string, unknown>): boolean => {
+  const steps = num(r.steps);
+  return steps != null && steps > 0;
+};
+
 const EXTRACTORS: Record<string, Extractor> = {
   sleepMin: { family: "sleep", pick: (r) => num(r.totalMinutesAsleep), measurement: "Main overnight sleep duration" },
   inBedMin: { family: "sleep", pick: (r) => num(r.totalMinutesInBed), measurement: "Main overnight time in bed" },
@@ -30,11 +41,17 @@ const EXTRACTORS: Record<string, Extractor> = {
   remMin: { family: "sleep", pick: (r) => num(r.minutesRem), measurement: "Main overnight REM sleep" },
   restingHr: { family: "heartRate", pick: (r) => num(r.restingHeartRate), measurement: "Daily resting heart rate" },
   dailyRmssd: { family: "hrv", pick: (r) => num(r.dailyRmssd), measurement: "Overnight HRV (RMSSD)" },
-  steps: { family: "activity", pick: (r) => num(r.steps), measurement: "Daily steps" },
+  steps: { family: "activity", pick: (r) => (isWearDay(r) ? num(r.steps) : null), measurement: "Daily steps" },
   activeMinutes: {
     family: "activity",
-    pick: (r) =>
-      (num(r.minutesFairlyActive) ?? 0) + (num(r.minutesVeryActive) ?? 0),
+    pick: (r) => {
+      if (!isWearDay(r)) return null;
+      const fairly = num(r.minutesFairlyActive);
+      const very = num(r.minutesVeryActive);
+      // Both columns missing is no reading, not a sedentary day.
+      if (fairly == null && very == null) return null;
+      return (fairly ?? 0) + (very ?? 0);
+    },
     measurement: "Daily fairly + very active minutes",
   },
 };
@@ -43,29 +60,35 @@ export class HealthSeriesSource implements DailySeriesSource {
   constructor(private readonly health: HealthDataService) {}
 
   async fetch(metric: string, start: string, end: string): Promise<DailyPoint[]> {
-    const extractor = EXTRACTORS[metric];
-    if (!extractor) return [];
+    return (await this.fetchMany([metric], start, end)).get(metric) ?? [];
+  }
 
-    const rows = await this.rowsFor(extractor.family, start, end);
-    const points: DailyPoint[] = [];
-    for (const row of rows) {
-      const value = extractor.pick(row as Record<string, unknown>);
-      const date = (row as { date?: unknown }).date;
-      if (value != null && typeof date === "string") {
-        const method = (row as { measurementMethod?: unknown }).measurementMethod;
-        points.push({
-          date,
-          value,
-          provenance: {
-            deviceLabel: "Fitbit wearable",
-            providerLabel: "Fitbit history / Google Health API",
-            measurement: extractor.measurement,
-            regimes: [typeof method === "string" ? method : `${extractor.family}_daily_rollup_v1`],
-          },
-        });
-      }
+  /**
+   * Reads each table the requested metrics live in once, then extracts
+   * every metric from those rows. A full report asks for ten metrics that
+   * live in four tables; fetching per metric read the sleep table six
+   * times per window for identical rows.
+   */
+  async fetchMany(
+    metrics: string[],
+    start: string,
+    end: string,
+  ): Promise<Map<string, DailyPoint[]>> {
+    const families = [...new Set(
+      metrics.flatMap((metric) => EXTRACTORS[metric] ? [EXTRACTORS[metric].family] : []),
+    )];
+    const rowsByFamily = new Map(
+      await Promise.all(
+        families.map(async (family) => [family, await this.rowsFor(family, start, end)] as const),
+      ),
+    );
+
+    const out = new Map<string, DailyPoint[]>();
+    for (const metric of metrics) {
+      const extractor = EXTRACTORS[metric];
+      out.set(metric, extractor ? extract(extractor, rowsByFamily.get(extractor.family) ?? []) : []);
     }
-    return points;
+    return out;
   }
 
   private async rowsFor(
@@ -84,4 +107,26 @@ export class HealthSeriesSource implements DailySeriesSource {
         return this.health.getActivity(start, end);
     }
   }
+}
+
+function extract(extractor: Extractor, rows: unknown[]): DailyPoint[] {
+  const points: DailyPoint[] = [];
+  for (const row of rows) {
+    const value = extractor.pick(row as Record<string, unknown>);
+    const date = (row as { date?: unknown }).date;
+    if (value != null && typeof date === "string") {
+      const method = (row as { measurementMethod?: unknown }).measurementMethod;
+      points.push({
+        date,
+        value,
+        provenance: {
+          deviceLabel: "Fitbit wearable",
+          providerLabel: "Fitbit history / Google Health API",
+          measurement: extractor.measurement,
+          regimes: [typeof method === "string" ? method : `${extractor.family}_daily_rollup_v1`],
+        },
+      });
+    }
+  }
+  return points;
 }

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import express from "express";
 import request from "supertest";
 import type {
@@ -9,6 +9,8 @@ import type {
   SupplementItem,
 } from "@health-dashboard/shared";
 import {
+  DOSSIER_CALL_TIMEOUT_MS,
+  DOSSIER_TOTAL_BUDGET_MS,
   DossierService,
   type DossierServiceOptions,
 } from "../services/dossierService.js";
@@ -27,6 +29,7 @@ import type {
   LlmCallOptions,
 } from "../services/llmClient.js";
 import { LlmHttpError } from "../services/llmClient.js";
+import { LlmStreamError } from "../services/llm/errors.js";
 
 // ---------------------------------------------------------------------------
 // Fakes
@@ -349,7 +352,7 @@ describe("Dossier API", () => {
 
       // Single LLM call, status=ok logged
       expect(llm.calls).toHaveLength(1);
-      expect(llm.options[0]).toEqual({ task: "dossier" });
+      expect(llm.options[0]).toEqual({ task: "dossier", timeoutMs: DOSSIER_CALL_TIMEOUT_MS });
       expect(dossierRepo.usage).toHaveLength(1);
       expect(dossierRepo.usage[0]).toMatchObject({
         itemType: "supplement",
@@ -430,6 +433,61 @@ describe("Dossier API", () => {
       expect(llm.calls).toHaveLength(1);
       expect(dossierRepo.usage).toHaveLength(1);
       expect(dossierRepo.usage[0].status).toBe("http_error");
+    });
+
+    it.each([
+      ["timeout", Object.assign(new Error("This operation was aborted"), { name: "AbortError" })],
+      ["stream_error", new LlmStreamError("overloaded_error", "Overloaded", true)],
+      ["network_error", new TypeError("fetch failed")],
+    ] as const)("maps a %s to 502 and records usage", async (status, err) => {
+      llm.queue.push(err);
+
+      const res = await request(app)
+        .post("/api/dossier/supplement/123/refresh")
+        .expect(502);
+
+      expect(res.body.error).toMatch(/LLM/);
+      expect(llm.calls).toHaveLength(1);
+      expect(dossierRepo.usage).toHaveLength(1);
+      expect(dossierRepo.usage[0].status).toBe(status);
+    });
+
+    it("bounds each call and gives the decode retry only the remaining budget", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      try {
+        const bad = makeAssistantResponse(fenceJson({ version: 1, headline: "x" }));
+        llm.queue.push(() => {
+          vi.setSystemTime(Date.now() + 100_000); // slow first attempt
+          return bad;
+        });
+        llm.queue.push(makeAssistantResponse(fenceJson(makeValidContent())));
+
+        await request(app).post("/api/dossier/supplement/123/refresh").expect(200);
+
+        const [first, second] = llm.options.map((o) => o?.timeoutMs);
+        expect(first).toBe(DOSSIER_CALL_TIMEOUT_MS);
+        expect(DOSSIER_CALL_TIMEOUT_MS).toBeLessThan(5 * 60 * 1000);
+        expect(second).toBeGreaterThan(0);
+        expect(second).toBeLessThanOrEqual(DOSSIER_TOTAL_BUDGET_MS - 100_000);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("skips the decode retry when the budget is nearly spent", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      try {
+        const bad = makeAssistantResponse(fenceJson({ version: 1, headline: "x" }));
+        llm.queue.push(() => {
+          vi.setSystemTime(Date.now() + DOSSIER_TOTAL_BUDGET_MS - 5_000);
+          return bad;
+        });
+
+        await request(app).post("/api/dossier/supplement/123/refresh").expect(502);
+        expect(llm.calls).toHaveLength(1);
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it("returns 404 when the supplement is missing", async () => {
