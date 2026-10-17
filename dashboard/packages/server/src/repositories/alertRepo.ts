@@ -12,6 +12,11 @@ import type { DetectedAlert } from "../services/alerts.js";
  */
 const COOLDOWN_DAYS = 3;
 
+/** SQL rank of an AlertSeverity expression: info < warn < alert. */
+function severityRank(expr: string): string {
+  return `(CASE ${expr} WHEN 'alert' THEN 2 WHEN 'warn' THEN 1 ELSE 0 END)`;
+}
+
 export class AlertRepository {
   constructor(private pool: Pool) {}
 
@@ -19,6 +24,10 @@ export class AlertRepository {
    * Observe an alert condition. An existing open episode is refreshed without
    * producing another notification. A recently-resolved episode is reopened
    * within the user's cooldown; otherwise a new episode is inserted.
+   *
+   * Exception: when a refreshed or reopened episode comes back at a higher
+   * severity (e.g. low_spo2 warn -> alert) the row is returned so the push job
+   * forwards the escalation, and it is marked unread again.
    */
   async insertIfNew(
     alert: DetectedAlert,
@@ -26,15 +35,24 @@ export class AlertRepository {
   ): Promise<HealthAlert | null> {
     const returnedColumns = `id, kind, severity, title, detail, metric, date,
       created_at, last_observed_at, resolved_at, occurrence_count, read_at`;
+    // `prev` is read from the pre-update snapshot, so its severity is the
+    // one the user was last told about.
+    const escalated = `${severityRank("$2::text")} > ${severityRank("prev.prev_severity")}`;
     const { rows: open } = await this.pool.query(
       `UPDATE universe.health_alert
        SET severity = $2, title = $3, detail = $4, metric = $5, date = $6,
-           last_observed_at = NOW(), occurrence_count = occurrence_count + 1
-       WHERE kind = $1 AND resolved_at IS NULL
-       RETURNING ${returnedColumns}`,
+           last_observed_at = NOW(), occurrence_count = occurrence_count + 1,
+           read_at = CASE WHEN ${escalated} THEN NULL ELSE read_at END
+       FROM (
+         SELECT id AS prev_id, severity AS prev_severity
+         FROM universe.health_alert
+         WHERE kind = $1 AND resolved_at IS NULL
+       ) prev
+       WHERE id = prev.prev_id
+       RETURNING ${returnedColumns}, (${escalated}) AS escalated`,
       [alert.kind, alert.severity, alert.title, alert.detail, alert.metric, alert.date],
     );
-    if (open.length > 0) return null;
+    if (open.length > 0) return this.escalationOf(open);
 
     const cooldown = Math.max(0, Math.floor(cooldownDays));
     if (cooldown > 0) {
@@ -42,17 +60,20 @@ export class AlertRepository {
         `UPDATE universe.health_alert
          SET severity = $2, title = $3, detail = $4, metric = $5, date = $6,
              last_observed_at = NOW(), resolved_at = NULL,
-             occurrence_count = occurrence_count + 1
-         WHERE id = (
-           SELECT id FROM universe.health_alert
+             occurrence_count = occurrence_count + 1,
+             read_at = CASE WHEN ${escalated} THEN NULL ELSE read_at END
+         FROM (
+           SELECT id AS prev_id, severity AS prev_severity
+           FROM universe.health_alert
            WHERE kind = $1 AND resolved_at >= NOW() - ($7 || ' days')::interval
            ORDER BY resolved_at DESC
            LIMIT 1
-         )
-         RETURNING ${returnedColumns}`,
+         ) prev
+         WHERE id = prev.prev_id
+         RETURNING ${returnedColumns}, (${escalated}) AS escalated`,
         [alert.kind, alert.severity, alert.title, alert.detail, alert.metric, alert.date, String(cooldown)],
       );
-      if (reopened.length > 0) return null;
+      if (reopened.length > 0) return this.escalationOf(reopened);
     }
 
     const { rows } = await this.pool.query(
@@ -70,6 +91,11 @@ export class AlertRepository {
       ],
     );
     return this.toAlert(rows[0]);
+  }
+
+  private escalationOf(rows: Record<string, unknown>[]): HealthAlert | null {
+    const hit = rows.find((r) => r.escalated === true);
+    return hit ? this.toAlert(hit) : null;
   }
 
   async list(limit = 50): Promise<HealthAlert[]> {
