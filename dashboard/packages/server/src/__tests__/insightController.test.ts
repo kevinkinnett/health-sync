@@ -4,6 +4,7 @@ import request from "supertest";
 import { InsightController } from "../controllers/insightController.js";
 import { createInsightRoutes } from "../routes/insights.js";
 import { errorMapper } from "../middleware/errorMapper.js";
+import { InsightJobConflictError } from "../services/insightJobs.js";
 
 /**
  * Why this exists: `InsightController` has 8 handlers and ~10
@@ -175,6 +176,64 @@ describe("InsightController", () => {
     });
   });
 
+  describe("POST /generate validation", () => {
+    it.each([
+      [{ dateFrom: "2026-13-01" }],
+      [{ dateTo: "2026-02-30" }],
+      [{ dateFrom: "April 1" }],
+      [{ dateFrom: "2026-05-02", dateTo: "2026-05-01" }],
+      [{ dateFrom: 20260401 }],
+    ])("rejects %j with 400 before starting a paid job", async (body) => {
+      const res = await request(app).post("/api/insights/generate").send(body);
+      expect(res.status).toBe(400);
+      expect(jobs.start).not.toHaveBeenCalled();
+    });
+
+    it("returns 409 when a different window is already generating", async () => {
+      jobs.start.mockImplementationOnce(() => {
+        throw new InsightJobConflictError("job-1");
+      });
+      const res = await request(app).post("/api/insights/generate").send({ dateFrom: "2026-01-01" });
+      expect(res.status).toBe(409);
+      expect(res.body.jobId).toBe("job-1");
+    });
+  });
+
+  describe("malformed ids", () => {
+    it("rejects a non-UUID conversationId with 400 without running the chat", async () => {
+      const res = await request(app)
+        .post("/api/insights/chat")
+        .send({ conversationId: "conv-1", message: "hi" });
+      expect(res.status).toBe(400);
+      expect(chat.send).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["get", "/api/insights/chat/not-a-uuid"],
+      ["delete", "/api/insights/chat/not-a-uuid"],
+      ["get", "/api/insights/not-a-uuid"],
+      ["delete", "/api/insights/not-a-uuid"],
+    ] as const)("%s %s is a 404, not a database error", async (method, path) => {
+      // What Postgres does with a malformed id in a UUID column.
+      const uuidError = vi.fn(async () => {
+        throw new Error("invalid input syntax for type uuid");
+      });
+      repo.getDisplayConversation = uuidError as never;
+      repo.deleteConversation = uuidError as never;
+      repo.getGeneration = uuidError as never;
+      repo.deleteGeneration = uuidError as never;
+      const res = await request(app)[method](path);
+      expect(res.status).toBe(404);
+    });
+
+    it("does not echo internal error text from a failed chat", async () => {
+      chat.send.mockRejectedValueOnce(new Error('relation "secret" does not exist'));
+      const res = await request(app).post("/api/insights/chat").send({ message: "hi" });
+      expect(res.status).toBe(500);
+      expect(JSON.stringify(res.body)).not.toMatch(/secret/);
+    });
+  });
+
   describe("GET /generate/status/:jobId", () => {
     it("returns the in-memory job state", async () => {
       const jobId = jobs.start();
@@ -198,7 +257,7 @@ describe("InsightController", () => {
     it("returns the generation summaries", async () => {
       repo.generations.push(
         {
-          generationId: "gen-1",
+          generationId: "11111111-1111-4111-8111-111111111111",
           category: "activity",
           title: "Activity",
           content: "a",
@@ -210,18 +269,18 @@ describe("InsightController", () => {
       const res = await request(app).get("/api/insights/list");
       expect(res.status).toBe(200);
       expect(Array.isArray(res.body)).toBe(true);
-      expect(res.body[0].generationId).toBe("gen-1");
+      expect(res.body[0].generationId).toBe("11111111-1111-4111-8111-111111111111");
     });
   });
 
   describe("GET /:generationId", () => {
     it("returns 404 when the generation has no rows", async () => {
-      const res = await request(app).get("/api/insights/gen-does-not-exist");
+      const res = await request(app).get("/api/insights/33333333-3333-4333-8333-333333333333");
       expect(res.status).toBe(404);
     });
     it("returns the categories payload on success", async () => {
       repo.generations.push({
-        generationId: "gen-1",
+        generationId: "11111111-1111-4111-8111-111111111111",
         category: "activity",
         title: "Activity",
         content: "the body",
@@ -229,21 +288,21 @@ describe("InsightController", () => {
         dateTo: "2026-05-01",
         createdAt: "2026-05-01T12:00:00Z",
       });
-      const res = await request(app).get("/api/insights/gen-1");
+      const res = await request(app).get("/api/insights/11111111-1111-4111-8111-111111111111");
       expect(res.status).toBe(200);
-      expect(res.body.generationId).toBe("gen-1");
+      expect(res.body.generationId).toBe("11111111-1111-4111-8111-111111111111");
       expect(res.body.categories[0].content).toBe("the body");
     });
   });
 
   describe("DELETE /:generationId", () => {
     it("returns 404 when nothing was deleted", async () => {
-      const res = await request(app).delete("/api/insights/gen-does-not-exist");
+      const res = await request(app).delete("/api/insights/33333333-3333-4333-8333-333333333333");
       expect(res.status).toBe(404);
     });
     it("returns the deleted count when the generation existed", async () => {
       repo.generations.push({
-        generationId: "gen-1",
+        generationId: "11111111-1111-4111-8111-111111111111",
         category: "activity",
         title: "Activity",
         content: "a",
@@ -251,7 +310,7 @@ describe("InsightController", () => {
         dateTo: "2026-05-01",
         createdAt: "2026-05-01T12:00:00Z",
       });
-      const res = await request(app).delete("/api/insights/gen-1");
+      const res = await request(app).delete("/api/insights/11111111-1111-4111-8111-111111111111");
       expect(res.status).toBe(200);
       expect(res.body.deleted).toBe(1);
     });
@@ -285,9 +344,9 @@ describe("InsightController", () => {
     it("forwards an existing conversationId for follow-ups", async () => {
       await request(app)
         .post("/api/insights/chat")
-        .send({ conversationId: "conv-1", message: "follow up" });
+        .send({ conversationId: "22222222-2222-4222-8222-222222222222", message: "follow up" });
       expect(chat.send).toHaveBeenCalledWith({
-        conversationId: "conv-1",
+        conversationId: "22222222-2222-4222-8222-222222222222",
         message: "follow up",
       });
     });
@@ -299,7 +358,7 @@ describe("InsightController", () => {
         { role: "user", content: "hi", createdAt: "2026-05-01T12:00:00Z" },
         { role: "assistant", content: "hello", createdAt: "2026-05-01T12:00:01Z" },
       );
-      const res = await request(app).get("/api/insights/chat/conv-1");
+      const res = await request(app).get("/api/insights/chat/22222222-2222-4222-8222-222222222222");
       expect(res.status).toBe(200);
       expect(res.body.messages).toHaveLength(2);
       expect(res.body.messages[0].role).toBe("user");
@@ -308,17 +367,17 @@ describe("InsightController", () => {
 
   describe("DELETE /chat/:conversationId", () => {
     it("returns 404 when no rows match", async () => {
-      const res = await request(app).delete("/api/insights/chat/conv-none");
+      const res = await request(app).delete("/api/insights/chat/33333333-3333-4333-8333-333333333333");
       expect(res.status).toBe(404);
     });
     it("returns the deleted count when something existed", async () => {
       repo.conversationSummaries.push({
-        conversationId: "conv-1",
+        conversationId: "22222222-2222-4222-8222-222222222222",
         preview: "hi",
         messageCount: 2,
         lastMessageAt: "2026-05-01T12:00:00Z",
       });
-      const res = await request(app).delete("/api/insights/chat/conv-1");
+      const res = await request(app).delete("/api/insights/chat/22222222-2222-4222-8222-222222222222");
       expect(res.status).toBe(200);
       expect(res.body.deleted).toBe(1);
     });
