@@ -231,7 +231,12 @@ def _sql_rollups(
             daily_rmssd=COALESCE(EXCLUDED.daily_rmssd, {hrv_daily_ref}.daily_rmssd),
             deep_rmssd=COALESCE(EXCLUDED.deep_rmssd, {hrv_daily_ref}.deep_rmssd),
             non_rem_heart_rate=COALESCE(EXCLUDED.non_rem_heart_rate, {hrv_daily_ref}.non_rem_heart_rate),
-            raw_jsonb=EXCLUDED.raw_jsonb, fetched_at=NOW()
+            -- The marker names the regime of daily_rmssd. When the native point
+            -- has no average, daily_rmssd keeps the sample-mean fallback above,
+            -- so the row must keep the fallback marker too.
+            raw_jsonb=CASE WHEN EXCLUDED.daily_rmssd IS NOT NULL
+                           THEN EXCLUDED.raw_jsonb ELSE {hrv_daily_ref}.raw_jsonb END,
+            fetched_at=NOW()
     """), (HRV_DAILY_MARK, since))
 
     # Deep-sleep RMSSD fallback. Native daily HRV now exposes an equivalent;
@@ -423,7 +428,7 @@ def _rollup_weight(
         WHERE data_type='weight' AND source_platform='FITBIT'
               AND name IS NOT NULL
     """))
-    n = 0
+    records = []
     for name, vj in cur.fetchall():
         w = (vj or {}).get("weight", {})
         try:
@@ -440,6 +445,16 @@ def _rollup_weight(
         if not grams:
             continue
         log_id = -(int(hashlib.md5(name.encode()).hexdigest()[:12], 16))
+        records.append((log_id, pdate, local_time, round(grams / 1000.0, 2)))
+    # A weigh-in deleted in the Fitbit app is pruned from raw capture (see
+    # google_health_capture's reconciliation rule); drop its rollup row too.
+    # Scoped to Google-sourced rows in the rollup window, like sleep/food.
+    cur.execute(tables.render("""
+        DELETE FROM {body_weight}
+        WHERE date >= %s AND source='google_health'
+          AND NOT (log_id = ANY(%s::bigint[]))
+    """), (since, [r[0] for r in records]))
+    for log_id, pdate, local_time, kg in records:
         cur.execute(tables.render("""
             INSERT INTO {body_weight} (log_id, date, time, weight_kg, source, raw_jsonb)
             VALUES (%s,%s,%s,%s,'google_health',%s)
@@ -447,9 +462,8 @@ def _rollup_weight(
                 date=EXCLUDED.date, time=EXCLUDED.time,
                 weight_kg=EXCLUDED.weight_kg,
                 raw_jsonb=EXCLUDED.raw_jsonb, fetched_at=NOW()
-        """), (log_id, pdate, local_time, round(grams / 1000.0, 2), MARK))
-        n += 1
-    return n
+        """), (log_id, pdate, local_time, kg, MARK))
+    return len(records)
 
 
 # Per-day nutrients summed out of Google's nutrition-log nutrients[] array.
@@ -539,9 +553,11 @@ def _rollup_exercise(
     """Exercise sessions → fitbit_exercise_log. Google's exercise point id IS
     the legacy Fitbit logId (validated 2026-06-11: 79/79 overlap rows joined
     exactly; dates/durations/avg-HR identical, calories slightly revised), so
-    upserts continue the same PK space. Conflict-update only the metric fields
-    like the legacy ingest did — activity_type_id/log_type aren't in Google's
-    payload, so they're preserved on legacy rows and derived/NULL on new ones.
+    upserts continue the same PK space. Conflict-update the metric fields plus
+    date/start_time/activity_name, which the user can edit in the Fitbit app
+    (moving a workout across midnight must move its row to the new day).
+    activity_type_id/log_type aren't in Google's payload, so they're preserved
+    on legacy rows and derived/NULL on new ones.
     Units matched to legacy: distance km (4dp), elevation meters (2dp).
     """
     cur.execute(tables.render("""
@@ -549,7 +565,7 @@ def _rollup_exercise(
         WHERE data_type='exercise' AND source_platform='FITBIT'
               AND name IS NOT NULL
     """))
-    n = 0
+    rows = []
     for name, vj in cur.fetchall():
         ex = (vj or {}).get("exercise", {})
         try:
@@ -567,6 +583,28 @@ def _rollup_exercise(
         mm = ms.get("distanceMillimeters")
         elev = ms.get("elevationGainMillimeters")
         rec = (vj.get("dataSource", {}) or {}).get("recordingMethod", "")
+        rows.append((log_id, local_date, start,
+                     ex.get("displayName") or ex.get("exerciseType") or "Unknown",
+                     "auto_detected" if rec == "PASSIVELY_MEASURED" else (rec.lower() or None),
+                     round(ms["caloriesKcal"]) if ms.get("caloriesKcal") is not None else None,
+                     int(float(str(dur).rstrip("s")) * 1000) if dur else None,
+                     round(int(mm) / 1_000_000, 4) if mm is not None else None,
+                     "Kilometer" if mm is not None else None,
+                     int(ms["steps"]) if ms.get("steps") else None,
+                     int(ms["averageHeartRateBeatsPerMinute"]) if ms.get("averageHeartRateBeatsPerMinute") else None,
+                     round(int(elev) / 1000.0, 2) if elev is not None else None,
+                     int(ms.get("activeZoneMinutes", 0) or 0) > 0,
+                     json.dumps(vj)))
+    # A workout deleted in the Fitbit app is pruned from raw capture (see
+    # google_health_capture's reconciliation rule); drop its rollup row too.
+    # Google-written rows carry the Google point (top-level "exercise") in
+    # raw_jsonb; legacy Fitbit rows do not, so they are never touched.
+    cur.execute(tables.render("""
+        DELETE FROM {exercise_log}
+        WHERE date >= %s AND raw_jsonb->'exercise' IS NOT NULL
+          AND NOT (log_id = ANY(%s::bigint[]))
+    """), (since, [row[0] for row in rows]))
+    for row in rows:
         cur.execute(tables.render("""
             INSERT INTO {exercise_log}
                 (log_id, date, start_time, activity_name, log_type, calories,
@@ -574,24 +612,14 @@ def _rollup_exercise(
                  elevation_gain, has_active_zone_minutes, raw_jsonb)
             VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             ON CONFLICT (log_id) DO UPDATE SET
+                date=EXCLUDED.date, start_time=EXCLUDED.start_time,
+                activity_name=EXCLUDED.activity_name,
                 calories=EXCLUDED.calories, duration_ms=EXCLUDED.duration_ms,
                 distance=EXCLUDED.distance, steps=EXCLUDED.steps,
                 average_heart_rate=EXCLUDED.average_heart_rate,
                 raw_jsonb=EXCLUDED.raw_jsonb, fetched_at=NOW()
-        """), (log_id, local_date, start,
-              ex.get("displayName") or ex.get("exerciseType") or "Unknown",
-              "auto_detected" if rec == "PASSIVELY_MEASURED" else (rec.lower() or None),
-              round(ms["caloriesKcal"]) if ms.get("caloriesKcal") is not None else None,
-              int(float(str(dur).rstrip("s")) * 1000) if dur else None,
-              round(int(mm) / 1_000_000, 4) if mm is not None else None,
-              "Kilometer" if mm is not None else None,
-              int(ms["steps"]) if ms.get("steps") else None,
-              int(ms["averageHeartRateBeatsPerMinute"]) if ms.get("averageHeartRateBeatsPerMinute") else None,
-              round(int(elev) / 1000.0, 2) if elev is not None else None,
-              int(ms.get("activeZoneMinutes", 0) or 0) > 0,
-              json.dumps(vj)))
-        n += 1
-    return n
+        """), row)
+    return len(rows)
 
 
 def _civil(d: date) -> dict:

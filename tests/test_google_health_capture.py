@@ -73,7 +73,7 @@ class GoogleHealthCaptureTests(unittest.TestCase):
         class Store:
             pages = []
 
-            def upsert_page(self, data_type, points):
+            def upsert_page(self, data_type, points, seen_keys=None):
                 self.pages.append((data_type, points))
                 return len(points)
 
@@ -81,7 +81,7 @@ class GoogleHealthCaptureTests(unittest.TestCase):
         result = capture_types(api, store, ["steps", "broken"], max_pages=2)
         self.assertEqual(result, {
             "steps": {"points": 2, "pages": 2, "truncated": True},
-            "broken": {"error": "failed", "points": 0, "pages": 0},
+            "broken": {"error": "failed", "points": 0, "pages": 0, "deleted": 0},
         })
         self.assertEqual([call[0] for call in api.calls], ["steps", "steps", "broken"])
 
@@ -95,8 +95,12 @@ class GoogleHealthCaptureTests(unittest.TestCase):
 
         class Store:
             @staticmethod
-            def upsert_page(_data_type, points):
+            def upsert_page(_data_type, points, _seen_keys=None):
                 return len(points)
+
+            @staticmethod
+            def delete_missing(*_args):
+                return 0
 
         api = Api()
         result = capture_types(
@@ -131,8 +135,12 @@ class GoogleHealthCaptureTests(unittest.TestCase):
 
         class Store:
             @staticmethod
-            def upsert_page(_data_type, points):
+            def upsert_page(_data_type, points, _seen_keys=None):
                 return len(points)
+
+            @staticmethod
+            def delete_missing(*_args):
+                return 0
 
         api = Api()
         result = capture_types(
