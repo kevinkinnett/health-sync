@@ -135,6 +135,60 @@ describe("confound scanning", () => {
     expect(found.filter((c) => c.kind === "nearby_intervention")).toEqual([]);
   });
 
+  describe("adjacent dose runs of one medication", () => {
+    const run = (over: Partial<Intervention>) =>
+      intervention({ category: "medication", source: "derived", ...over });
+    const ten = run({
+      id: 2, name: "Escitalopram 10 mg", startedOn: "2026-05-08",
+      sourceRef: "medication.item:7:dose:10:2026-05-08",
+    });
+    const tenWindows = selectWindows(ten, "2026-06-05");
+    const nearby = (found: ReturnType<typeof scanConfounds>) =>
+      found.filter((c) => c.kind === "nearby_intervention");
+
+    it("excuses the previous run's end — it is this change", () => {
+      const twenty = run({
+        id: 1, name: "Escitalopram 20 mg", startedOn: "2026-03-01", endedOn: "2026-05-07",
+        sourceRef: "medication.item:7:dose:20:2026-03-01",
+      });
+      expect(nearby(scanConfounds(ten, [twenty, ten], tenWindows, fullCoverage))).toEqual([]);
+    });
+
+    it("still flags a different medication ending the day before", () => {
+      const other = run({
+        id: 3, name: "Trazodone 50 mg", startedOn: "2026-03-01", endedOn: "2026-05-07",
+        sourceRef: "medication.item:9:dose:50:2026-03-01",
+      });
+      const hit = nearby(scanConfounds(ten, [other, ten], tenWindows, fullCoverage));
+      expect(hit).toHaveLength(1);
+      expect(hit[0].severity).toBe("high");
+    });
+
+    it("still flags a stop-and-restart long enough to be its own change", () => {
+      const stopped = run({
+        id: 1, name: "Escitalopram 20 mg", startedOn: "2026-03-01", endedOn: "2026-04-20",
+        sourceRef: "medication.item:7:dose:20:2026-03-01",
+      });
+      expect(nearby(scanConfounds(ten, [stopped, ten], tenWindows, fullCoverage))).toHaveLength(1);
+    });
+
+    it("still flags an earlier dose change of the same drug inside the window", () => {
+      const fifteen = run({
+        id: 4, name: "Escitalopram 15 mg", startedOn: "2026-04-20", endedOn: "2026-04-29",
+        sourceRef: "medication.item:7:dose:15:2026-04-20",
+      });
+      const twenty = run({
+        id: 1, name: "Escitalopram 20 mg", startedOn: "2026-04-30", endedOn: "2026-05-07",
+        sourceRef: "medication.item:7:dose:20:2026-04-30",
+      });
+      const dates = nearby(scanConfounds(ten, [fifteen, twenty, ten], tenWindows, fullCoverage))
+        .map((c) => c.date)
+        .sort();
+      // 15 mg start/end and 20 mg start are real; only the 20 → 10 handoff is excused.
+      expect(dates).toEqual(["2026-04-20", "2026-04-29", "2026-04-30"]);
+    });
+  });
+
   it("flags a measurement change that straddles the pivot", () => {
     // The Google Health cutover changed how sleep efficiency is derived.
     const late = intervention({ startedOn: "2026-06-01" });

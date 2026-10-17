@@ -18,6 +18,39 @@ describe("buildRecoveryEventStudy", () => {
     expect(result.trajectories[0].points[0]).toMatchObject({ controlCount: 8 });
   });
 
+  it("never uses a control whose window overlaps the anchor's own window", () => {
+    // The nights right after the session are the effect being studied. A
+    // control a week later would read them as its own pre-period and leak
+    // the effect into the "expected" baseline.
+    // Identical covariates, so calendar proximity decides the ranking and
+    // the anchor's nearest same-weekday neighbours win if allowed.
+    const periods = dailyPeriods("2026-01-01", 200).map((period) => ({
+      ...period,
+      priorSleepMinutes: 420,
+      priorRestingHeartRate: 55,
+      priorHrv: 40,
+      recentTrainingLoad7: 20,
+    }));
+    const anchorDate = "2026-03-12";
+    expose(periods, anchorDate, session(1, 1));
+    for (let offset = 1; offset <= 7; offset++) {
+      periods.find((period) => period.date === addDays(anchorDate, offset))!.outcomes.hrv = 999;
+    }
+    for (let offset = -7; offset <= -1; offset++) {
+      periods.find((period) => period.date === addDays(anchorDate, offset))!.outcomes.hrv = -999;
+    }
+
+    const result = buildRecoveryEventStudy(periods, 1, "hrv", 1);
+    const points = result.trajectories[0].points;
+
+    for (const point of points) {
+      if (point.expectedRange == null) continue;
+      expect(point.expectedRange.high).toBeLessThan(999);
+      expect(point.expectedRange.low).toBeGreaterThan(-999);
+    }
+    expect(points.find((point) => point.offsetDays === -3)!.controlCount).toBeGreaterThanOrEqual(3);
+  });
+
   it("returns actual values but no expected comparison when fewer than three controls exist", () => {
     const periods = dailyPeriods("2026-01-01", 18);
     expose(periods, "2026-01-15", session(1, 1));
