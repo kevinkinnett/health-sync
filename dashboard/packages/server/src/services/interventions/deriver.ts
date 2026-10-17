@@ -14,6 +14,14 @@ import type { DerivedIntervention } from "@health-dashboard/shared";
 export interface InterventionDeriver {
   /** Stable identifier, used in logs and to attribute failures. */
   readonly id: string;
+  /**
+   * Every `sourceRef` this deriver emits starts with this prefix. When
+   * set, a refresh removes this deriver's previously derived rows that it
+   * no longer produces (e.g. a run whose first intake was deleted now
+   * starts later and carries a new key). Without it, stale rows would be
+   * undeletable orphans, since derived rows reject manual edits.
+   */
+  readonly sourceRefPrefix?: string;
   derive(today: string): Promise<DerivedIntervention[]>;
 }
 
@@ -59,6 +67,7 @@ function daysBetween(a: string, b: string): number {
  */
 export class MedicationDoseDeriver implements InterventionDeriver {
   readonly id = "medication-dose";
+  readonly sourceRefPrefix = "medication.item:";
 
   constructor(private readonly source: DoseHistorySource) {}
 
@@ -138,6 +147,7 @@ const MIN_SUPPLEMENT_DAYS = 5;
  */
 export class SupplementDeriver implements InterventionDeriver {
   readonly id = "supplement-period";
+  readonly sourceRefPrefix = "supplement.item:";
 
   constructor(private readonly source: IntakeHistorySource) {}
 

@@ -69,7 +69,14 @@ class MemoryStore implements InterventionStore {
     this.rows = this.rows.filter((r) => r.id !== id);
     return this.rows.length < before;
   }
-  async upsertDerived(items: DerivedIntervention[]) {
+  async upsertDerived(items: DerivedIntervention[], scope?: { sourceRefPrefix: string }) {
+    if (scope) {
+      const keep = new Set(items.map((i) => i.sourceRef));
+      this.rows = this.rows.filter((r) =>
+        r.source !== "derived" ||
+        !r.sourceRef?.startsWith(scope.sourceRefPrefix) ||
+        keep.has(r.sourceRef));
+    }
     for (const item of items) {
       const existing = this.rows.find((r) => r.sourceRef === item.sourceRef);
       if (existing) Object.assign(existing, item);
@@ -239,6 +246,48 @@ describe("InterventionService — derivation", () => {
     await svc.refreshDerived("2026-07-26");
     expect(store.rows).toHaveLength(2);
     expect(store.rows.filter((r) => r.source === "manual")).toHaveLength(1);
+  });
+
+  it("prunes derived rows a deriver no longer produces, within its own prefix only", async () => {
+    let current: DerivedIntervention[] = [sample];
+    const meds: InterventionDeriver = {
+      id: "medication-dose",
+      sourceRefPrefix: "medication.item:",
+      derive: async () => current,
+    };
+    const other = deriver("other", [{ ...sample, sourceRef: "device:pod:2026-05-02", name: "Pod" }]);
+    const { store, svc } = service([meds, other]);
+    await svc.create(VALID);
+    await svc.refreshDerived("2026-07-26");
+    expect(store.rows).toHaveLength(3);
+
+    // The run's first intake was deleted, so the run now starts later and
+    // carries a new sourceRef. The old row must not linger as an orphan.
+    current = [{ ...sample, startedOn: "2026-05-09", sourceRef: "medication.item:1:dose:10:2026-05-09" }];
+    await svc.refreshDerived("2026-07-26");
+    expect(store.rows.map((r) => r.sourceRef).sort()).toEqual([
+      "device:pod:2026-05-02",
+      "medication.item:1:dose:10:2026-05-09",
+      null,
+    ].sort());
+    expect(store.rows.filter((r) => r.source === "manual")).toHaveLength(1);
+  });
+
+  it("does not prune when the deriver fails", async () => {
+    let fail = false;
+    const meds: InterventionDeriver = {
+      id: "medication-dose",
+      sourceRefPrefix: "medication.item:",
+      derive: async () => {
+        if (fail) throw new Error("db down");
+        return [sample];
+      },
+    };
+    const { store, svc } = service([meds]);
+    await svc.refreshDerived("2026-07-26");
+    fail = true;
+    await svc.refreshDerived("2026-07-26");
+    expect(store.rows).toHaveLength(1);
   });
 
   it("one failing deriver does not deny the others", async () => {
