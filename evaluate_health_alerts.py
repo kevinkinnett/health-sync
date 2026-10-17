@@ -76,7 +76,7 @@ def main(
             )
             push.raise_for_status()
             pushed += 1
-        except Exception as exc:  # noqa: BLE001 - log + continue, don't abort the run
+        except Exception as exc:  # noqa: BLE001 - try the rest, fail the job below
             print(f"Apprise push failed for alert {alert.get('id')}: {exc}")
             failed += 1
 
@@ -88,4 +88,11 @@ def main(
         "push_enabled": push_enabled,
     }
     print(summary)
+    # The server returns each alert exactly once (only on the run that
+    # creates it), so a failed push is never retried. Fail the job so the
+    # lost phone notification shows up as a red Windmill run, not a log line.
+    if failed:
+        raise RuntimeError(
+            f"{failed} of {len(created)} health-alert push(es) failed: {summary}"
+        )
     return summary

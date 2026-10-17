@@ -64,6 +64,30 @@ def capture_raw(conn, token: str, max_pages: int, start_date, end_date) -> dict:
     return captured, store.temporal_audit(start_date, end_date)
 
 
+def count_errors(captured: dict, rolled: dict) -> int:
+    """Problems that must turn the run 'partial' instead of 'completed'.
+
+    run_rollups deliberately swallows a dailyRollUp failure so the committed
+    SQL rollups survive, reporting it only as rolled['activity_error']; that
+    still has to count here, or a dead network rollup (calories_out, distance,
+    floors, active minutes) looks healthy forever. A capture window whose
+    deletion reconciliation was refused by the guard counts too, so the
+    skipped prune is visible rather than silently left behind.
+    """
+    errors = sum(
+        1 for value in captured.values()
+        if isinstance(value, dict)
+        and (
+            value.get("error")
+            or value.get("truncated")
+            or value.get("delete_guarded_windows")
+        )
+    )
+    if isinstance(rolled, dict) and rolled.get("activity_error"):
+        errors += 1
+    return errors
+
+
 def main(
     creds_resource_path=None,
     db_resource_path=None,
@@ -112,11 +136,7 @@ def main(
             for value in captured.values()
             if isinstance(value, dict)
         )
-        errors = sum(
-            1 for value in captured.values()
-            if isinstance(value, dict)
-            and (value.get("error") or value.get("truncated"))
-        )
+        errors = count_errors(captured, rolled)
         update_ingest_run(
             conn,
             run_id,

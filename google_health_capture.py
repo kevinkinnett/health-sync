@@ -29,6 +29,43 @@ class CaptureError(RuntimeError):
     """One data type could not be fetched; other types may continue."""
 
 
+# Deletion reconciliation (points removed in the Fitbit app)
+# -----------------------------------------------------------
+# Google never reports deletions; a deleted point simply stops coming back.
+# But "absent from this capture" only means "deleted" where the capture saw
+# EVERYTHING Google holds. The list endpoint pages newest-first under a
+# per-window page cap, so a truncated window says nothing about its older
+# points, and a window that errored says nothing at all. The rule is:
+#
+#   A raw row may be deleted only when ALL of these hold:
+#     1. its civil window was paged to the end (no error, no next token);
+#     2. its point_date falls inside that window [start, end_exclusive);
+#     3. its date_basis is one of Google's own civil dates, i.e. the same
+#        field the window filter compares (see filter_expression). Rows dated
+#        by a UTC-offset/timezone fallback might disagree with Google's filter
+#        by a day, so they are never pruned on absence;
+#     4. its point_key was not returned by any page of that window.
+#
+# Anything outside the windows that were actually covered is left alone, so a
+# short routine capture (days_back=3) can never touch older history.
+#
+# Guard: if a window would delete more rows than it returned AND more than
+# DELETE_GUARD_MIN_ROWS, the delete is skipped and reported instead. That is
+# the signature of a silently empty/short 200 response rather than of a user
+# deleting a handful of log entries, and losing a whole window of steps or
+# heart samples to an API hiccup is worse than one stale point waiting for the
+# next clean run. A concurrent edit while a multi-page window is being paged
+# can, at worst, make one live point look absent; it is re-inserted by the
+# next capture that covers its date.
+RECONCILABLE_DATE_BASES = (
+    "google_explicit_date",
+    "google_civil_sample",
+    "google_civil_start",
+    "google_civil_end",
+)
+DELETE_GUARD_MIN_ROWS = 10
+
+
 @dataclass(frozen=True)
 class Page:
     points: list[dict]
@@ -87,11 +124,18 @@ class RawPointStore:
         cur.execute("CREATE INDEX IF NOT EXISTS ix_ghdp_type_date ON universe.google_health_data_point (data_type, source_platform, point_date)")
         self._connection.commit()
 
-    def upsert_page(self, data_type: str, points: Iterable[dict]) -> int:
+    def upsert_page(
+        self,
+        data_type: str,
+        points: Iterable[dict],
+        seen_keys: set | None = None,
+    ) -> int:
         cur = self._connection.cursor()
         count = 0
         for point in points:
             parsed = parse_point(data_type, point)
+            if seen_keys is not None:
+                seen_keys.add(parsed["key"])
             cur.execute("""
                 INSERT INTO universe.google_health_data_point
                     (data_type, point_key, name, source_platform, source_app, source_device,
@@ -111,6 +155,45 @@ class RawPointStore:
             count += 1
         self._connection.commit()
         return count
+
+    def delete_missing(
+        self,
+        data_type: str,
+        window_start: date,
+        window_end: date,
+        seen_keys: set,
+    ) -> int | None:
+        """Delete raw rows of a fully-paged window that Google no longer has.
+
+        Returns the number deleted, or None when the guard (see the
+        reconciliation rule above RECONCILABLE_DATE_BASES) refused an
+        implausibly large delete.
+        Only call this for a window that was paged to completion.
+        """
+        cur = self._connection.cursor()
+        where = """
+            WHERE data_type = %s AND point_date >= %s AND point_date < %s
+              AND date_basis = ANY(%s) AND NOT (point_key = ANY(%s))
+        """
+        params = (
+            data_type, window_start, window_end,
+            list(RECONCILABLE_DATE_BASES), list(seen_keys),
+        )
+        cur.execute(
+            "SELECT COUNT(*) FROM universe.google_health_data_point" + where,
+            params,
+        )
+        missing = cur.fetchone()[0]
+        if missing == 0:
+            return 0
+        if missing > max(DELETE_GUARD_MIN_ROWS, len(seen_keys)):
+            return None
+        cur.execute(
+            "DELETE FROM universe.google_health_data_point" + where,
+            params,
+        )
+        self._connection.commit()
+        return missing
 
     def temporal_audit(self, start_date: date, end_date: date) -> list[dict]:
         """Summarize the provenance used for the captured civil-date window."""
@@ -151,10 +234,9 @@ def capture_types(
         raise ValueError("start_date and end_date must be provided together")
     if max_pages <= 0:
         raise ValueError("max_pages must be positive")
+    bounded = start_date is not None and end_date is not None
     windows = (
-        _bounded_windows(start_date, end_date)
-        if start_date is not None and end_date is not None
-        else [(None, None)]
+        _bounded_windows(start_date, end_date) if bounded else [(None, None)]
     )
     results = {}
     for data_type in data_types:
@@ -162,7 +244,12 @@ def capture_types(
         pages = 0
         error = None
         truncated_windows = []
+        deleted = 0
+        guarded_windows = []
         for window_start, window_end in windows:
+            # Only bounded windows can be reconciled: deletions are judged
+            # per civil window (see RECONCILABLE_DATE_BASES).
+            seen_keys = set() if bounded else None
             page_token = None
             window_pages = 0
             point_filter = (
@@ -177,7 +264,7 @@ def capture_types(
                     error = str(exc)
                     break
                 try:
-                    count += store.upsert_page(data_type, page.points)
+                    count += store.upsert_page(data_type, page.points, seen_keys)
                 except TemporalResolutionError as exc:
                     error = f"temporal resolution failed: {str(exc)[:160]}"
                     break
@@ -188,22 +275,38 @@ def capture_types(
                     break
             if error is not None:
                 break
+            window = {
+                "start": window_start.isoformat() if window_start else None,
+                "end_exclusive": window_end.isoformat() if window_end else None,
+            }
             if page_token:
-                truncated_windows.append({
-                    "start": window_start.isoformat() if window_start else None,
-                    "end_exclusive": window_end.isoformat() if window_end else None,
-                })
+                # Page cap hit: older points in this window were never seen,
+                # so their absence proves nothing. No reconciliation.
+                truncated_windows.append(window)
+            elif seen_keys is not None:
+                removed = store.delete_missing(
+                    data_type, window_start, window_end, seen_keys
+                )
+                if removed is None:
+                    guarded_windows.append(window)
+                else:
+                    deleted += removed
         if error is not None:
-            results[data_type] = {"error": error, "points": count, "pages": pages}
+            results[data_type] = {
+                "error": error, "points": count, "pages": pages, "deleted": deleted,
+            }
         else:
             results[data_type] = {
                 "points": count,
                 "pages": pages,
                 "truncated": bool(truncated_windows),
             }
-            if start_date is not None:
+            if bounded:
                 results[data_type]["windows"] = len(windows)
                 results[data_type]["truncated_windows"] = truncated_windows
+                results[data_type]["deleted"] = deleted
+                if guarded_windows:
+                    results[data_type]["delete_guarded_windows"] = guarded_windows
     return results
 
 

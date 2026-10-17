@@ -424,32 +424,46 @@ def main(
 
         run_id = create_ingest_run(conn, PROVIDER, JOB_NAME)
 
-        chunk_start = start_date
-        while chunk_start <= today:
-            chunk_end = min(chunk_start + timedelta(days=TRENDS_CHUNK_DAYS - 1), today)
-            try:
-                days = fetch_trends(
-                    client, uid, user_timezone,
-                    chunk_start.isoformat(), chunk_end.isoformat(),
-                )
-                for day in days:
-                    try:
-                        rows += upsert_day(conn, day, user_timezone)
-                        normalized_date = local_wake_date(day, user_timezone)
-                        if normalized_date:
-                            day_dates.append(normalized_date)
-                    except Exception as exc:  # noqa: BLE001
-                        errors += 1
-                        print(f"  upsert {day.get('day')} failed: {exc}")
-            except Exception as exc:  # noqa: BLE001
-                errors += 1
-                print(f"  trends {chunk_start}..{chunk_end} failed: {exc}")
-            chunk_start = chunk_end + timedelta(days=1)
+        try:
+            chunk_start = start_date
+            while chunk_start <= today:
+                chunk_end = min(chunk_start + timedelta(days=TRENDS_CHUNK_DAYS - 1), today)
+                try:
+                    days = fetch_trends(
+                        client, uid, user_timezone,
+                        chunk_start.isoformat(), chunk_end.isoformat(),
+                    )
+                    for day in days:
+                        try:
+                            rows += upsert_day(conn, day, user_timezone)
+                            normalized_date = local_wake_date(day, user_timezone)
+                            if normalized_date:
+                                day_dates.append(normalized_date)
+                        except Exception as exc:  # noqa: BLE001
+                            # psycopg aborts the whole transaction on a failed
+                            # statement; without this rollback every later
+                            # night (and the run finalize) fails too.
+                            conn.rollback()
+                            errors += 1
+                            print(f"  upsert {day.get('day')} failed: {exc}")
+                except Exception as exc:  # noqa: BLE001
+                    errors += 1
+                    print(f"  trends {chunk_start}..{chunk_end} failed: {exc}")
+                chunk_start = chunk_end + timedelta(days=1)
 
-        latest = max(day_dates) if day_dates else None
-        earliest = min(day_dates) if day_dates else None
-        if latest:
-            update_state(conn, latest, earliest, run_id)
+            latest = max(day_dates) if day_dates else None
+            earliest = min(day_dates) if day_dates else None
+            if latest:
+                update_state(conn, latest, earliest, run_id)
+        except BaseException as exc:
+            # Never leave the committed 'running' row behind: finalize it on a
+            # clean transaction, then let the crash surface in Windmill.
+            conn.rollback()
+            update_ingest_run(
+                conn, run_id, "failed", rows, errors + 1,
+                {"crash": str(exc)[:300], "days": len(set(day_dates))},
+            )
+            raise
         status = "completed" if errors == 0 else "partial"
         update_ingest_run(
             conn, run_id, status, rows, errors,
