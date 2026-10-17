@@ -1,6 +1,31 @@
 import type { Page } from "@playwright/test";
 import type {
   ActivityDay,
+  ApiLogEntry,
+  BreathingRateDay,
+  BuildInfo,
+  CardioScoreDay,
+  ChatConversationSummary,
+  EightSleepDay,
+  ExerciseLog,
+  IngestRun,
+  IngestState,
+  IngredientByDay,
+  InsightGenerationSummary,
+  IntakeByDay,
+  IntakeCorrelations,
+  DoseResponseSummary,
+  LagProfile,
+  SupplementAdherence,
+  MedicationIntake,
+  MedicationItem,
+  RecoveryActivity,
+  RecoverySession,
+  SkinTempDay,
+  SleepDay,
+  SupplementIntake,
+  TrainingSummary,
+  WeightEntry,
   AlertsResponse,
   ApiLogStats,
   AppConfig,
@@ -31,6 +56,7 @@ import type {
   WeeklyInsights,
   WorkoutEffectsData,
 } from "@health-dashboard/shared";
+import type { HealthCheck } from "../src/api/queries/health";
 
 /**
  * Stubs the whole `/api/**` surface at the browser boundary so the smoke
@@ -956,8 +982,363 @@ const INGEST_OVERVIEW: IngestOverview = {
   schedules: [],
 };
 
+/** Ten consecutive dates ending on TODAY — the window every series uses. */
+const WINDOW = Array.from({ length: 10 }, (_, i) =>
+  `2026-07-${String(17 + i).padStart(2, "0")}`,
+);
+
+const SLEEP: SleepDay[] = WINDOW.map((date, i) => ({
+  date,
+  totalMinutesAsleep: 400 + (i % 4) * 15,
+  totalMinutesInBed: 450 + (i % 4) * 15,
+  totalSleepRecords: 1,
+  napMinutesAsleep: i === 3 ? 25 : null,
+  minutesDeep: 70 + (i % 3) * 8,
+  minutesLight: 220 + (i % 5) * 6,
+  minutesRem: 95 + (i % 4) * 5,
+  minutesWake: 40 + (i % 3) * 4,
+  efficiency: 88 + (i % 4),
+  mainSleepStartTime: `${date}T03:10:00.000Z`,
+  mainSleepEndTime: `${date}T10:40:00.000Z`,
+  measurementMethod: "stages",
+  fetchedAt: FETCHED,
+}));
+
+const EXERCISE_LOGS: ExerciseLog[] = [
+  {
+    logId: 501,
+    date: "2026-07-21",
+    startTime: "2026-07-21T22:00:00.000Z",
+    activityName: "Weights",
+    activityTypeId: 2131,
+    logType: "manual",
+    calories: 310,
+    durationMs: 50 * 60_000,
+    distance: null,
+    distanceUnit: null,
+    steps: 400,
+    averageHeartRate: 118,
+    elevationGain: null,
+    hasActiveZoneMinutes: true,
+    fetchedAt: FETCHED,
+  },
+  {
+    logId: 502,
+    date: "2026-07-24",
+    startTime: "2026-07-24T11:30:00.000Z",
+    activityName: "Run",
+    activityTypeId: 90009,
+    logType: "auto_detected",
+    calories: 420,
+    durationMs: 35 * 60_000,
+    distance: 5.6,
+    distanceUnit: "Kilometer",
+    steps: 5600,
+    averageHeartRate: 151,
+    elevationGain: 22,
+    hasActiveZoneMinutes: true,
+    fetchedAt: FETCHED,
+  },
+];
+
+const TRAINING_LOAD: TrainingSummary = {
+  days: WINDOW.map((date) => {
+    const strength = date === "2026-07-21" ? 62 : 0;
+    const cardio = date === "2026-07-24" ? 88 : 0;
+    const sessions = (strength ? 1 : 0) + (cardio ? 1 : 0);
+    return {
+      date,
+      load: strength + cardio,
+      sessions,
+      minutes: strength ? 50 : cardio ? 35 : 0,
+      byType: sessions ? (strength ? { strength } : { cardio }) : {},
+      estimated: false,
+    };
+  }),
+  sessions: [
+    {
+      logId: 501,
+      date: "2026-07-21",
+      activityName: "Weights",
+      type: "strength",
+      minutes: 50,
+      averageHeartRate: 118,
+      steps: 400,
+      calories: 310,
+      load: 62,
+      estimated: false,
+    },
+    {
+      logId: 502,
+      date: "2026-07-24",
+      activityName: "Run",
+      type: "cardio",
+      minutes: 35,
+      averageHeartRate: 151,
+      steps: 5600,
+      calories: 420,
+      load: 88,
+      estimated: false,
+    },
+  ],
+  totalByType: { strength: 62, cardio: 88 },
+  sessionsPerWeek: 1.4,
+};
+
+const EIGHT_SLEEP: EightSleepDay[] = WINDOW.map((date, i) => ({
+  date,
+  score: 78 + (i % 5) * 3,
+  sleepDurationMin: 410 + (i % 4) * 12,
+  deepMin: 72 + (i % 3) * 6,
+  lightMin: 225 + (i % 4) * 5,
+  remMin: 98 + (i % 3) * 4,
+  avgHeartRate: 55 + (i % 3),
+  avgHrvRmssd: 42 + (i % 4) * 2,
+  avgRespiratoryRate: 14.2 + (i % 3) * 0.2,
+  avgBedTempC: 27 + (i % 2) * 0.5,
+  avgRoomTempC: 20.5,
+  tnt: 18 + (i % 4) * 3,
+  sleepStart: `${date}T03:05:00.000Z`,
+  sleepEnd: `${date}T10:35:00.000Z`,
+}));
+
+const WEIGHT: WeightEntry[] = [
+  { logId: "w1", date: "2026-07-20", time: "07:02", weightKg: 81.4, bmi: 24.6, fatPct: null, source: "Aria", fetchedAt: FETCHED },
+  { logId: "w2", date: "2026-07-24", time: "07:05", weightKg: 81.1, bmi: 24.5, fatPct: null, source: "Aria", fetchedAt: FETCHED },
+];
+
+const BREATHING_RATE: BreathingRateDay[] = WINDOW.map((date, i) => ({
+  date,
+  breathingRate: 14 + (i % 3) * 0.3,
+  fetchedAt: FETCHED,
+}));
+
+const SKIN_TEMP: SkinTempDay[] = WINDOW.map((date, i) => ({
+  date,
+  nightlyRelative: ((i % 5) - 2) * 0.2,
+  logType: "dedicated_temp_sensor",
+  fetchedAt: FETCHED,
+}));
+
+const CARDIO_SCORE: CardioScoreDay[] = WINDOW.map((date) => ({
+  date,
+  vo2Max: "44-48",
+  fetchedAt: FETCHED,
+}));
+
 /**
- * Path suffix → body.
+ * "unknown" on purpose: `buildsAgree` treats it as compatible, so the
+ * BuildCompatibilityGate stays open whatever commit the bundle under test
+ * was built from. A real SHA here would hold every route behind the
+ * "new version is ready" card.
+ */
+const VERSION: BuildInfo = {
+  commit: "unknown",
+  shortCommit: "unknown",
+  builtAt: FETCHED,
+  version: "0.1.0",
+  buildNumber: "",
+  source: "local",
+};
+
+const HEALTH_CHECK: HealthCheck = { status: "ok", dbConnected: true };
+
+const MEDICATION_ITEMS: MedicationItem[] = [
+  {
+    id: 3,
+    name: "Escitalopram",
+    brand: null,
+    form: "tablet",
+    defaultAmount: 10,
+    defaultUnit: "mg",
+    notes: null,
+    isActive: true,
+    createdAt: FETCHED,
+    updatedAt: FETCHED,
+  },
+];
+
+const MEDICATION_INTAKES: MedicationIntake[] = WINDOW.map((date, i) => ({
+  id: 300 + i,
+  itemId: 3,
+  itemName: "Escitalopram",
+  takenAt: `${date}T12:30:00.000Z`,
+  amount: 10,
+  unit: "mg",
+  notes: null,
+  createdAt: FETCHED,
+}));
+
+const SUPPLEMENT_INTAKES: SupplementIntake[] = WINDOW.map((date, i) => ({
+  id: 700 + i,
+  itemId: 7,
+  itemName: "Magnesium glycinate",
+  takenAt: `${date}T02:00:00.000Z`,
+  amount: 2,
+  unit: "capsules",
+  notes: null,
+  createdAt: FETCHED,
+  ingredients: [],
+}));
+
+const SUPPLEMENT_INTAKE_BY_DAY: IntakeByDay[] = WINDOW.map((date) => ({
+  date,
+  itemId: 7,
+  itemName: "Magnesium glycinate",
+  totalAmount: 2,
+  unit: "capsules",
+  count: 1,
+}));
+
+const MEDICATION_INTAKE_BY_DAY: IntakeByDay[] = WINDOW.map((date) => ({
+  date,
+  itemId: 3,
+  itemName: "Escitalopram",
+  totalAmount: 10,
+  unit: "mg",
+  count: 1,
+}));
+
+const INGREDIENT_BY_DAY: IngredientByDay[] = WINDOW.map((date) => ({
+  date,
+  ingredientId: 1,
+  ingredientName: "Magnesium",
+  totalAmount: 400,
+  unit: "mg",
+}));
+
+const RECOVERY_ACTIVITIES: RecoveryActivity[] = [
+  {
+    id: 1,
+    code: "hot_blanket",
+    name: "Hot blanket",
+    category: "heat_therapy",
+    defaultDurationMinutes: 25,
+    notes: null,
+    isActive: true,
+    createdAt: FETCHED,
+    updatedAt: FETCHED,
+  },
+];
+
+const RECOVERY_SESSIONS: RecoverySession[] = [
+  {
+    id: 1,
+    activityId: 1,
+    activityCode: "hot_blanket",
+    activityName: "Hot blanket",
+    activityCategory: "heat_therapy",
+    startedAt: "2026-07-25T01:00:00.000Z",
+    durationMinutes: 25,
+    intensity: null,
+    temperatureF: 140,
+    massageType: null,
+    notes: null,
+    source: "manual",
+    createdAt: FETCHED,
+    updatedAt: FETCHED,
+  },
+];
+
+const adherence = (itemId: number, itemName: string): SupplementAdherence => ({
+  itemId,
+  itemName,
+  start: WINDOW[0],
+  end: TODAY,
+  totalDoses: 10,
+  daysWithIntake: 10,
+  daysInWindow: 10,
+  currentStreak: 10,
+  bestStreak: 10,
+  byDayOfWeek: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((dayName, dow) => ({
+    dow,
+    dayName,
+    avgDoses: 1,
+  })),
+  daily: WINDOW.map((date) => ({ date, doses: 1 })),
+});
+
+const SUPPLEMENT_ADHERENCE = adherence(7, "Magnesium glycinate");
+const MEDICATION_ADHERENCE = adherence(3, "Escitalopram");
+
+const correlations = (itemId: number, itemName: string, xLabel: string): IntakeCorrelations => ({
+  itemId,
+  itemName,
+  lagDays: 0,
+  pairs: [
+    {
+      metric: "sleepMin",
+      metricLabel: "Sleep (min)",
+      xLabel,
+      correlation: 0.21,
+      n: 10,
+      points: WINDOW.map((date, i) => ({ x: i % 2 ? 2 : 1, y: 400 + (i % 4) * 15, date })),
+      insight: "Weak positive association; not evidence of an effect.",
+    },
+    {
+      metric: "steps",
+      metricLabel: "Steps",
+      xLabel,
+      // Same dose every day leaves r undefined, which the UI must show as such.
+      correlation: null,
+      n: 10,
+      points: WINDOW.map((date, i) => ({ x: 1, y: 8000 + i * 100, date })),
+      insight: "No variation in intake, so no correlation can be computed.",
+    },
+  ],
+});
+
+const SUPPLEMENT_CORRELATIONS = correlations(7, "Magnesium glycinate", "Doses taken (count)");
+const MEDICATION_CORRELATIONS = correlations(3, "Escitalopram", "Daily dose (mg)");
+
+const DOSE_RESPONSE: DoseResponseSummary = {
+  itemId: 3,
+  itemName: "Escitalopram",
+  xLabel: "Daily dose (mg)",
+  levels: [
+    { dose: 0, days: 3, firstDay: "2026-07-17", lastDay: "2026-07-19" },
+    { dose: 10, days: 7, firstDay: "2026-07-20", lastDay: TODAY },
+  ],
+  metrics: [
+    {
+      metric: "restingHr",
+      metricLabel: "Resting HR",
+      byLevel: [
+        { dose: 0, n: 3, mean: 58, values: [57, 58, 59] },
+        { dose: 10, n: 7, mean: 56, values: [55, 56, 56, 57, 55, 56, 57] },
+      ],
+    },
+  ],
+};
+
+const LAG_PROFILE: LagProfile = {
+  itemId: 3,
+  itemName: "Escitalopram",
+  maxLag: 3,
+  metrics: [
+    {
+      metric: "restingHr",
+      metricLabel: "Resting HR",
+      points: [0, 1, 2, 3].map((lag) => ({ lag, r: lag === 3 ? null : -0.1 * (lag + 1), n: 10 - lag })),
+    },
+  ],
+};
+
+/* Collections that are legitimately empty in this fixture world. Typed so a
+ * contract change still breaks `pnpm typecheck`, and listed explicitly so an
+ * endpoint nobody stubbed fails loudly instead of quietly getting `[]`. */
+const NO_INSIGHT_GENERATIONS: InsightGenerationSummary[] = [];
+const NO_CONVERSATIONS: ChatConversationSummary[] = [];
+const NO_API_CALLS: ApiLogEntry[] = [];
+const NO_INGEST_RUNS: IngestRun[] = [];
+const NO_INGEST_STATE: IngestState[] = [];
+
+/**
+ * URL PATHNAME → body. Matched against the pathname only, never the query
+ * string, so an anchored pattern means what it says: `/event-study$` once
+ * silently missed `/event-study?activityId=1&…`, the request fell through
+ * to a bare `[]`, and the fixture written for it was dead code that also
+ * crashed /analytics/correlations.
  *
  * INVARIANT: never put an object literal in this table — reference a
  * typed const above. An inline literal escapes the shared-type check,
@@ -965,56 +1346,107 @@ const INGEST_OVERVIEW: IngestOverview = {
  * `NotificationSettings` stub with the wrong keys and silently crashed
  * the /settings route (the page read `thresholds.illnessSigma` off
  * `undefined` and React unmounted the whole shell).
+ *
+ * Order is first-wins, same as the server's route registration.
  */
 const ROUTES: [RegExp, unknown][] = [
-  [/\/api\/config$/, CONFIG],
-  [/\/api\/health\/summary$/, SUMMARY],
-  [/\/api\/health\/insights\/weekly$/, WEEKLY],
-  [/\/api\/health\/heatmap\/day-of-week$/, HEATMAP],
-  [/\/api\/health\/correlations$/, CORRELATIONS],
-  [/\/api\/health\/workout-effects$/, WORKOUT_EFFECTS],
-  [/\/api\/recovery\/event-study$/, RECOVERY_EVENT_STUDY],
-  [/\/api\/recovery\/effects$/, RECOVERY_EFFECTS],
-  [/\/api\/health\/sensor-agreement/, SENSOR_AGREEMENT],
-  [/\/api\/health\/recovery-anomalies/, RECOVERY_ANOMALIES],
-  [/\/api\/health\/records$/, RECORDS],
-  [/\/api\/health\/driving$/, DRIVING],
-  [/\/api\/health\/nutrition-weight/, NUTRITION_WEIGHT],
-  [/\/api\/health\/food/, FOOD],
-  [/\/api\/health\/readiness/, READINESS],
-  // Before the /interventions/ pattern — order in this table is matched
-  // first-wins, same as the server's route registration.
-  [/\/api\/experiments\/summary$/, EXPERIMENT_SUMMARIES],
-  [/\/api\/experiments\/interventions\//, EXPERIMENT],
-  [/\/api\/interventions$/, INTERVENTIONS],
-  [/\/api\/health\/spo2/, SPO2],
-  [/\/api\/health\/heart-rate/, HEART_RATE],
-  [/\/api\/health\/hrv/, HRV],
-  [/\/api\/health\/activity/, ACTIVITY],
-  [/\/api\/alerts/, ALERTS],
-  [/\/api\/settings\/llm-models$/, LLM_MODELS],
-  [/\/api\/settings\/notifications$/, NOTIFICATIONS],
-  [/\/api\/admin\/api-logs\/stats/, API_LOG_STATS],
-  [/\/api\/dossier\/supplement\/7$/, SUPPLEMENT_DOSSIER],
-  [/\/api\/supplements\/items/, SUPPLEMENT_ITEMS],
-  [/\/api\/supplements\/ingredients$/, SUPPLEMENT_INGREDIENTS],
-  [/\/api\/ingest\/overview/, INGEST_OVERVIEW],
-  [/\/api\/ingest\/status/, INGEST_STATUS],
-  [/\/api\/ingest\/state/, []],
+  [/^\/api\/config$/, CONFIG],
+  [/^\/api\/version$/, VERSION],
+  [/^\/api\/health-check$/, HEALTH_CHECK],
+  [/^\/api\/health\/summary$/, SUMMARY],
+  [/^\/api\/health\/insights\/weekly$/, WEEKLY],
+  [/^\/api\/health\/heatmap\/day-of-week$/, HEATMAP],
+  [/^\/api\/health\/correlations$/, CORRELATIONS],
+  [/^\/api\/health\/workout-effects$/, WORKOUT_EFFECTS],
+  [/^\/api\/health\/sensor-agreement$/, SENSOR_AGREEMENT],
+  [/^\/api\/health\/recovery-anomalies$/, RECOVERY_ANOMALIES],
+  [/^\/api\/health\/records$/, RECORDS],
+  [/^\/api\/health\/driving$/, DRIVING],
+  [/^\/api\/health\/nutrition-weight$/, NUTRITION_WEIGHT],
+  [/^\/api\/health\/food$/, FOOD],
+  [/^\/api\/health\/readiness$/, READINESS],
+  [/^\/api\/health\/spo2$/, SPO2],
+  [/^\/api\/health\/heart-rate$/, HEART_RATE],
+  [/^\/api\/health\/hrv$/, HRV],
+  [/^\/api\/health\/activity$/, ACTIVITY],
+  [/^\/api\/health\/sleep$/, SLEEP],
+  [/^\/api\/health\/training-load$/, TRAINING_LOAD],
+  [/^\/api\/health\/exercise-logs$/, EXERCISE_LOGS],
+  [/^\/api\/health\/eight-sleep$/, EIGHT_SLEEP],
+  [/^\/api\/health\/weight$/, WEIGHT],
+  [/^\/api\/health\/breathing-rate$/, BREATHING_RATE],
+  [/^\/api\/health\/skin-temp$/, SKIN_TEMP],
+  [/^\/api\/health\/cardio-score$/, CARDIO_SCORE],
+  [/^\/api\/recovery\/event-study$/, RECOVERY_EVENT_STUDY],
+  [/^\/api\/recovery\/effects$/, RECOVERY_EFFECTS],
+  [/^\/api\/recovery\/activities$/, RECOVERY_ACTIVITIES],
+  [/^\/api\/recovery\/sessions$/, RECOVERY_SESSIONS],
+  [/^\/api\/experiments\/summary$/, EXPERIMENT_SUMMARIES],
+  [/^\/api\/experiments\/interventions\/\d+$/, EXPERIMENT],
+  [/^\/api\/interventions$/, INTERVENTIONS],
+  [/^\/api\/alerts$/, ALERTS],
+  [/^\/api\/settings\/llm-models$/, LLM_MODELS],
+  [/^\/api\/settings\/notifications$/, NOTIFICATIONS],
+  [/^\/api\/admin\/api-logs\/stats$/, API_LOG_STATS],
+  [/^\/api\/admin\/api-logs\/recent$/, NO_API_CALLS],
+  [/^\/api\/dossier\/supplement\/7$/, SUPPLEMENT_DOSSIER],
+  [/^\/api\/supplements\/items$/, SUPPLEMENT_ITEMS],
+  [/^\/api\/supplements\/intakes$/, SUPPLEMENT_INTAKES],
+  [/^\/api\/supplements\/ingredients$/, SUPPLEMENT_INGREDIENTS],
+  [/^\/api\/medications\/items$/, MEDICATION_ITEMS],
+  [/^\/api\/medications\/intakes$/, MEDICATION_INTAKES],
+  [/^\/api\/analytics\/supplements\/intake-by-day$/, SUPPLEMENT_INTAKE_BY_DAY],
+  [/^\/api\/analytics\/supplements\/ingredient-by-day$/, INGREDIENT_BY_DAY],
+  [/^\/api\/analytics\/medications\/intake-by-day$/, MEDICATION_INTAKE_BY_DAY],
+  [/^\/api\/analytics\/supplements\/adherence\/7$/, SUPPLEMENT_ADHERENCE],
+  [/^\/api\/analytics\/supplements\/correlations\/7$/, SUPPLEMENT_CORRELATIONS],
+  [/^\/api\/analytics\/medications\/adherence\/3$/, MEDICATION_ADHERENCE],
+  [/^\/api\/analytics\/medications\/correlations\/3$/, MEDICATION_CORRELATIONS],
+  [/^\/api\/analytics\/medications\/dose-response\/3$/, DOSE_RESPONSE],
+  [/^\/api\/analytics\/medications\/lag-profile\/3$/, LAG_PROFILE],
+  [/^\/api\/insights\/list$/, NO_INSIGHT_GENERATIONS],
+  [/^\/api\/insights\/chat\/conversations$/, NO_CONVERSATIONS],
+  [/^\/api\/ingest\/overview$/, INGEST_OVERVIEW],
+  [/^\/api\/ingest\/status$/, INGEST_STATUS],
+  [/^\/api\/ingest\/state$/, NO_INGEST_STATE],
+  [/^\/api\/ingest\/runs$/, NO_INGEST_RUNS],
 ];
 
+/**
+ * The instant the browser believes it is: midday on the fixture's TODAY, in
+ * the fixture user's zone. Without this, anything the app derives from the
+ * wall clock (an ongoing intervention's bar running "to today", the default
+ * date range) drifts a little every day, and a pixel baseline recorded on
+ * one date fails on the next for no reason at all.
+ */
+export const FROZEN_NOW = new Date(`${TODAY}T16:00:00Z`);
+
 export async function stubApi(page: Page): Promise<void> {
+  // Date only — timers and requestAnimationFrame still run, so Recharts'
+  // entrance animation still finishes before a screenshot.
+  await page.clock.setFixedTime(FROZEN_NOW);
   await page.route("**/api/**", async (route) => {
-    const url = route.request().url();
-    for (const [pattern, body] of ROUTES) {
-      if (pattern.test(url)) {
-        await route.fulfill({ json: body as object });
-        return;
+    const request = route.request();
+    const { pathname } = new URL(request.url());
+    if (request.method() === "GET") {
+      for (const [pattern, body] of ROUTES) {
+        if (pattern.test(pathname)) {
+          await route.fulfill({ json: body as object });
+          return;
+        }
       }
     }
-    // Unmatched endpoints are all list-shaped; an empty collection reads
-    // as "no data yet" in the UI rather than an error.
-    await route.fulfill({ json: [] });
+    // LOUD on purpose. This used to answer every unmatched URL with `[]`,
+    // which turned a missing fixture into a crash somewhere far away (an
+    // object-shaped endpoint read as an array) or into a page quietly
+    // rendering its empty state — both of which a test could pass over.
+    // A 501 surfaces as a console error naming the URL, which every test
+    // that checks `significant(errors)` reports.
+    await route.fulfill({
+      status: 501,
+      contentType: "text/plain",
+      body: `No e2e fixture for ${request.method()} ${pathname}`,
+    });
   });
 }
 
@@ -1029,6 +1461,13 @@ export function collectErrors(page: Page): string[] {
     if (msg.type() === "error") errors.push(msg.text());
   });
   page.on("pageerror", (err) => errors.push(String(err)));
+  // The browser's own message for the stub's 501 doesn't say WHICH request
+  // had no fixture; this does.
+  page.on("response", (res) => {
+    if (res.status() === 501) {
+      errors.push(`No e2e fixture: ${res.request().method()} ${new URL(res.url()).pathname}`);
+    }
+  });
   return errors;
 }
 
@@ -1041,6 +1480,8 @@ export function significant(errors: string[]): string[] {
   return errors.filter(
     (e) =>
       !/service ?worker|sw\.js|manifest|favicon|workbox/i.test(e) &&
-      !/Failed to load resource.*40[34]/i.test(e),
+      !/Failed to load resource.*40[34]/i.test(e) &&
+      // Reported with its URL by collectErrors instead.
+      !/Failed to load resource.*501/i.test(e),
   );
 }

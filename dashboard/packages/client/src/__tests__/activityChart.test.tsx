@@ -1,8 +1,35 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import type { ActivityDay } from "@health-dashboard/shared";
 import { ActivityChart } from "../components/charts/ActivityChart";
 import { METRIC_COLOR } from "../components/charts/chartPalette";
+
+/*
+ * Record the props every <Area> is rendered with, then render the real one.
+ *
+ * jsdom draws no series geometry (see setup.ts), so the painted colour can't
+ * be read off the DOM here. What CAN be checked is what the component hands
+ * the chart library — which is exactly where the shared-colour bug lived.
+ */
+const areas = vi.hoisted(() => [] as Array<Record<string, unknown>>);
+vi.mock("recharts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("recharts")>();
+  const RealArea = actual.Area;
+  function RecordingArea(props: React.ComponentProps<typeof RealArea>) {
+    areas.push(props as unknown as Record<string, unknown>);
+    return <RealArea {...props} />;
+  }
+  return { ...actual, Area: RecordingArea };
+});
+
+beforeEach(() => {
+  areas.length = 0;
+});
+
+/** The last props each series was rendered with, keyed by dataKey. */
+function areaProps(): Map<unknown, Record<string, unknown>> {
+  return new Map(areas.map((p) => [p.dataKey, p]));
+}
 
 /**
  * The chart is presentational — annotations arrive as a prop — so it renders
@@ -43,10 +70,24 @@ describe("ActivityChart", () => {
     );
   });
 
-  it("gives steps and active minutes different colours", () => {
-    // The regression this replaces: BOTH series were painted
+  it("paints steps and active minutes in their own, different colours", () => {
+    // The regression this locks: BOTH series were painted
     // METRIC_COLOR.steps, so two unrelated measures were the same blue.
-    expect(METRIC_COLOR.steps).not.toBe(METRIC_COLOR.activeMinutes);
+    // Asserted on what the chart is actually given — comparing the palette
+    // constants alone stayed green with that exact bug reintroduced.
+    render(<ActivityChart data={DATA} />);
+    const byKey = areaProps();
+    const steps = byKey.get("steps");
+    const active = byKey.get("activeMinutes");
+    expect(steps, "no steps series rendered").toBeDefined();
+    expect(active, "no active-minutes series rendered").toBeDefined();
+
+    expect(steps).toMatchObject({ stroke: METRIC_COLOR.steps, fill: METRIC_COLOR.steps });
+    expect(active).toMatchObject({
+      stroke: METRIC_COLOR.activeMinutes,
+      fill: METRIC_COLOR.activeMinutes,
+    });
+    expect(active!.stroke).not.toBe(steps!.stroke);
   });
 
   it("names the average after the series it actually describes", () => {

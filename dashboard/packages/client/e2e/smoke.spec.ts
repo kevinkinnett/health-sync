@@ -1,4 +1,6 @@
-import { test, expect } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { test, expect, type Page } from "@playwright/test";
 import { collectErrors, significant, stubApi } from "./fixtures.js";
 
 /** The categorical slots validated against the chart surface #171f33. */
@@ -43,30 +45,76 @@ test("dashboard boots and renders live data", async ({ page }) => {
   expect(significant(errors)).toEqual([]);
 });
 
-test("every primary route renders without a crash", async ({ page }) => {
-  const routes = [
-    "/",
-    "/readiness",
-    "/timeline",
-    "/analytics/overview",
-    "/analytics/activity",
-    "/analytics/heart-rate",
-    "/analytics/hrv",
-    "/analytics/sensors",
-    "/analytics/unusual-days",
-    "/analytics/nutrition",
-    "/analytics/weight",
-    "/analytics/correlations",
-    "/supplements",
-    "/medications",
-    "/recovery",
-    "/insights",
-    "/settings",
-    "/api-console",
-    "/ingest",
-  ];
+/**
+ * Every routed path in App.tsx. Kept literal (rather than derived) so a
+ * failure names the route, and checked against App.tsx by the test below so
+ * a new screen cannot be added without being swept.
+ */
+const ROUTES = [
+  "/",
+  "/readiness",
+  "/timeline",
+  "/analytics/overview",
+  "/analytics/activity",
+  "/analytics/sleep",
+  "/analytics/heart-rate",
+  "/analytics/hrv",
+  "/analytics/weight",
+  "/analytics/exercises",
+  "/analytics/vitals",
+  "/analytics/eight-sleep",
+  "/analytics/sensors",
+  "/analytics/unusual-days",
+  "/analytics/nutrition",
+  "/analytics/records",
+  "/analytics/correlations",
+  "/analytics/supplements",
+  "/analytics/medications",
+  "/supplements",
+  "/medications",
+  "/recovery",
+  "/insights",
+  "/settings",
+  "/api-console",
+  "/ingest",
+  "/alerts",
+];
 
-  for (const route of routes) {
+/**
+ * Icons whose ligature didn't fire. The icon font is a SUBSET
+ * (scripts/subsetIcons.mjs); an icon missing from it doesn't error — its
+ * NAME ("monitor_heart") renders as a run of text instead. A glyph is
+ * roughly one em square; the fallback text is several em wide.
+ */
+async function iconsRenderedAsText(page: Page): Promise<string[]> {
+  await page.evaluate(() => document.fonts.ready);
+  return page.locator(".material-symbols-outlined:visible").evaluateAll((nodes) =>
+    nodes
+      .map((n) => ({
+        name: (n.textContent ?? "").trim(),
+        ratio: n.getBoundingClientRect().width / parseFloat(getComputedStyle(n).fontSize),
+      }))
+      .filter((icon) => icon.name && icon.ratio > 1.5)
+      .map((icon) => icon.name),
+  );
+}
+
+test("the route sweep covers every route App.tsx registers", () => {
+  const app = readFileSync(
+    fileURLToPath(new URL("../src/App.tsx", import.meta.url)),
+    "utf8",
+  );
+  const registered = new Set<string>();
+  for (const [, path] of app.matchAll(/<Route\s+path="([^"]+)"/g)) {
+    // Redirects and the analytics parent (its index redirects), not screens.
+    if (path === "*" || path === "/explore" || path === "/analytics") continue;
+    registered.add(path.startsWith("/") ? path : `/analytics/${path}`);
+  }
+  expect([...registered].filter((r) => !ROUTES.includes(r)).sort()).toEqual([]);
+});
+
+test("every route renders, and is still standing once its data lands", async ({ page }) => {
+  for (const route of ROUTES) {
     const errors = collectErrors(page);
     await page.goto(route);
     // The app shell must be present and the root must not be empty —
@@ -74,12 +122,114 @@ test("every primary route renders without a crash", async ({ page }) => {
     // the sidebar's own test id, so this asserts the real shell rather
     // than any incidental <nav>.
     await expect(page.locator("#root"), `#root empty on ${route}`).not.toBeEmpty();
-    await expect(
-      page.getByTestId("primary-nav"),
-      `app shell missing on ${route}`,
-    ).toBeVisible();
+    await expect(page.getByTestId("primary-nav"), `app shell missing on ${route}`).toBeVisible();
+
+    // Then WAIT FOR THE DATA. Checking right after first paint was a race
+    // the test always won: the shell paints before any query resolves, and
+    // a crash in something rendered from a dependent query (the recovery
+    // event study, two requests deep) arrived after the assertions had
+    // already passed. Network idle means every query, including the
+    // chained ones, has answered and been rendered.
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByText(/Loading view…/)).toHaveCount(0);
+
+    // A render crash either unmounts the shell (no error boundary) or is
+    // caught by one, which still reports it to the console — so between
+    // them these two assertions see it either way.
+    await expect(page.getByTestId("primary-nav"), `app shell gone after data on ${route}`).toBeVisible();
     expect(significant(errors), `console errors on ${route}`).toEqual([]);
+    expect(await iconsRenderedAsText(page), `icons rendered as text on ${route}`).toEqual([]);
   }
+});
+
+test("the sleep screen draws every stage", async ({ page }) => {
+  // Four stacked stage series plus the moving average. A stage that stops
+  // drawing leaves the chart looking plausible — the stack is just shorter
+  // — so count the series that drew, not the chart.
+  const errors = collectErrors(page);
+  await page.goto("/analytics/sleep");
+
+  const card = page.getByRole("heading", { name: "Sleep Stages" }).locator("..");
+  await expect(card.locator(".recharts-bar-rectangle").first()).toBeAttached({ timeout: 15_000 });
+
+  // Polled: bars grow in over the entrance animation, so a single early
+  // read can catch rectangles that exist but have no height yet.
+  const stages = () =>
+    card.locator(".recharts-bar").evaluateAll((groups) =>
+      groups.map((g) => {
+        const rects = [...g.querySelectorAll(".recharts-rectangle")];
+        return {
+          drawn: rects.filter((r) => (r.getAttribute("d") ?? "").length > 10).length,
+          fill: (rects[0]?.getAttribute("fill") ?? "").toLowerCase(),
+        };
+      }),
+    );
+  await expect
+    .poll(async () => (await stages()).map((s) => s.drawn >= 10), {
+      message: "every stage series should draw a bar for each of the 10 nights",
+    })
+    .toEqual([true, true, true, true]);
+  const fills = (await stages()).map((s) => s.fill);
+  expect(new Set(fills).size, `two stages share a colour: ${fills.join(", ")}`).toBe(4);
+
+  await expect
+    .poll(
+      () =>
+        card
+          .locator(".recharts-line-curve")
+          .evaluateAll((nodes) => nodes.filter((n) => (n.getAttribute("d") ?? "").length > 10).length),
+      { message: "the moving average drew no line" },
+    )
+    .toBe(1);
+
+  expect(significant(errors)).toEqual([]);
+});
+
+test("the exercise screen draws training load by type", async ({ page }) => {
+  // This route used to white-screen under the stub: /health/training-load
+  // had no fixture, `days.length` was read off `[]`, and nothing visited it.
+  const errors = collectErrors(page);
+  await page.goto("/analytics/exercises");
+
+  // One strength day and one cardio day in the fixture. Polled, because
+  // bars have no height until the entrance animation runs.
+  await expect
+    .poll(
+      () =>
+        page
+          .locator(".recharts-bar .recharts-rectangle")
+          .evaluateAll((nodes) => nodes.filter((n) => (n.getAttribute("d") ?? "").length > 10).length),
+      { message: "training load drew no bars", timeout: 15_000 },
+    )
+    .toBeGreaterThanOrEqual(2);
+  await expect(page.getByRole("cell", { name: "Weights" })).toBeVisible();
+
+  expect(significant(errors)).toEqual([]);
+});
+
+test("the recovery event study renders its session timeline", async ({ page }) => {
+  // Its fixture was dead for as long as it existed: the stub's pattern was
+  // anchored with `$` and the client always sends a query string. Assert on
+  // what only the event-study payload can produce.
+  const errors = collectErrors(page);
+  await page.goto("/analytics/correlations");
+
+  const study = page.locator('section[aria-labelledby="event-study-title"]');
+  await expect(study.getByText("Individual observation")).toBeVisible({ timeout: 15_000 });
+  await expect(study.getByText("1 eligible event · 4/10 matched pairs")).toBeVisible();
+  await expect(study.getByRole("combobox", { name: "Event session" })).toHaveValue("2026-07-25");
+
+  await expect
+    .poll(
+      () =>
+        study
+          .locator(".recharts-line-curve")
+          .evaluateAll((nodes) => nodes.filter((n) => (n.getAttribute("d") ?? "").length > 10).length),
+      { message: "the session trajectory drew no line" },
+    )
+    .toBeGreaterThanOrEqual(1);
+
+  expect(significant(errors)).toEqual([]);
 });
 
 test("the nutrition screen distinguishes coverage, missing days, and provisional data", async ({ page }) => {
