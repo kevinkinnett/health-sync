@@ -18,6 +18,7 @@ weight. The problems are around the edges:
 | 4 | HR-zone minutes NULL instead of 0 on worn days with no zone minutes | low | 9 days | code + SQL |
 | 5 | Orphan SpO2 rows with no Fitbit sleep night behind them | low | 2 days | SQL |
 | 6 | No Fitbit sleep on 4 nights (watch didn't record; Eight Sleep did) | info | 4 nights | none |
+| 7 | Watch-derived activity artifact: 138–519 very-active min/day on 1.4k–7.4k steps (§6) | high | 16 days, 2026-03-18 → 04-02 | SQL (quarantine) |
 
 No edge-day truncation, no DST artefacts, no FITBIT/HEALTH_CONNECT double
 counting in any rolled-up column, and no duplicate raw points.
@@ -314,6 +315,8 @@ reruns this sweep's checks daily over a 120-day window:
 - sleep, RHR plausibility
 - zone-NULL worn days, duplicate weigh-ins, NULL-platform raw points, and
   missing days
+- very-active minutes with neither the steps nor the HR-zone minutes to back
+  them (`very_active_implausible`, alert; added for finding #7, see §6.4)
 
 The output style matches `evaluate_health_alerts.py`: it prints and returns a
 summary plus details. An optional Apprise push is off by default.
@@ -328,3 +331,131 @@ decided. Check logic is covered by `tests/test_health_data_invariants.py`
 
 Activation steps are in the script's docstring. Schedule it after the 4-hourly
 ingest, and enable `push` once the known warnings are cleared.
+
+## 6. Very-active-minutes artifact, 2026-03-18 → 2026-04-02 (finding #7)
+
+Added after the insight-quality report (`docs/insight-quality-2026-10.md`)
+found this window drives the experiment engine's biggest false effect: it says
+Escitalopram 20 mg raised active minutes 584%, and that Eight Sleep moved them
+the wrong way. The investigation was read-only: DB queries plus `dailyRollUp`
+and `dataPoints` reads against the Google Health API.
+
+**Root cause: a device-side artifact.** The Pixel Watch 4 itself derived these
+active minutes and calories. Fitbit/Google stored them as real data. There is
+no unit, aggregation or double-count bug in our ingest or rollups, and no code
+fix. The repair quarantines the rows (§6.3), and a new invariant catches a
+recurrence (§6.4).
+
+### 6.1 Who wrote the rows
+
+- All 16 rows have `raw_jsonb = {"_src": "google_health"}`. They were written by
+  `_rollup_activity_daily` from Google's `active-minutes` `dailyRollUp`, mapped
+  LIGHT/MODERATE/VIGOROUS → lightly/fairly/very. `fetched_at` is recent only
+  because the windowless steps/zone upserts touch every row. The legacy Fitbit
+  API values for these days were overwritten earlier and no longer exist in the
+  DB.
+- A fresh `dailyRollUp` read (2026-10-16) returns exactly the stored VIGOROUS
+  values, e.g. 03-24 = 519 and 03-26 = 485. It returns them identically for
+  `dataSourceFamily` = `all-sources`, `google-sources` and `google-wearables`. So
+  no phone, Health Connect or manual source is merged in, unlike `distance_km`
+  in §2.1. LIGHT and calories differ by ≤ 1–2% from the stored values (Google's
+  later revision), but are equally inflated.
+- The raw `active-minutes` points are per-minute,
+  `dataSource = {device: "Pixel Watch 4", platform: FITBIT, recordingMethod: DERIVED}`.
+  Every FITBIT raw point in March–April comes from the single
+  `Google Pixel Watch 4 (45mm)` device. There was no second tracker.
+
+### 6.2 Evidence against real activity
+
+| | 03-12 → 03-17 (before) | **03-18 → 04-02** | 04-04 → 04-08 (after) |
+|---|---|---|---|
+| very-active min/day | 0–43 | **138–519** | 0–18 |
+| lightly-active min/day | 113–316 | **485–933** | 87–165 |
+| sedentary min/day | 735–1,280 | **8–544** | 832–940 |
+| calories_out | 2,303–3,595 | **6,120–9,853** | 2,277–2,880 |
+| steps | 2,246–10,590 | 1,386–7,438 | 2,351–8,129 |
+| HR-zone min (fat burn + cardio + peak) | 0–84 | **0–57** | 0–28 |
+| resting HR | 63–68 | 65–71 | 65–66 |
+| raw FITBIT points/day | 293–995 | **163–468** | 622–997 |
+| nights missing HRV / SpO2 / sleep raw | — | **03-17 → 03-26 / 03-17 → 04-02 / 03-18 → 03-23** | none |
+
+- **Minute level (03-24):** the watch emitted 1,001 active-minute points, against 145 on
+  03-14. Vigorous minutes filled hours with few steps. 13:00 had 22 vigorous min on 71
+  steps. 18:00 had 60 vigorous min on 1,141 steps (19/min). 19:00 had 52 vigorous min
+  on 133 steps.
+- **Heart rate disagrees:** the HR-zone signal (`active-zone-minutes`, the same
+  watch) stayed at its normal 5–30 min/day. A vigorous (≥ 6 MET) minute without
+  a fat-burn-or-higher HR minute is not physiological. Neither is ~9,800 kcal
+  on 7,208 steps.
+- **The watch was degraded throughout:** overnight HRV, SpO2 and sleep staging
+  vanished in the same window, and the raw point volume halved. HRV
+  returns 03-27; SpO2 and activity return 04-03/04-04. That fits a firmware or sensor-fusion
+  fault on the watch, not a change in behaviour. Weights logged in the window
+  (92.0 → 88.2 kg) are normal, so a bad profile weight did not inflate
+  calories.
+- **04-03 is a partial recovery day:** very-active 25 but lightly 541 and
+  4,309 kcal (both still about 2× normal). Steps and very-active look normal
+  that day, so the invariant does not flag it. The repair includes it as an
+  optional line.
+
+Steps and distance in the window are raw-backed. They look plausible for a
+low-activity stretch and are kept.
+
+### 6.3 Proposed repair (not executed)
+
+The repair NULLs the derived activity columns and stamps a quarantine marker,
+so the experiment engine and dashboards treat the days as missing instead of
+as an effect. `_rollup_activity_daily` only rewrites days inside `rollup_days`
+(scheduled: 45), so the repair holds. A manual rollup with `rollup_days ≥ 212`
+(as of 2026-10-16) would re-fetch the same bad values from Google and undo it.
+If that is ever needed, re-run this block afterwards, or teach the upsert to
+skip rows carrying the `quarantine` key.
+
+```sql
+BEGIN;
+UPDATE universe.fitbit_activity_daily
+SET minutes_lightly_active = NULL, minutes_fairly_active = NULL,
+    minutes_very_active = NULL, minutes_sedentary = NULL, calories_out = NULL,
+    raw_jsonb = coalesce(raw_jsonb, '{}'::jsonb) || jsonb_build_object(
+        'quarantine', 'watch-derived activity artifact; see docs/data-integrity-2026-10.md §6',
+        'quarantined_values', jsonb_build_object(
+            'lightly', minutes_lightly_active, 'fairly', minutes_fairly_active,
+            'very', minutes_very_active, 'sedentary', minutes_sedentary,
+            'calories_out', calories_out)),
+    fetched_at = NOW()
+WHERE date BETWEEN DATE '2026-03-18' AND DATE '2026-04-02'
+  AND minutes_very_active >= 120;
+-- expect UPDATE 16
+-- Optional, partial-recovery day (very 25, lightly 541, 4,309 kcal):
+--   rerun the UPDATE above with WHERE date = DATE '2026-04-03'  -- expect UPDATE 1
+COMMIT;
+```
+
+The original values stay in `raw_jsonb->'quarantined_values'`, so the repair
+can be undone. If NULL `calories_out` breaks a consumer that assumes it is
+always present, drop that column from the SET. The calories are equally
+wrong, though.
+
+### 6.4 Guard
+
+`check_very_active_plausibility` in `health_data_invariants.py` raises
+`very_active_implausible` (alert) when all three of these hold:
+
+- very-active ≥ 120 min, and
+- steps < 50 per very-active minute, and
+- HR-zone minutes (fat burn + cardio + peak) are missing or fewer than half the
+  very-active minutes.
+
+The zone test keeps low-step workouts with raised HR (cycling, rowing) from
+alerting. Run read-only over the full history (986 rows, 2024-01-25 → 2026-10-16),
+it flags **exactly the 16 days above and nothing else**. The nearest clean days
+that stay quiet:
+
+- 2025-09-28: 124 very-active on 6,048 steps, backed by 156 zone min and a
+  logged exercise.
+- 2026-04-17: 295 very-active on 18,984 steps.
+
+The daily run's 120-day window doesn't reach March. Run
+`main(window_days=240)` once to confirm the alerts before the repair and
+their absence after it. Tests: `VeryActivePlausibilityTests` in
+`tests/test_health_data_invariants.py`.
