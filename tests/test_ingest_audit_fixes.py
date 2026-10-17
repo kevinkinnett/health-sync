@@ -17,10 +17,14 @@ from unittest.mock import patch
 try:
     import psycopg  # noqa: F401
 except ModuleNotFoundError:
-    _psycopg = types.ModuleType("psycopg")
-    _psycopg.Connection = object
-    _psycopg.connect = None
-    sys.modules["psycopg"] = _psycopg
+    psycopg = types.ModuleType("psycopg")
+    sys.modules["psycopg"] = psycopg
+# Another suite (test_health_data_invariants) may already have registered a
+# bare psycopg stub; ingest_common's annotations need these attributes.
+if not hasattr(psycopg, "Connection"):
+    psycopg.Connection = object
+if not hasattr(psycopg, "connect"):
+    psycopg.connect = None
 
 import eight_sleep_points  # noqa: E402
 import google_health_capture  # noqa: E402
