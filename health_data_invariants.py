@@ -97,6 +97,16 @@ RHR_RANGE = (35, 100)
 RHR_MAX_DAY_JUMP = 15
 SLEEP_ASLEEP_RANGE = (120, 900)
 
+# Very-active (MET-based VIGOROUS) minutes need movement or a raised heart
+# rate behind them. 2026-03-18..04-02 the watch derived 138-519/day on
+# 1.4k-7.4k steps with only 5-57 HR-zone minutes (see the data-integrity
+# report). Implausible = at least VERY_ACTIVE_MIN_FLAG minutes, fewer than
+# MIN_STEPS_PER_VERY_ACTIVE_MIN steps per such minute, and (when zone data
+# exists) more than MAX_VERY_ACTIVE_PER_ZONE_MIN very-active per HR-zone minute.
+VERY_ACTIVE_MIN_FLAG = 120
+MIN_STEPS_PER_VERY_ACTIVE_MIN = 50
+MAX_VERY_ACTIVE_PER_ZONE_MIN = 2
+
 # Recomputed-vs-stored tolerance per comparison (absolute).
 TOLERANCE = {
     "steps": 0,
@@ -275,6 +285,29 @@ def check_resting_hr(rows) -> list:
             out.append(violation("rhr_jump", "warn",
                                  f"resting HR {prev[1]} -> {rhr} day over day", r["date"]))
         prev = (r["date"], rhr)
+    return out
+
+
+def check_very_active_plausibility(rows) -> list:
+    """rows: {date, steps, minutes_very_active, zone_minutes}; zone_minutes is
+    fat-burn + cardio + peak, or None when the day has no zone row.
+
+    A non-walking workout (cycling, rowing) has few steps but raised HR, so the
+    zone test exempts it; without zone data, steps alone decide."""
+    out = []
+    for r in rows:
+        very, steps, zone = r.get("minutes_very_active"), r.get("steps"), r.get("zone_minutes")
+        if very is None or steps is None or very < VERY_ACTIVE_MIN_FLAG:
+            continue
+        if steps >= MIN_STEPS_PER_VERY_ACTIVE_MIN * very:
+            continue
+        if zone is not None and very <= MAX_VERY_ACTIVE_PER_ZONE_MIN * zone:
+            continue
+        out.append(violation(
+            "very_active_implausible", "alert",
+            f"{very} very-active min on {steps} steps ({steps / very:.0f}/min) with "
+            f"{'no' if zone is None else zone} HR-zone min", r["date"],
+            minutes_very_active=very, steps=steps, zone_minutes=zone))
     return out
 
 
@@ -508,6 +541,13 @@ def run_checks(cur, today: date, window_days: int, lookback_days: int) -> list:
     out += check_resting_hr(_rows(cur, """
         SELECT date, resting_heart_rate FROM universe.fitbit_heart_rate_daily
         WHERE date >= %(since)s""", params))
+
+    out += check_very_active_plausibility(_rows(cur, """
+        SELECT a.date, a.steps, a.minutes_very_active,
+               h.zone_fat_burn_min + h.zone_cardio_min + h.zone_peak_min AS zone_minutes
+        FROM universe.fitbit_activity_daily a
+        LEFT JOIN universe.fitbit_heart_rate_daily h USING (date)
+        WHERE a.date >= %(since)s""", params))
 
     out += check_zone_nulls(_rows(cur, """
         SELECT h.date, a.steps, h.zone_cardio_min
