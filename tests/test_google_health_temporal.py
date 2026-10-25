@@ -154,6 +154,9 @@ class GoogleHealthTemporalTests(unittest.TestCase):
         self.assertIn("weight.sample_time.civil_time", filter_expression("weight", start, end))
         self.assertIn("sleep.interval.civil_end_time", filter_expression("sleep", start, end))
         self.assertIn("daily_resting_heart_rate.date", filter_expression("daily-resting-heart-rate", start, end))
+        # Both VO2 filters were checked against the live API (HTTP 200) on 2026-10-25.
+        self.assertIn("daily_vo2_max.date", filter_expression("daily-vo2-max", start, end))
+        self.assertIn("run_vo2_max.sample_time.civil_time", filter_expression("run-vo2-max", start, end))
 
     def test_capture_window_is_anchored_to_eastern_calendar_day(self):
         # 00:30 UTC is still the prior evening in New York.
