@@ -54,7 +54,6 @@ FROZEN_COLUMNS = {
     ("fitbit_activity_daily", "minutes_sedentary"): "Google sedentary-period differs; unmapped",
     ("fitbit_body_weight", "bmi"): "Google weight carries no BMI; legacy-only",
     ("fitbit_body_weight", "fat_pct"): "never populated",
-    ("fitbit_cardio_score_daily", "vo2_max"): "Google vo2-max returns {} for this account",
     ("fitbit_exercise_log", "activity_type_id"): "not in Google exercise payload",
     ("fitbit_exercise_log", "elevation_gain"): "Pixel Watch 4 stopped reporting elevation after 2026-08-12",
     ("fitbit_food_log_daily", "water"): "no hydration type captured",

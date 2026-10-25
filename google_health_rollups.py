@@ -779,8 +779,9 @@ class GoogleHealthRollupWriter:
 #         (dailyRollUp endpoint; all validated EXACT vs legacy)
 #   DONE  weight → _rollup_weight (negative synthetic log_id)
 #   DONE  exercise → _rollup_exercise (point id == legacy logId; 79/79 validated)
-#   DEAD  fitbit_cardio_score_daily → Google's vo2-max returns {} for this
-#         account; the table freezes at cutover (history retained)
+#   ELSEWHERE fitbit_cardio_score_daily → Google returns no vo2-max /
+#         daily-vo2-max / run-vo2-max for this account (re-probed 2026-10-25),
+#         so ingest_fitbit_cardio.py fills it from the Fitbit Web API instead
 #   SKIP  active_calories / calories_bmr → Google's active-energy-burned is a
 #         different definition (~half of Fitbit's activityCalories) and unused
 #   SKIP  minutes_sedentary → sedentary-period differs from legacy, unused

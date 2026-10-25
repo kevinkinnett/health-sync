@@ -37,7 +37,7 @@ because Google has no equivalent) or **broken**.
 | body_weight.bmi | 2026-04-29 | 100 | frozen: legacy `API` rows only; Google weight has no BMI |
 | body_weight.fat_pct | never | 100 | frozen: never populated |
 | breathing_rate_daily.breathing_rate | 2026-10-16 | 0 | live |
-| cardio_score_daily.vo2_max (text) | 2026-06-11 | — | frozen: Google vo2-max returns `{}` |
+| cardio_score_daily.vo2_max (text) | 2026-06-11 | — | frozen at the time; **restored 2026-10-25** by `ingest_fitbit_cardio.py` (Fitbit Web API) and backfilled from 06-12 with no gaps |
 | exercise_log.calories / duration_ms / average_heart_rate | 2026-10-16 | 0 | live |
 | exercise_log.steps / distance | 2026-09-23 | 80.6 | live, legitimately sparse: only WALKING/TREADMILL sessions carry `steps`/`distanceMillimeters`; the other 25 of 31 sessions (WORKOUT, manual strength) don't |
 | exercise_log.elevation_gain | 2026-08-12 | 100 | frozen (provider): no session since 2026-08-12 includes `elevationGainMillimeters`. The 2026-08-25 walk has none. The device label also changed from "Google Pixel Watch 4 (45mm)" to "Pixel Watch 4" on 2026-08-23 |
