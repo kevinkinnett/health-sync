@@ -33,7 +33,11 @@ import urllib.parse
 
 import requests
 
-from u.kevin.notify import send
+try:
+    from u.kevin.notify import send  # shared Windmill helper on claw (not in this repo)
+except ImportError:  # outside Windmill, e.g. unit tests (they patch `send`)
+    def send(*_args, **_kwargs):
+        raise RuntimeError("u/kevin/notify is only available inside Windmill on claw")
 
 
 def main(

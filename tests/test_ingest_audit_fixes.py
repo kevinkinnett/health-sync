@@ -440,35 +440,41 @@ class AlertPushFailureTests(unittest.TestCase):
             return self._body
 
     def _post(self, push_ok):
+        """requests.post serves the dashboard's evaluate call; pushes go through u/kevin/notify.send."""
         pushes = []
 
         def post(url, **kwargs):
-            if url.endswith("/api/alerts/evaluate"):
-                return self.Response({"created": [
-                    {"id": 1, "severity": "alert", "title": "Low HRV"},
-                    {"id": 2, "severity": "warn", "title": "Ingest stale"},
-                ]})
-            pushes.append(kwargs["json"]["title"])
-            return self.Response(ok=push_ok(len(pushes)))
+            assert url.endswith("/api/alerts/evaluate"), url
+            return self.Response({"created": [
+                {"id": 1, "severity": "alert", "title": "Low HRV"},
+                {"id": 2, "severity": "warn", "title": "Ingest stale"},
+            ]})
 
-        return post, pushes
+        def send(title, body, **kwargs):
+            pushes.append((title, kwargs.get("tags")))
+            ok = push_ok(len(pushes))
+            return {"sent": ok, "via": "relay" if ok else None, "detail": "" if ok else "502 Bad Gateway"}
+
+        return post, send, pushes
 
     def test_failed_push_fails_the_job_after_trying_every_alert(self):
-        post, pushes = self._post(lambda n: n != 1)
+        post, send, pushes = self._post(lambda n: n != 1)
 
-        with patch.object(evaluate_health_alerts.requests, "post", post):
+        with patch.object(evaluate_health_alerts.requests, "post", post),                 patch.object(evaluate_health_alerts, "send", send):
             with self.assertRaisesRegex(RuntimeError, "1 of 2"):
                 evaluate_health_alerts.main()
 
         self.assertEqual(len(pushes), 2)
 
     def test_all_pushes_delivered_returns_summary(self):
-        post, _pushes = self._post(lambda _n: True)
+        post, send, pushes = self._post(lambda _n: True)
 
-        with patch.object(evaluate_health_alerts.requests, "post", post):
+        with patch.object(evaluate_health_alerts.requests, "post", post),                 patch.object(evaluate_health_alerts, "send", send):
             summary = evaluate_health_alerts.main()
 
         self.assertEqual((summary["pushed"], summary["failed"]), (2, 0))
+        # the Apprise tag comes from the ?tag= of the default apprise_url
+        self.assertEqual({tag for _title, tag in pushes}, {"health"})
 
 
 # ---------------------------------------------------------------------------
