@@ -179,6 +179,50 @@ class ZoneNullTests(unittest.TestCase):
         assert [v["date"] for v in out] == ["2026-10-12"]
 
 
+class VeryActivePlausibilityTests(unittest.TestCase):
+    # Real stored rows (fitbit_activity_daily + fitbit_heart_rate_daily); zone
+    # = fat-burn + cardio + peak minutes.
+    @staticmethod
+    def row(day, steps, very, zone):
+        return {"date": D(day), "steps": steps, "minutes_very_active": very, "zone_minutes": zone}
+
+    def test_march_2026_watch_artifact_days_are_flagged(self):
+        out = inv.check_very_active_plausibility([
+            self.row("2026-03-18", 6022, 138, 5),     # window's smallest very-active
+            self.row("2026-03-24", 7208, 519, 20),    # window's largest
+            self.row("2026-03-30", 3052, 428, 57),    # window's most HR-zone minutes
+            self.row("2026-04-02", 7438, 205, 14),    # window's most steps
+        ])
+        assert checks(out) == ["very_active_implausible"] * 4
+        assert {v["severity"] for v in out} == {"alert"}
+        assert out[1]["minutes_very_active"] == 519 and out[1]["steps"] == 7208
+
+    def test_low_step_vigorous_day_backed_by_heart_rate_is_fine(self):
+        # 2025-09-28: 124 very-active on 6,048 steps, but 156 HR-zone minutes
+        # (a logged non-walking workout). Steps alone would flag it.
+        assert inv.check_very_active_plausibility([self.row("2025-09-28", 6048, 124, 156)]) == []
+
+    def test_long_walking_day_is_fine(self):
+        # 2026-04-17: 295 very-active on 18,984 steps (64 steps/min).
+        assert inv.check_very_active_plausibility([self.row("2026-04-17", 18984, 295, 327)]) == []
+
+    def test_below_minimum_very_active_is_ignored(self):
+        assert inv.check_very_active_plausibility([self.row("2026-03-16", 2000, 119, 0)]) == []
+
+    def test_missing_zone_data_falls_back_to_steps(self):
+        out = inv.check_very_active_plausibility([
+            self.row("2026-03-19", 1548, 304, None),
+            self.row("2026-04-17", 18984, 295, None),
+        ])
+        assert [v["date"] for v in out] == ["2026-03-19"]
+
+    def test_null_activity_columns_are_skipped(self):
+        assert inv.check_very_active_plausibility([
+            self.row("2025-01-05", 3719, None, None),
+            self.row("2025-01-06", None, 200, None),
+        ]) == []
+
+
 class WeightDuplicateTests(unittest.TestCase):
     def test_legacy_and_google_same_weigh_in(self):
         out = inv.check_weight_duplicates([
