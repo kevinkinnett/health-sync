@@ -106,6 +106,44 @@ class ParsePointTests(unittest.TestCase):
             parsed["key"], "daily-resting-heart-rate|FITBIT||2026-08-09"
         )
 
+    def test_daily_vo2_max_is_keyed_to_its_civil_date(self):
+        # Shape from the DailyVO2Max schema in the v4 discovery document.
+        point = {
+            "dataSource": {"platform": "FITBIT"},
+            "dailyVo2Max": {
+                "date": {"year": 2026, "month": 11, "day": 3},
+                "vo2Max": 44.8,
+                "cardioFitnessLevel": "GOOD",
+                "estimated": False,
+            },
+        }
+
+        parsed = parse_point("daily-vo2-max", point)
+
+        self.assertEqual(parsed["key"], "daily-vo2-max|FITBIT||2026-11-03")
+        self.assertEqual(parsed["pdate"], "2026-11-03")
+
+    def test_run_vo2_max_uses_the_civil_sample_date(self):
+        # 01:30Z on the 4th is 21:30 on the 3rd in New York: an evening run.
+        point = {
+            "dataSource": {"platform": "FITBIT"},
+            "runVo2Max": {
+                "runVo2Max": 45.1,
+                "sampleTime": {
+                    "physicalTime": "2026-11-04T01:30:00Z",
+                    "utcOffset": "-18000s",
+                    "civilTime": {
+                        "date": {"year": 2026, "month": 11, "day": 3},
+                        "time": {"hours": 20, "minutes": 30},
+                    },
+                },
+            },
+        }
+
+        parsed = parse_point("run-vo2-max", point)
+
+        self.assertEqual(parsed["pdate"], "2026-11-03")
+
     def test_undeclared_types_fail_closed_instead_of_guessing_a_utc_day(self):
         point = {"dataSource": {"platform": "FITBIT"}, "metadata": {"b": 2, "a": 1}}
 

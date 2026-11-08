@@ -139,7 +139,7 @@ function CardioScoreCard({ data }: { data: CardioScoreDay[] }) {
         Cardio Fitness (VO2 max)
       </h3>
       <p className="text-xs text-outline mb-4">
-        Historical Fitbit-device VO2 max from the retired Web API, reported as a range. It moves slowly,
+        Fitbit cardio-fitness score, reported as a range. It moves slowly,
         so expect long flat stretches — the history below lists only the
         points where it shifted within this window.
       </p>

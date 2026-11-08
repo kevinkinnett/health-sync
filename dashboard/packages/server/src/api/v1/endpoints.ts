@@ -275,7 +275,7 @@ export function buildV1Endpoints(): V1EndpointDef[] {
       path: "/cardio-score",
       summary: "Cardio fitness (VO2 max)",
       description:
-        "Historical per-day cardio-fitness score (VO2 max) from the retired Fitbit Web API. Stored as a RANGE string such as \"43-47\", not a single number; Google Health currently supplies no replacement points.",
+        "Per-day cardio-fitness score (VO2 max) from the Fitbit Web API, synced every 6 hours. Google Health exposes no VO2 max for this account, so this is the one metric still read from Fitbit directly. Stored as a RANGE string such as \"43-47\", not a single number.",
       parameters: dateRangeParams,
       handler: async (args, ctx) => {
         const { start, end } = resolveDateRange(args, ctx.userTimezone);

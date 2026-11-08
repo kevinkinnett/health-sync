@@ -51,6 +51,13 @@ _SPECS = (
     GoogleDataTypeSpec("oxygen-saturation", "oxygenSaturation", "sample", "local_sample", "oxygen_saturation.sample_time.civil_time"),
     GoogleDataTypeSpec("weight", "weight", "sample", "local_sample", "weight.sample_time.civil_time"),
     GoogleDataTypeSpec("vo2-max", "vo2Max", "sample", "local_sample", "vo2_max.sample_time.civil_time"),
+    # Google Health's VO2 max (the renamed Fitbit cardio-fitness score) is
+    # computed from GPS runs only. Both return nothing for this account as of
+    # 2026-10-25 (no outdoor runs), but are captured so a score flows in the
+    # moment Google produces one — the Fitbit Web API stopgap
+    # (ingest_fitbit_cardio.py) dies when that API is switched off 2026-11-02.
+    GoogleDataTypeSpec("daily-vo2-max", "dailyVo2Max", "daily", "explicit_date", "daily_vo2_max.date"),
+    GoogleDataTypeSpec("run-vo2-max", "runVo2Max", "sample", "local_sample", "run_vo2_max.sample_time.civil_time"),
     GoogleDataTypeSpec("steps", "steps", "interval", "local_start", "steps.interval.civil_start_time"),
     GoogleDataTypeSpec("distance", "distance", "interval", "local_start", "distance.interval.civil_start_time"),
     GoogleDataTypeSpec("active-zone-minutes", "activeZoneMinutes", "interval", "local_start", "active_zone_minutes.interval.civil_start_time"),
