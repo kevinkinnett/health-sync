@@ -85,6 +85,11 @@ bundle budgets, and a Chromium smoke pass against the production client bundle.
 Visual chart snapshots remain a reviewed local check because the committed
 baselines are platform-specific.
 
+Alerts from `evaluate_health_alerts.py`, `weekly_health_report.py` and `health_data_invariants.py` are sent
+through the shared Windmill library `u/kevin/notify` on claw (it is not in this repo): `send()` delivers through
+claw's notify-relay, which survives tailnet/Apprise outages, and `fault()` reports data problems to claw's
+Watchtower. Only the `?tag=` part of the `apprise_url` arguments is still used.
+
 When deploying `ingest_google_health.py` to Windmill, deploy its helper modules
 as `u.kevin.google_health_temporal`, `u.kevin.google_health_points`,
 `u.kevin.google_health_capture`, and `u.kevin.google_health_rollups` first. The

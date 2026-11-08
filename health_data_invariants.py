@@ -36,6 +36,8 @@ from decimal import Decimal
 # Plain top-level imports: Windmill's dependency inference ignores imports
 # made inside functions or try blocks. Tests stub psycopg/wmill when absent.
 import psycopg
+import urllib.parse
+
 import requests
 import wmill
 
@@ -586,18 +588,22 @@ def main(
     summary["today"] = today.isoformat()
     summary["pushed"] = False
     to_push = [v for v in violations if v["severity"] in push_severities]
+    # Watchtower (2026-11-08): alert-severity violations make wm:health_data_invariants fail, which alerts
+    # and hands the check to the remediation agent; it recovers on the next clean run.
+    from u.kevin.notify import fault, send
+    alerts = [v for v in violations if v["severity"] == "alert"]
+    fault("health_data_invariants", ok=not alerts, expect="2d",
+          detail=("%d alert-severity violation(s): %s" % (len(alerts), "; ".join(str(v.get("check") or v.get("name") or v)[:80] for v in alerts[:5])))
+          if alerts else "no alert-severity violations (%d total)" % len(violations))
     if push and to_push:
-        try:
-            resp = requests.post(apprise_url, json={
-                "title": f"\U0001fa7a Health data: {len(to_push)} integrity violation(s)",
-                "body": format_push(to_push),
-                "type": "failure" if any(v["severity"] == "alert" for v in to_push) else "warning",
-            }, timeout=30)
-            resp.raise_for_status()
-            summary["pushed"] = True
-        except Exception as exc:  # noqa: BLE001 - report, don't fail the check run
-            print(f"Apprise push failed: {exc}")
-            summary["push_error"] = str(exc)[:200]
+        tag = (urllib.parse.parse_qs(urllib.parse.urlsplit(apprise_url).query).get("tag") or ["health"])[0]
+        r = send(f"🩺 Health data: {len(to_push)} integrity violation(s)", format_push(to_push), tags=tag,
+                 type="failure" if any(v["severity"] == "alert" for v in to_push) else "warning",
+                 source="health_data_invariants")
+        summary["pushed"] = r["sent"]
+        if not r["sent"]:
+            print(f"push failed: {r['detail']}")
+            summary["push_error"] = r["detail"][:200]
 
     print(summary)
     return {**summary, "details": violations}

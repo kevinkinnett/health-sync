@@ -29,7 +29,11 @@ Activation checklist:
   3. Enable this script's schedule.
 """
 
+import urllib.parse
+
 import requests
+
+from u.kevin.notify import send
 
 
 def main(
@@ -54,6 +58,7 @@ def main(
     push_enabled = delivery.get("pushEnabled", True)
     severities = delivery.get("pushSeverities") or push_severities
     target = delivery.get("appriseUrl") or apprise_url
+    tag = (urllib.parse.parse_qs(urllib.parse.urlsplit(target).query).get("tag") or ["health"])[0]
 
     # 2. Forward the new high-severity ones to Apprise — unless push is
     #    switched off in settings.
@@ -68,16 +73,13 @@ def main(
         body = alert.get("detail", "")
         # Apprise notification "type" maps to the icon/colour it renders.
         apprise_type = "failure" if alert.get("severity") == "alert" else "warning"
-        try:
-            push = requests.post(
-                target,
-                json={"title": title, "body": body, "type": apprise_type},
-                timeout=30,
-            )
-            push.raise_for_status()
+        # Delivered through claw's notify-relay via u/kevin/notify (2026-11-08); only the Apprise TAG of
+        # `target` is used (the relay survives tailnet/Apprise outages and queues offline).
+        r = send(title, body, tags=tag, type=apprise_type, source="evaluate_health_alerts")
+        if r["sent"]:
             pushed += 1
-        except Exception as exc:  # noqa: BLE001 - try the rest, fail the job below
-            print(f"Apprise push failed for alert {alert.get('id')}: {exc}")
+        else:
+            print(f"Push failed for alert {alert.get('id')}: {r['detail']}")
             failed += 1
 
     summary = {
