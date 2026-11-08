@@ -14,7 +14,15 @@ deployed and your Apprise key is configured (see
 evaluate_health_alerts.py for the Apprise setup notes).
 """
 
+import urllib.parse
+
 import requests
+
+try:
+    from u.kevin.notify import send  # shared Windmill helper on claw (not in this repo)
+except ImportError:  # outside Windmill, e.g. unit tests (they patch `send`)
+    def send(*_args, **_kwargs):
+        raise RuntimeError("u/kevin/notify is only available inside Windmill on claw")
 
 
 def main(
@@ -35,18 +43,13 @@ def main(
     job = resp.json()
 
     if notify:
-        try:
-            requests.post(
-                apprise_url,
-                json={
-                    "title": "\U0001fa7a Weekly health report",  # 🩺
-                    "body": "Your weekly AI insights are generating — open the dashboard in a few minutes to read them.",
-                    "type": "info",
-                },
-                timeout=30,
-            )
-        except Exception as exc:  # noqa: BLE001
-            print(f"Apprise notify failed: {exc}")
+        # Via claw's notify-relay (u/kevin/notify, 2026-11-08); only the ?tag= of apprise_url is used.
+        tag = (urllib.parse.parse_qs(urllib.parse.urlsplit(apprise_url or "").query).get("tag") or ["health"])[0]
+        r = send("🩺 Weekly health report",  # health emoji
+                 "Your weekly AI insights are generating - open the dashboard in a few minutes to read them.",
+                 tags=tag, type="info", source="weekly_health_report", expect="9d")
+        if not r["sent"]:
+            print(f"notify failed: {r['detail']}")
 
     print({"jobId": job.get("jobId")})
     return {"jobId": job.get("jobId")}
