@@ -7,7 +7,8 @@ const budgets = {
   chunk: 260 * KiB,
   // Light palette + theme store/toggle: 1496.3 → 1500.2 KiB measured.
   // UX-audit fixes (route error boundaries, delete confirms, insight start errors): 1500.2 → 1506.1 KiB.
-  javascriptTotal: 1508 * KiB,
+  // Security bumps (react-router 7.14 → 7.18, vite 8.0 → 8.1 / rolldown 1.1): 1506.1 → 1510.7 KiB.
+  javascriptTotal: 1512 * KiB,
   // Recovery logging and matched-effect reporting add a full responsive
   // workflow. Keep only a narrow 1.3 KiB margin above the measured bundle.
   // The light palette and theme toggle add the :root.light token set: 71.1 → 73.9 KiB.
