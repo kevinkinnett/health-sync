@@ -1,5 +1,5 @@
 FROM node:24-alpine AS build
-RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
+RUN corepack enable && corepack prepare pnpm@10.34.9 --activate
 WORKDIR /app
 
 # Build identity, supplied by CI (see .github/workflows/docker.yml).
@@ -34,7 +34,7 @@ RUN pnpm turbo run build
 
 # Production image
 FROM node:24-alpine
-RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
+RUN corepack enable && corepack prepare pnpm@10.34.9 --activate
 WORKDIR /app
 
 # Redeclared: ARGs do not cross stages. The client's identity is already
